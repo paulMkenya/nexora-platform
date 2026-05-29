@@ -49,10 +49,11 @@ def make_click(offer, n=1):
         )
 
 
-def make_conversion(offer, status=APPROVED_STATUS, payout=Decimal('10.00'), n=1):
+def make_conversion(offer, status=APPROVED_STATUS, payout=Decimal('10.00'), n=1, affiliate=None):
     for _ in range(n):
         Conversion.objects.create(
             offer=offer,
+            affiliate=affiliate,
             status=status,
             payout=payout,
             revenue=payout,
