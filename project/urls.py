@@ -20,9 +20,12 @@ from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
+from project.views import healthz
 
 
 urlpatterns = [
+    path('healthz', healthz, name='healthz'),
+
     path('admin/', admin.site.urls),
 
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
