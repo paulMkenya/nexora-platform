@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'api',
     'postback',
     'affiliate_ui',
+    'advertiser',
 ]
 
 
@@ -63,6 +64,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'user_profile.middleware.RolePortalMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

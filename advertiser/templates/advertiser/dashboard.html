@@ -1,0 +1,8 @@
+{% extends 'advertiser/base.html' %}
+
+{% block title %}Dashboard — {{ block.super }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Advertiser Dashboard</h1>
+<p class="text-muted">Welcome, {{ request.user.username }}.</p>
+{% endblock %}

@@ -39,6 +39,7 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(),
         name='token_refresh'),
 
+    path('advertiser/', include('advertiser.urls', namespace='advertiser')),
     path('affiliate/', include('affiliate.urls')),
     path('network/', include('network.urls')),
     path('', include('affiliate_ui.urls', namespace='affiliate_ui')),

@@ -33,6 +33,7 @@ pytz = "^2025.2"
 "djangorestframework-stubs" = "1.8.0"
 mypy = "0.991"
 pytest = "*"
+pytest-django = "*"
 ruff = "*"
 
 [build-system]
