@@ -8,10 +8,11 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.core.cache import cache
-from django.db.models import Count, Sum
+from django.db.models import Count, DecimalField, IntegerField, OuterRef, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from offer.models import Offer
+from offer.models import Offer, Payout
 from tracker.models import APPROVED_STATUS, Click, Conversion
 
 CACHE_TTL = 60  # seconds
@@ -112,3 +113,69 @@ def get_dashboard_data(advertiser):
 
     cache.set(cache_key, data, CACHE_TTL)
     return data
+
+
+# ── offers list ────────────────────────────────────────────────────────────
+
+def get_offers_list(advertiser, status_filter=''):
+    """
+    Return all of the advertiser's offers annotated with 30-day stats.
+
+    Uses four correlated subqueries (clicks, conversions, revenue, best_payout)
+    so that multiple aggregate columns cannot inflate each other via JOIN
+    multiplication. prefetch_related handles the countries M2M in one extra
+    query — total is 2 DB round-trips regardless of offer count.
+    """
+    since = _rolling_start(30)
+
+    clicks_sq = (
+        Click.objects
+        .filter(offer_id=OuterRef('pk'), created_at__gte=since)
+        .values('offer_id')
+        .annotate(n=Count('pk'))
+        .values('n')
+    )
+    conversions_sq = (
+        Conversion.objects
+        .filter(offer_id=OuterRef('pk'), created_at__gte=since)
+        .values('offer_id')
+        .annotate(n=Count('pk'))
+        .values('n')
+    )
+    revenue_sq = (
+        Conversion.objects
+        .filter(offer_id=OuterRef('pk'), created_at__gte=since, status=APPROVED_STATUS)
+        .values('offer_id')
+        .annotate(s=Sum('revenue'))
+        .values('s')
+    )
+    best_payout_sq = (
+        Payout.objects
+        .filter(offer_id=OuterRef('pk'))
+        .order_by('-payout')
+        .values('payout')[:1]
+    )
+
+    qs = (
+        Offer.objects
+        .filter(advertiser=advertiser)
+        .prefetch_related('countries')
+        .annotate(
+            clicks_30d=Coalesce(
+                Subquery(clicks_sq, output_field=IntegerField()), 0),
+            conversions_30d=Coalesce(
+                Subquery(conversions_sq, output_field=IntegerField()), 0),
+            revenue_30d=Coalesce(
+                Subquery(revenue_sq, output_field=DecimalField(max_digits=10, decimal_places=2)),
+                Decimal('0.00'),
+            ),
+            best_payout=Subquery(
+                best_payout_sq, output_field=DecimalField(max_digits=7, decimal_places=2)),
+        )
+        .order_by('-id')
+    )
+
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+
+    return list(qs)
