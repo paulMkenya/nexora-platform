@@ -1,0 +1,43 @@
+services:
+  nexora-web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.prod
+    image: nexora-platform:latest
+    container_name: nexora-web
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             gunicorn project.wsgi --bind 0.0.0.0:8000 --workers 3 --timeout 120 --access-logfile - --log-level info"
+    env_file: .env.prod
+    networks:
+      - cloudtrade-internal
+      - cloudtrade-proxy
+
+  nexora-worker:
+    image: nexora-platform:latest
+    container_name: nexora-worker
+    restart: unless-stopped
+    command: celery -A project._celery:_celery worker -l INFO
+    env_file: .env.prod
+    networks:
+      - cloudtrade-internal
+    depends_on:
+      - nexora-web
+
+  nexora-beat:
+    image: nexora-platform:latest
+    container_name: nexora-beat
+    restart: unless-stopped
+    command: celery -A project._celery:_celery beat -l INFO
+    env_file: .env.prod
+    networks:
+      - cloudtrade-internal
+    depends_on:
+      - nexora-web
+
+networks:
+  cloudtrade-internal:
+    external: true
+  cloudtrade-proxy:
+    external: true

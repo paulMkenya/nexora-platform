@@ -195,4 +195,5 @@ REDIS_URL = os.environ['REDIS_URL']
 
 TRACKER_URL = os.environ['TRACKER_URL']
 
-IPSTACK_TOKEN = os.environ['IPSTACK_TOKEN']
+IPSTACK_TOKEN = os.environ.get('IPSTACK_TOKEN', '')
+SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
