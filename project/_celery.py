@@ -7,7 +7,7 @@ from django.conf import settings  # noqa
 
 
 _celery = Celery(
-    'cpa-platform',
+    'nexora',
     broker=settings.REDIS_URL
 )
 
