@@ -4,22 +4,79 @@
 {% block page_title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
 
-  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-    <p class="text-sm font-medium text-gray-500">Active Offers</p>
-    <p class="mt-2 text-3xl font-bold text-gray-900">—</p>
+{% if no_account %}
+  <div class="rounded-lg border border-yellow-300 bg-yellow-50 p-6 text-center">
+    <p class="text-sm font-semibold text-yellow-800">No advertiser account linked</p>
+    <p class="mt-1 text-sm text-yellow-600">Contact support to connect your account.</p>
   </div>
 
-  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-    <p class="text-sm font-medium text-gray-500">Conversions (30d)</p>
-    <p class="mt-2 text-3xl font-bold text-gray-900">—</p>
+{% else %}
+
+  {# ── Period stat rows ── #}
+  {% for period_label, stats in period_rows %}
+  <div class="mb-8">
+    <h2 class="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400">{{ period_label }}</h2>
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+
+      <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Clicks</p>
+        <p class="mt-2 text-3xl font-bold text-gray-900">{{ stats.clicks }}</p>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Conversions</p>
+        <p class="mt-2 text-3xl font-bold text-gray-900">{{ stats.conversions }}</p>
+      </div>
+
+      <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <p class="text-xs font-medium uppercase tracking-wider text-gray-500">Conv. Rate</p>
+        <p class="mt-2 text-3xl font-bold text-gray-900">{{ stats.cr }}%</p>
+      </div>
+
+      <div class="rounded-lg border border-indigo-100 bg-indigo-50 p-5 shadow-sm">
+        <p class="text-xs font-medium uppercase tracking-wider text-indigo-400">Payout Owed</p>
+        <p class="mt-2 text-3xl font-bold text-indigo-700">${{ stats.payout|floatformat:2 }}</p>
+      </div>
+
+    </div>
+  </div>
+  {% endfor %}
+
+  {# ── Top 5 Offers ── #}
+  <div class="mt-2 rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div class="border-b border-gray-200 px-6 py-4">
+      <h2 class="text-sm font-semibold text-gray-700">Top 5 Offers by Revenue (last 30 days, approved)</h2>
+    </div>
+
+    {% if top_offers %}
+    <table class="min-w-full divide-y divide-gray-200 text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">#</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Offer</th>
+          <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Conversions</th>
+          <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Revenue</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 bg-white">
+        {% for row in top_offers %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-6 py-3 text-gray-400">{{ forloop.counter }}</td>
+          <td class="px-6 py-3 font-medium text-gray-900">{{ row.offer__title }}</td>
+          <td class="px-6 py-3 text-right text-gray-700">{{ row.conversions }}</td>
+          <td class="px-6 py-3 text-right font-semibold text-indigo-700">${{ row.revenue|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="px-6 py-10 text-center text-sm text-gray-400">
+      No approved conversions yet.
+    </div>
+    {% endif %}
+
   </div>
 
-  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-    <p class="text-sm font-medium text-gray-500">Total Spend (30d)</p>
-    <p class="mt-2 text-3xl font-bold text-gray-900">—</p>
-  </div>
-
-</div>
+{% endif %}
 {% endblock %}

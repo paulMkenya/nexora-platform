@@ -209,6 +209,13 @@ DATABASES = {
 
 REDIS_URL = os.environ['REDIS_URL']
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
+    }
+}
+
 TRACKER_URL = os.environ['TRACKER_URL']
 
 IPSTACK_TOKEN = os.environ.get('IPSTACK_TOKEN', '')

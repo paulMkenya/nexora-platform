@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from countries_plus.models import Country
 from tinymce import models as tinymce_models
@@ -118,12 +119,19 @@ class Payout(models.Model):
 
 
 class Advertiser(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='advertiser_profile',
+    )
     company = models.CharField(max_length=64)
     email = models.CharField(max_length=64)
     contact_person = models.CharField(max_length=64, default='')
     messenger = models.CharField(max_length=64, default='')
     site = models.CharField(max_length=64, default='')
-    comment = models.TextField()
+    comment = models.TextField(default='', blank=True)
 
     def __str__(self):
         return self.company
