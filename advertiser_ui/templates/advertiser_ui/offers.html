@@ -1,0 +1,18 @@
+{% extends 'advertiser_ui/base.html' %}
+
+{% block title %}Offers — Nexora Advertiser{% endblock %}
+{% block page_title %}Offers{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow-sm border border-gray-200">
+  <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+    <h2 class="text-sm font-semibold text-gray-700">Your Offers</h2>
+    <button class="inline-flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700">
+      + New Offer
+    </button>
+  </div>
+  <div class="px-6 py-12 text-center text-sm text-gray-400">
+    No offers yet.
+  </div>
+</div>
+{% endblock %}

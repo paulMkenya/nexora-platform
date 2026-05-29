@@ -1,0 +1,28 @@
+{% extends 'advertiser_ui/base.html' %}
+
+{% block title %}Settings — Nexora Advertiser{% endblock %}
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 divide-y divide-gray-200">
+
+  <div class="px-6 py-5">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Account</h2>
+    <dl class="space-y-3 text-sm">
+      <div class="flex justify-between">
+        <dt class="text-gray-500">Username</dt>
+        <dd class="text-gray-900 font-medium">{{ request.user.username }}</dd>
+      </div>
+      <div class="flex justify-between">
+        <dt class="text-gray-500">Email</dt>
+        <dd class="text-gray-900 font-medium">{{ request.user.email|default:"—" }}</dd>
+      </div>
+      <div class="flex justify-between">
+        <dt class="text-gray-500">Role</dt>
+        <dd class="text-gray-900 font-medium">{{ request.user.profile.role }}</dd>
+      </div>
+    </dl>
+  </div>
+
+</div>
+{% endblock %}

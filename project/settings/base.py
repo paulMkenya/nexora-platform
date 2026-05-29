@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'postback',
     'affiliate_ui',
     'advertiser',
+    'advertiser_ui',
 ]
 
 

@@ -1,0 +1,25 @@
+{% extends 'advertiser_ui/base.html' %}
+
+{% block title %}Dashboard — Nexora Advertiser{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <p class="text-sm font-medium text-gray-500">Active Offers</p>
+    <p class="mt-2 text-3xl font-bold text-gray-900">—</p>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <p class="text-sm font-medium text-gray-500">Conversions (30d)</p>
+    <p class="mt-2 text-3xl font-bold text-gray-900">—</p>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <p class="text-sm font-medium text-gray-500">Total Spend (30d)</p>
+    <p class="mt-2 text-3xl font-bold text-gray-900">—</p>
+  </div>
+
+</div>
+{% endblock %}
