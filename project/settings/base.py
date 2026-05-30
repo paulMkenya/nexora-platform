@@ -218,5 +218,9 @@ CACHES = {
 
 TRACKER_URL = os.environ['TRACKER_URL']
 
+# Set to True in env to start rejecting postbacks with invalid/missing HMAC.
+# Default False so existing integrations are not broken during rollout.
+ENFORCE_POSTBACK_HMAC = os.environ.get('ENFORCE_POSTBACK_HMAC', 'false').lower() == 'true'
+
 IPSTACK_TOKEN = os.environ.get('IPSTACK_TOKEN', '')
 SENTRY_DSN = os.environ.get('SENTRY_DSN', '')

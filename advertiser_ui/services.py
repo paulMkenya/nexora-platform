@@ -336,3 +336,38 @@ def bulk_update_conversions(advertiser, raw_ids, action, reason=''):
             })
 
     return len(authorised_ids), skipped
+
+
+# ── postback key management ────────────────────────────────────────────────
+
+def get_or_create_postback_key(advertiser):
+    """Return (key, created). Auto-generates a 64-hex-char secret on first call."""
+    import secrets as _secrets
+    from offer.models import AdvertiserPostbackKey
+    key, created = AdvertiserPostbackKey.objects.get_or_create(
+        advertiser=advertiser,
+        defaults={'secret': _secrets.token_hex(32)},
+    )
+    return key, created
+
+
+def regenerate_postback_key(advertiser):
+    """Replace the existing HMAC secret with a fresh one and return the key."""
+    import secrets as _secrets
+    from offer.models import AdvertiserPostbackKey
+    key, _ = AdvertiserPostbackKey.objects.get_or_create(
+        advertiser=advertiser,
+        defaults={'secret': ''},
+    )
+    key.secret = _secrets.token_hex(32)
+    key.save(update_fields=['secret', 'updated_at'])
+    return key
+
+
+def get_inbound_postback_log(advertiser, limit=50):
+    from tracker.models import InboundPostbackLog
+    return list(
+        InboundPostbackLog.objects
+        .filter(advertiser=advertiser)
+        .order_by('-received_at')[:limit]
+    )

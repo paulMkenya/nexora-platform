@@ -1,5 +1,6 @@
 import csv
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.core.exceptions import ObjectDoesNotExist
@@ -17,8 +18,11 @@ from advertiser_ui.services import (
     get_conversions_for_export,
     get_conversions_page,
     get_dashboard_data,
+    get_inbound_postback_log,
     get_offers_list,
+    get_or_create_postback_key,
     parse_conversion_filters,
+    regenerate_postback_key,
 )
 
 
@@ -173,11 +177,41 @@ def export_csv(request):
     return response
 
 
-# ── stubs ──────────────────────────────────────────────────────────────────
+# ── postbacks ──────────────────────────────────────────────────────────────
 
 @advertiser_required
 def postbacks(request):
-    return render(request, 'advertiser_ui/postbacks.html')
+    advertiser = _get_advertiser(request)
+    if not advertiser:
+        return render(request, 'advertiser_ui/postbacks.html', {'no_account': True})
+
+    key, _ = get_or_create_postback_key(advertiser)
+    log    = get_inbound_postback_log(advertiser)
+
+    canonical_url = (
+        f"{settings.TRACKER_URL}/postback"
+        f"?click_id={{click_id}}&status={{status}}&sum={{sum}}"
+    )
+    signed_url = canonical_url + '&sig={sig}'
+
+    return render(request, 'advertiser_ui/postbacks.html', {
+        'key':          key,
+        'log':          log,
+        'canonical_url': canonical_url,
+        'signed_url':   signed_url,
+        'enforce':      settings.ENFORCE_POSTBACK_HMAC,
+    })
+
+
+@require_POST
+@advertiser_required
+def regenerate_secret(request):
+    advertiser = _get_advertiser(request)
+    if not advertiser:
+        return HttpResponseForbidden()
+    regenerate_postback_key(advertiser)
+    messages.success(request, 'HMAC secret regenerated. Update your integration.')
+    return redirect('advertiser_ui:postbacks')
 
 
 @advertiser_required

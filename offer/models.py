@@ -150,3 +150,19 @@ class Landing(models.Model):
 
     def __str__(self):
         return f'{self.id}: {self.name}'
+
+
+class AdvertiserPostbackKey(models.Model):
+    """Per-advertiser HMAC-SHA256 secret for inbound S2S postback verification."""
+
+    advertiser = models.OneToOneField(
+        Advertiser,
+        on_delete=models.CASCADE,
+        related_name='postback_key',
+    )
+    secret = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'key:{self.advertiser}'

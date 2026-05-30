@@ -11,6 +11,7 @@ urlpatterns = [
     path('conversions/bulk/', views.bulk_action, name='conversions_bulk'),
     path('conversions/export/', views.export_csv, name='conversions_export'),
     path('postbacks/', views.postbacks, name='postbacks'),
+    path('postbacks/regenerate/', views.regenerate_secret, name='postbacks_regenerate'),
     path('wallet/', views.wallet, name='wallet'),
     path('settings/', views.settings_view, name='settings'),
     path('logout/', views.advertiser_logout, name='logout'),
