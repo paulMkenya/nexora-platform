@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'smartlinks',
     'fraud',
     'mmp',
+    'billing',
 ]
 
 
@@ -232,6 +233,15 @@ SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
 # Fraud engine config
 FRAUD_AUTO_REJECT_AT = int(os.environ.get('FRAUD_AUTO_REJECT_AT', '70'))
 IPQS_API_KEY = os.environ.get('IPQS_API_KEY', '')  # blank = feature disabled
+
+# Payment provider keys (blank = feature disabled)
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY', '')
+
+# Media files (invoice PDFs etc.)
+MEDIA_ROOT = os.environ.get('MEDIA_ROOT', os.path.join(BASE_DIR, 'media'))
+MEDIA_URL = '/media/'
 
 GEOIP_COUNTRY_DB = os.environ.get(
     'GEOIP_COUNTRY_DB',

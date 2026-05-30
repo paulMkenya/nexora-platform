@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  body { font-family: DejaVu Sans, sans-serif; font-size: 11pt; color: #111; margin: 0; padding: 0; }
+  .page { padding: 40px 50px; }
+  .header { display: flex; justify-content: space-between; margin-bottom: 32px; }
+  .brand { font-size: 20pt; font-weight: bold; color: #4f46e5; }
+  .meta p { margin: 2px 0; font-size: 9pt; color: #555; }
+  h2 { font-size: 16pt; color: #111; margin-bottom: 4px; }
+  .subtitle { font-size: 9pt; color: #888; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  th { background: #f3f4f6; text-align: left; padding: 8px 10px; font-size: 9pt; color: #555; border-bottom: 1px solid #e5e7eb; }
+  td { padding: 8px 10px; font-size: 10pt; border-bottom: 1px solid #f0f0f0; }
+  .totals { width: 280px; margin-left: auto; }
+  .totals tr td { padding: 5px 10px; font-size: 10pt; }
+  .totals tr.total td { font-weight: bold; border-top: 2px solid #111; font-size: 11pt; }
+  .footer { margin-top: 40px; font-size: 8pt; color: #aaa; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 8pt; font-weight: bold; }
+  .status-draft { background: #f3f4f6; color: #666; }
+  .status-sent  { background: #eff6ff; color: #1d4ed8; }
+  .status-paid  { background: #f0fdf4; color: #15803d; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="brand">Nexora</div>
+      <div class="meta">
+        <p>CloudTrade Pro Ltd</p>
+        <p>support@cloudtrade.pro</p>
+      </div>
+    </div>
+    <div class="meta" style="text-align:right">
+      <p><strong>Invoice #{{ invoice.id }}</strong></p>
+      <p>Issued: {{ invoice.created_at|date:"d M Y" }}</p>
+      <p>Period: {{ invoice.period_start|date:"d M Y" }} – {{ invoice.period_end|date:"d M Y" }}</p>
+      <p>
+        <span class="status-badge status-{{ invoice.status }}">{{ invoice.get_status_display }}</span>
+      </p>
+    </div>
+  </div>
+
+  <h2>{{ invoice.wallet.advertiser.company }}</h2>
+  <p class="subtitle">{{ invoice.wallet.advertiser.email }}</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th style="text-align:right">Amount ({{ invoice.wallet.currency }})</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for txn in transactions %}
+      <tr>
+        <td>{{ txn.description }}</td>
+        <td style="text-align:right">{{ txn.amount|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr>
+      <td>Subtotal</td>
+      <td style="text-align:right">{{ invoice.subtotal|floatformat:2 }}</td>
+    </tr>
+    <tr>
+      <td>VAT ({{ invoice.vat_rate }}%)</td>
+      <td style="text-align:right">{{ invoice.vat_amount|floatformat:2 }}</td>
+    </tr>
+    <tr class="total">
+      <td>Total {{ invoice.wallet.currency }}</td>
+      <td style="text-align:right">{{ invoice.total|floatformat:2 }}</td>
+    </tr>
+  </table>
+
+  <div class="footer">
+    This invoice was generated automatically by Nexora Platform. VAT registration applies per local
+    regulations. For queries contact support@cloudtrade.pro.
+  </div>
+</div>
+</body>
+</html>

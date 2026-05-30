@@ -28,6 +28,7 @@ webargs = "^8.7.0"
 pytz = "^2025.2"
 geoip2 = ">=4.8"
 user-agents = ">=2.2"
+weasyprint = ">=61"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'project.settings')
 
@@ -35,5 +36,9 @@ _celery.conf.beat_schedule = {
     'cache-smart-links': {
         'task': 'smartlinks.tasks.cache.cache_smart_links',
         'schedule': 60,
+    },
+    'generate-monthly-invoices': {
+        'task': 'billing.tasks.invoice.generate_monthly_invoices',
+        'schedule': crontab(minute=5, hour=0, day_of_month=1),
     },
 }

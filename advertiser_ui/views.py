@@ -266,7 +266,30 @@ def mmp_callbacks(request):
 
 @advertiser_required
 def wallet(request):
-    return render(request, 'advertiser_ui/wallet.html')
+    advertiser = _get_advertiser(request)
+    if not advertiser:
+        return render(request, 'advertiser_ui/wallet.html', {'no_account': True})
+
+    try:
+        from billing.models import AdvertiserWallet
+        w = AdvertiserWallet.objects.get(advertiser=advertiser)
+    except Exception:
+        w = None
+
+    transactions = []
+    topups = []
+    invoices = []
+    if w:
+        transactions = w.transactions.order_by('-created_at')[:30]
+        topups = w.topups.order_by('-created_at')[:10]
+        invoices = w.invoices.order_by('-period_start')[:12]
+
+    return render(request, 'advertiser_ui/wallet.html', {
+        'wallet': w,
+        'transactions': transactions,
+        'topups': topups,
+        'invoices': invoices,
+    })
 
 
 @advertiser_required
