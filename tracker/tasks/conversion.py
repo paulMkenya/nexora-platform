@@ -80,4 +80,8 @@ def conversion(data):
 
     conversion.save()
 
+    # Chain fraud scoring after conversion is persisted
+    from fraud.tasks import score_conversion_fraud
+    score_conversion_fraud.delay(str(conversion.id))
+
     return f"Processed conversion for click_id: {data['click_id']}"

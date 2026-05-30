@@ -40,6 +40,13 @@ class Click(models.Model):
         blank=True,
     )
 
+    # ── Fraud fields ───────────────────────────────────────────────────────
+    fraud_score = models.IntegerField(default=0)
+    fraud_reasons = models.JSONField(default=list, blank=True)
+    is_proxy = models.BooleanField(default=False)
+    is_datacenter = models.BooleanField(default=False)
+    is_bot = models.BooleanField(default=False)
+
 
 APPROVED_STATUS = 'approved'
 HOLD_STATUS = 'hold'
@@ -78,6 +85,11 @@ class Conversion(models.Model):
         max_length=10, choices=conversion_statuses, default=REJECTED_STATUS)
     sum = models.FloatField(default=0.0)
     comment = models.CharField(max_length=128, default='', blank=True)
+
+    # ── Fraud fields ───────────────────────────────────────────────────────
+    fraud_score = models.IntegerField(default=0)
+    fraud_reasons = models.JSONField(default=list, blank=True)
+    auto_rejected_reason = models.CharField(max_length=128, default='', blank=True)
 
     goal = models.ForeignKey(
         Goal,
