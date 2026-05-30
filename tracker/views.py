@@ -136,7 +136,20 @@ def click(request):
         'pid': pid,
         'fb_id': request.GET.get('fb_id', ''),
     }
-    url = replace_macro(offer_data['tracking_link'], context)
+
+    # If offer is wired to an MMP, send the click to the MMP tracking URL
+    if offer_data.get('mmp_click_template') and offer_data.get('mmp_app_id'):
+        from mmp.format import build_mmp_click_url
+        url = build_mmp_click_url(
+            click_template=offer_data['mmp_click_template'],
+            click_id=click_id,
+            app_id=offer_data['mmp_app_id'],
+            affiliate_id=pid,
+            offer_id=offer_id,
+        )
+    else:
+        url = replace_macro(offer_data['tracking_link'], context)
+
     return redirect(url)
 
 

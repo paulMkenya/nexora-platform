@@ -7,6 +7,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Count
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from offer.models import Offer
@@ -212,6 +213,55 @@ def regenerate_secret(request):
     regenerate_postback_key(advertiser)
     messages.success(request, 'HMAC secret regenerated. Update your integration.')
     return redirect('advertiser_ui:postbacks')
+
+
+@advertiser_required
+def mmp_callbacks(request):
+    advertiser = _get_advertiser(request)
+    if not advertiser:
+        return render(request, 'advertiser_ui/mmp_callbacks.html', {'no_account': True})
+
+    from datetime import timedelta
+    from mmp.models import MMPCallback
+
+    since = timezone.now() - timedelta(hours=24)
+    offer_ids = list(Offer.objects.filter(advertiser=advertiser).values_list('id', flat=True))
+
+    callbacks_qs = (
+        MMPCallback.objects
+        .filter(offer_id__in=offer_ids, created_at__gte=since)
+        .select_related('offer')
+        .order_by('-created_at')[:100]
+    )
+
+    total_24h = MMPCallback.objects.filter(offer_id__in=offer_ids, created_at__gte=since).count()
+    processed_24h = MMPCallback.objects.filter(
+        offer_id__in=offer_ids, created_at__gte=since, processed=True).count()
+
+    mmp_offers_qs = (
+        Offer.objects
+        .filter(advertiser=advertiser, mmp__isnull=False)
+        .select_related('mmp')
+    )
+    mmp_offers = []
+    for o in mmp_offers_qs:
+        mmp_offers.append({
+            'id': o.id,
+            'title': o.title,
+            'mmp_name': o.mmp.name,
+            'mmp_app_id': o.mmp_app_id,
+            'callbacks_24h': MMPCallback.objects.filter(
+                offer=o, created_at__gte=since).count(),
+        })
+
+    return render(request, 'advertiser_ui/mmp_callbacks.html', {
+        'callbacks': callbacks_qs,
+        'total_24h': total_24h,
+        'processed_24h': processed_24h,
+        'unprocessed_24h': total_24h - processed_24h,
+        'mmp_offers': mmp_offers,
+        'mmp_offers_count': len(mmp_offers),
+    })
 
 
 @advertiser_required
