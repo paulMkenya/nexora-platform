@@ -30,6 +30,10 @@ _celery.conf.update(
 _celery.conf.beat_schedule = {
     'cache-offers': {
         'task': 'offer.tasks.cache_offers.cache_offers',
-        'schedule': 60
+        'schedule': 60,
+    },
+    'cache-smart-links': {
+        'task': 'smartlinks.tasks.cache.cache_smart_links',
+        'schedule': 60,
     },
 }
