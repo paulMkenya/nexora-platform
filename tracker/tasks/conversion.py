@@ -24,6 +24,9 @@ def conversion(data):
         if existing_conversion.status == HOLD_STATUS:
             existing_conversion.status = data.get('status')
             existing_conversion.save()
+            if existing_conversion.status not in (HOLD_STATUS, REJECTED_STATUS):
+                from billing.tasks.debit import debit_conversion
+                debit_conversion.delay(str(existing_conversion.id))
             return f"Processed conversion for click_id: {data['click_id']}"
 
     duplicate = bool(existing_conversion)
@@ -83,5 +86,9 @@ def conversion(data):
     # Chain fraud scoring after conversion is persisted
     from fraud.tasks import score_conversion_fraud
     score_conversion_fraud.delay(str(conversion.id))
+
+    # Debit advertiser wallet for approved conversions
+    from billing.tasks.debit import debit_conversion
+    debit_conversion.delay(str(conversion.id))
 
     return f"Processed conversion for click_id: {data['click_id']}"
