@@ -19,9 +19,7 @@ from tracker.models import (
 )
 from user_profile.models import Profile, User
 
-from .factories import (
-    make_advertiser_user, make_click, make_conversion, make_offer,
-)
+from .factories import make_advertiser_user, make_conversion, make_offer
 
 CACHES_DUMMY = {'default': {'BACKEND': 'django.core.cache.backends.dummy.DummyCache'}}
 POSTBACK_PATH = 'postback.tasks.send_postback.send_postback.delay'

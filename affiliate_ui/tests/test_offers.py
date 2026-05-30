@@ -21,15 +21,20 @@ class OfferListViewTest(TestCase):
         self.currency = Currency.objects.create(code='USD', name='US Dollar')
         self.goal = Goal.objects.create(name='Test Goal')
 
-        self.offer1 = Offer.objects.create(title='Credit Card Offer', description='Financial offer', status=ACTIVE_STATUS)
+        self.offer1 = Offer.objects.create(
+            title='Credit Card Offer', description='Financial offer', status=ACTIVE_STATUS)
         self.offer1.categories.add(self.category1)
-        Payout.objects.create(offer=self.offer1, revenue=10, payout=5, currency=self.currency, goal=self.goal)
+        Payout.objects.create(
+            offer=self.offer1, revenue=10, payout=5, currency=self.currency, goal=self.goal)
 
-        self.offer2 = Offer.objects.create(title='Online Store Discount', description='Retail offer', status=ACTIVE_STATUS)
+        self.offer2 = Offer.objects.create(
+            title='Online Store Discount', description='Retail offer', status=ACTIVE_STATUS)
         self.offer2.categories.add(self.category2)
-        Payout.objects.create(offer=self.offer2, revenue=20, payout=10, currency=self.currency, goal=self.goal)
+        Payout.objects.create(
+            offer=self.offer2, revenue=20, payout=10, currency=self.currency, goal=self.goal)
 
-        self.offer3 = Offer.objects.create(title='Inactive Offer', description='Should not be visible', status=PAUSED_STATUS)
+        self.offer3 = Offer.objects.create(
+            title='Inactive Offer', description='Should not be visible', status=PAUSED_STATUS)
 
     def test_offer_list_view_login_required(self):
         response = self.client.get(self.offers_url)

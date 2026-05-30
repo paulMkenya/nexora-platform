@@ -8,13 +8,11 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
-from django.urls import reverse
 
-from offer.models import Advertiser, AdvertiserPostbackKey
-from tracker.models import HMAC_FAIL, HMAC_MISSING, HMAC_OK, HMAC_SKIP, InboundPostbackLog
-from user_profile.models import Profile
+from offer.models import AdvertiserPostbackKey
+from tracker.models import HMAC_FAIL, HMAC_MISSING, HMAC_OK, InboundPostbackLog
 
-from .factories import make_advertiser_user, make_click, make_offer
+from .factories import make_advertiser_user, make_offer
 
 CELERY_PATCH = 'tracker.tasks.conversion.conversion.delay'
 CACHES_DUMMY = {'default': {'BACKEND': 'django.core.cache.backends.dummy.DummyCache'}}
@@ -92,7 +90,6 @@ class PostbackManagerTestCase(TestCase):
 
     def test_log_shows_own_entries(self):
         self.client.get('/advertiser/postbacks/')
-        key = AdvertiserPostbackKey.objects.get(advertiser=self.adv)
         InboundPostbackLog.objects.create(
             advertiser=self.adv, click_id='abc123',
             hmac_status=HMAC_OK, response_code=200,

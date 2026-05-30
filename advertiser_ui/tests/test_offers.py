@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from offer.models import ACTIVE_STATUS, PAUSED_STATUS, STOPPED_STATUS
+
 from tracker.models import APPROVED_STATUS, REJECTED_STATUS
 from user_profile.models import Profile, User
 

@@ -1,11 +1,9 @@
 import iso8601
 from datetime import datetime, time, timedelta, date
 from django.contrib.auth.decorators import login_required
-from django.db.models import F
 from django.shortcuts import render
 
 from offer.models import Offer
-from tracker.models import Conversion
 from affiliate.dao import daily_report, offer_report, goal_report
 
 
