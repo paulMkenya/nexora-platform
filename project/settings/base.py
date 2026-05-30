@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'advertiser',
     'advertiser_ui',
     'smartlinks',
+    'fraud',
 ]
 
 
@@ -227,6 +228,10 @@ IPSTACK_TOKEN = os.environ.get('IPSTACK_TOKEN', '')
 SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
 
 # GeoLite2 database paths (mounted from host or bundled in image)
+# Fraud engine config
+FRAUD_AUTO_REJECT_AT = int(os.environ.get('FRAUD_AUTO_REJECT_AT', '70'))
+IPQS_API_KEY = os.environ.get('IPQS_API_KEY', '')  # blank = feature disabled
+
 GEOIP_COUNTRY_DB = os.environ.get(
     'GEOIP_COUNTRY_DB',
     '/opt/nexora-platform/data/geoip/GeoLite2-Country.mmdb',

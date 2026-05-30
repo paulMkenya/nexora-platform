@@ -48,4 +48,8 @@ def click(data):
     click.ua = data['ua']
     click.save()
 
+    # Chain fraud scoring after click is persisted
+    from fraud.tasks import score_click_fraud
+    score_click_fraud.delay(str(click.id))
+
     return f"Click created: {click.id}"
