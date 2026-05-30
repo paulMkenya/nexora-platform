@@ -33,6 +33,7 @@ pytz = "^2025.2"
 "djangorestframework-stubs" = "1.8.0"
 mypy = "0.991"
 pytest = "*"
+pytest-django = "*"
 ruff = "*"
 
 [build-system]
@@ -42,12 +43,14 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 exclude = ["venv", ".git", "__pycache__", "migrations"]
-line-length = 79
+line-length = 120
+
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle rules
     "F",   # Pyflakes rules
     "C90", # McCabe complexity
 ]
 
-[tool.ruff.mccabe]
+[tool.ruff.lint.mccabe]
 max-complexity = 10

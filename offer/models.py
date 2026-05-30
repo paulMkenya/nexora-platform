@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from countries_plus.models import Country
 from tinymce import models as tinymce_models
@@ -118,12 +119,19 @@ class Payout(models.Model):
 
 
 class Advertiser(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='advertiser_profile',
+    )
     company = models.CharField(max_length=64)
     email = models.CharField(max_length=64)
     contact_person = models.CharField(max_length=64, default='')
     messenger = models.CharField(max_length=64, default='')
     site = models.CharField(max_length=64, default='')
-    comment = models.TextField()
+    comment = models.TextField(default='', blank=True)
 
     def __str__(self):
         return self.company
@@ -142,3 +150,19 @@ class Landing(models.Model):
 
     def __str__(self):
         return f'{self.id}: {self.name}'
+
+
+class AdvertiserPostbackKey(models.Model):
+    """Per-advertiser HMAC-SHA256 secret for inbound S2S postback verification."""
+
+    advertiser = models.OneToOneField(
+        Advertiser,
+        on_delete=models.CASCADE,
+        related_name='postback_key',
+    )
+    secret = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'key:{self.advertiser}'

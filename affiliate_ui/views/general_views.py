@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum, Count, Prefetch
+from django.db.models import Sum, Prefetch
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.views import LoginView
 

@@ -1,7 +1,7 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from datetime import date, timedelta
 
 User = get_user_model()

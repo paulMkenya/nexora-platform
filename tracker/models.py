@@ -1,6 +1,6 @@
 import uuid
 from django.db import models
-from offer.models import Offer, Goal, Currency
+from offer.models import Advertiser, Offer, Goal, Currency
 from django.contrib.auth import get_user_model
 
 
@@ -114,3 +114,40 @@ class Conversion(models.Model):
         null=True,
         blank=True,
     )
+
+
+# ── Inbound postback logging ───────────────────────────────────────────────
+
+HMAC_OK      = 'ok'
+HMAC_FAIL    = 'fail'
+HMAC_MISSING = 'missing'
+HMAC_SKIP    = 'skip'
+
+HMAC_STATUSES = (
+    (HMAC_OK,      'OK — signature matched'),
+    (HMAC_FAIL,    'Fail — signature mismatch'),
+    (HMAC_MISSING, 'Missing — no sig param'),
+    (HMAC_SKIP,    'Skip — no key registered or flag off'),
+)
+
+
+class InboundPostbackLog(models.Model):
+    """One row per inbound S2S postback received at /postback."""
+
+    class Meta:
+        ordering = ('-received_at',)
+
+    received_at  = models.DateTimeField(auto_now_add=True)
+    advertiser   = models.ForeignKey(
+        Advertiser,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inbound_postback_logs',
+    )
+    click_id     = models.CharField(max_length=64, default='')
+    status_param = models.CharField(max_length=20,  default='')
+    sum_param    = models.CharField(max_length=32,  default='')
+    query_string = models.CharField(max_length=1000, default='')
+    hmac_status  = models.CharField(max_length=10, choices=HMAC_STATUSES, default=HMAC_SKIP)
+    response_code = models.IntegerField(default=200)
+    note         = models.CharField(max_length=255, default='', blank=True)

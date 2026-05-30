@@ -52,6 +52,8 @@ INSTALLED_APPS = [
     'api',
     'postback',
     'affiliate_ui',
+    'advertiser',
+    'advertiser_ui',
 ]
 
 
@@ -63,6 +65,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'user_profile.middleware.RolePortalMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -206,7 +209,18 @@ DATABASES = {
 
 REDIS_URL = os.environ['REDIS_URL']
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': REDIS_URL,
+    }
+}
+
 TRACKER_URL = os.environ['TRACKER_URL']
+
+# Set to True in env to start rejecting postbacks with invalid/missing HMAC.
+# Default False so existing integrations are not broken during rollout.
+ENFORCE_POSTBACK_HMAC = os.environ.get('ENFORCE_POSTBACK_HMAC', 'false').lower() == 'true'
 
 IPSTACK_TOKEN = os.environ.get('IPSTACK_TOKEN', '')
 SENTRY_DSN = os.environ.get('SENTRY_DSN', '')

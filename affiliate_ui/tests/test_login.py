@@ -9,7 +9,8 @@ class LoginTest(TestCase):
         self.password = 'testpass123'
         self.user = User.objects.create_user(username=self.username, password=self.password)
         self.login_url = reverse('affiliate_ui:login')
-        self.dashboard_url = reverse('affiliate_ui:dashboard')
+        # New users get AFFILIATE role by default → routed to /partner/ by middleware.
+        self.portal_url = '/partner/'
 
     def test_login_view_get(self):
         response = self.client.get(self.login_url)
@@ -17,9 +18,12 @@ class LoginTest(TestCase):
         self.assertTemplateUsed(response, 'affiliate_ui/login.html')
 
     def test_login_success(self):
-        response = self.client.post(self.login_url, {'username': self.username, 'password': self.password}, follow=True)
-        self.assertRedirects(response, self.dashboard_url)
-        self.assertTrue(response.context['user'].is_authenticated)
+        response = self.client.post(
+            self.login_url,
+            {'username': self.username, 'password': self.password},
+        )
+        self.assertRedirects(response, self.portal_url, fetch_redirect_response=False)
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
 
     def test_login_fail(self):
         response = self.client.post(self.login_url, {'username': self.username, 'password': 'wrongpassword'})
@@ -28,5 +32,5 @@ class LoginTest(TestCase):
 
     def test_already_logged_in_redirect(self):
         self.client.login(username=self.username, password=self.password)
-        response = self.client.get(self.login_url, follow=True)
-        self.assertRedirects(response, self.dashboard_url)
+        response = self.client.get(self.login_url)
+        self.assertRedirects(response, self.portal_url, fetch_redirect_response=False)

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Nexora Advertiser{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+</head>
+<body class="h-full">
+
+<div class="flex h-full">
+
+  {# ── Sidebar ── #}
+  <aside class="flex flex-col w-64 flex-shrink-0 bg-gray-900">
+
+    {# Brand #}
+    <div class="flex items-center h-16 px-6 bg-gray-800">
+      <svg class="w-6 h-6 text-indigo-400 mr-2" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+      </svg>
+      <span class="text-white font-semibold text-lg tracking-tight">Nexora</span>
+    </div>
+
+    {# User chip #}
+    <div class="px-6 py-4 border-b border-gray-700">
+      <p class="text-gray-500 text-xs uppercase tracking-wider mb-1">Advertiser</p>
+      <p class="text-white text-sm font-medium truncate">{{ request.user.get_full_name|default:request.user.username }}</p>
+    </div>
+
+    {# Navigation #}
+    {% url 'advertiser_ui:dashboard'    as url_dashboard    %}
+    {% url 'advertiser_ui:offers'       as url_offers       %}
+    {% url 'advertiser_ui:conversions'  as url_conversions  %}
+    {% url 'advertiser_ui:postbacks'    as url_postbacks    %}
+    {% url 'advertiser_ui:wallet'       as url_wallet       %}
+    {% url 'advertiser_ui:settings'     as url_settings     %}
+
+    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+
+      {# Dashboard #}
+      <a href="{{ url_dashboard }}"
+         class="group flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
+                {% if request.path == url_dashboard %}bg-gray-700 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+        </svg>
+        Dashboard
+      </a>
+
+      {# Offers #}
+      <a href="{{ url_offers }}"
+         class="group flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
+                {% if request.path == url_offers %}bg-gray-700 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L9.568 3Z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6Z" />
+        </svg>
+        Offers
+      </a>
+
+      {# Conversions #}
+      <a href="{{ url_conversions }}"
+         class="group flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
+                {% if request.path == url_conversions %}bg-gray-700 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+        </svg>
+        Conversions
+      </a>
+
+      {# Postbacks #}
+      <a href="{{ url_postbacks }}"
+         class="group flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
+                {% if request.path == url_postbacks %}bg-gray-700 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+        </svg>
+        Postbacks
+      </a>
+
+      {# Wallet (stub) #}
+      <a href="{{ url_wallet }}"
+         class="group flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
+                {% if request.path == url_wallet %}bg-gray-700 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+        </svg>
+        Wallet
+        <span class="ml-auto text-xs text-gray-500 font-normal">soon</span>
+      </a>
+
+      {# Settings #}
+      <a href="{{ url_settings }}"
+         class="group flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
+                {% if request.path == url_settings %}bg-gray-700 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %}">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+        </svg>
+        Settings
+      </a>
+
+    </nav>
+
+    {# Logout #}
+    <div class="px-3 py-4 border-t border-gray-700">
+      <form method="post" action="{% url 'advertiser_ui:logout' %}">
+        {% csrf_token %}
+        <button type="submit"
+                class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15M12 9l3 3m0 0-3 3m3-3H2.25" />
+          </svg>
+          Log out
+        </button>
+      </form>
+    </div>
+
+  </aside>
+
+  {# ── Main area ── #}
+  <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+    {# Top bar #}
+    <header class="flex items-center h-16 px-6 bg-white border-b border-gray-200 flex-shrink-0">
+      <h1 class="text-lg font-semibold text-gray-800">{% block page_title %}{% endblock %}</h1>
+    </header>
+
+    {# Content #}
+    <main class="flex-1 overflow-auto p-6">
+      {% block content %}{% endblock %}
+    </main>
+
+  </div>
+
+</div>
+
+</body>
+</html>
