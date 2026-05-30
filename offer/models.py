@@ -37,6 +37,15 @@ class Offer(models.Model):
         on_delete=models.SET_NULL,
         null=True, blank=True, default=None)
 
+    mmp = models.ForeignKey(
+        'mmp.MMP',
+        on_delete=models.SET_NULL,
+        null=True, blank=True, default=None,
+        related_name='offers',
+    )
+    mmp_app_id = models.CharField(max_length=128, default='', blank=True)
+    mmp_extra = models.JSONField(default=dict, blank=True)
+
     def __str__(self):
         return f"({self.id}) {self.title}"
 

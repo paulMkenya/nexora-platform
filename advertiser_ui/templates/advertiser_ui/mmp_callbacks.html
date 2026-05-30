@@ -1,0 +1,125 @@
+{% extends 'advertiser_ui/base.html' %}
+
+{% block title %}MMP Callbacks — Nexora Advertiser{% endblock %}
+{% block page_title %}MMP Callbacks{% endblock %}
+
+{% block content %}
+
+{% if no_account %}
+  <div class="rounded-lg border border-yellow-300 bg-yellow-50 p-6 text-center">
+    <p class="text-sm font-semibold text-yellow-800">No advertiser account linked.</p>
+  </div>
+
+{% else %}
+
+  {# ── Summary cards ── #}
+  <div class="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+
+    <div class="rounded-lg bg-white border border-gray-200 shadow-sm px-5 py-4">
+      <p class="text-xs uppercase tracking-wider text-gray-500">Total (24h)</p>
+      <p class="mt-1 text-2xl font-bold text-gray-900">{{ total_24h }}</p>
+    </div>
+
+    <div class="rounded-lg bg-white border border-gray-200 shadow-sm px-5 py-4">
+      <p class="text-xs uppercase tracking-wider text-gray-500">Processed</p>
+      <p class="mt-1 text-2xl font-bold text-green-700">{{ processed_24h }}</p>
+    </div>
+
+    <div class="rounded-lg bg-white border border-gray-200 shadow-sm px-5 py-4">
+      <p class="text-xs uppercase tracking-wider text-gray-500">Unprocessed</p>
+      <p class="mt-1 text-2xl font-bold text-yellow-600">{{ unprocessed_24h }}</p>
+    </div>
+
+    <div class="rounded-lg bg-white border border-gray-200 shadow-sm px-5 py-4">
+      <p class="text-xs uppercase tracking-wider text-gray-500">Offers with MMP</p>
+      <p class="mt-1 text-2xl font-bold text-indigo-700">{{ mmp_offers_count }}</p>
+    </div>
+
+  </div>
+
+  {# ── Offers MMP config ── #}
+  {% if mmp_offers %}
+  <div class="mb-6 rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div class="px-6 py-4 border-b border-gray-100">
+      <h2 class="text-sm font-semibold text-gray-700">MMP-Integrated Offers</h2>
+    </div>
+    <table class="min-w-full divide-y divide-gray-200 text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Offer</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">MMP</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">App ID</th>
+          <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Callbacks (24h)</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 bg-white">
+        {% for row in mmp_offers %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-6 py-3 font-medium text-gray-900">{{ row.title }} <span class="text-xs text-gray-400">#{{ row.id }}</span></td>
+          <td class="px-6 py-3 text-gray-700">{{ row.mmp_name }}</td>
+          <td class="px-6 py-3 font-mono text-xs text-gray-600">{{ row.mmp_app_id|default:"—" }}</td>
+          <td class="px-6 py-3 text-right text-gray-700">{{ row.callbacks_24h }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {# ── Recent callbacks ── #}
+  <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-gray-700">Recent Callbacks (last 24h)</h2>
+    </div>
+
+    {% if callbacks %}
+    <table class="min-w-full divide-y divide-gray-200 text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Time (UTC)</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Vendor</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Click ID</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Event</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Offer</th>
+          <th class="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Processed</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100 bg-white">
+        {% for cb in callbacks %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-6 py-3 text-gray-500 text-xs">{{ cb.created_at|date:"Y-m-d H:i:s" }}</td>
+          <td class="px-6 py-3">
+            <span class="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-800">
+              {{ cb.get_vendor_display }}
+            </span>
+          </td>
+          <td class="px-6 py-3 font-mono text-xs text-gray-600">{{ cb.click_id }}</td>
+          <td class="px-6 py-3 text-gray-700">{{ cb.event_name }}</td>
+          <td class="px-6 py-3 text-gray-700">
+            {% if cb.offer %}{{ cb.offer.title }}{% else %}<span class="text-gray-400">—</span>{% endif %}
+          </td>
+          <td class="px-6 py-3 text-center">
+            {% if cb.processed %}
+              <span class="inline-block h-2 w-2 rounded-full bg-green-500"></span>
+            {% else %}
+              <span class="inline-block h-2 w-2 rounded-full bg-yellow-400"></span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% else %}
+    <div class="px-6 py-16 text-center">
+      <svg class="mx-auto mb-3 h-10 w-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+      </svg>
+      <p class="text-sm text-gray-500">No MMP callbacks in the last 24 hours.</p>
+    </div>
+    {% endif %}
+
+  </div>
+
+{% endif %}
+{% endblock %}

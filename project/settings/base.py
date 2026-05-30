@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'advertiser_ui',
     'smartlinks',
     'fraud',
+    'mmp',
 ]
 
 
