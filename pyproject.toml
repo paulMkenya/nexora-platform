@@ -26,6 +26,8 @@ whitenoise = "6.9.0"
 iso8601 = "^2.1.0"
 webargs = "^8.7.0"
 pytz = "^2025.2"
+geoip2 = ">=4.8"
+user-agents = ">=2.2"
 
 
 [tool.poetry.group.dev.dependencies]

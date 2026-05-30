@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'affiliate_ui',
     'advertiser',
     'advertiser_ui',
+    'smartlinks',
 ]
 
 
@@ -224,3 +225,13 @@ ENFORCE_POSTBACK_HMAC = os.environ.get('ENFORCE_POSTBACK_HMAC', 'false').lower()
 
 IPSTACK_TOKEN = os.environ.get('IPSTACK_TOKEN', '')
 SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+
+# GeoLite2 database paths (mounted from host or bundled in image)
+GEOIP_COUNTRY_DB = os.environ.get(
+    'GEOIP_COUNTRY_DB',
+    '/opt/nexora-platform/data/geoip/GeoLite2-Country.mmdb',
+)
+GEOIP_CITY_DB = os.environ.get(
+    'GEOIP_CITY_DB',
+    '/opt/nexora-platform/data/geoip/GeoLite2-City.mmdb',
+)

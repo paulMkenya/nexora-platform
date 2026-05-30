@@ -40,6 +40,7 @@ urlpatterns = [
         name='token_refresh'),
 
     path('advertiser/', include('advertiser_ui.urls', namespace='advertiser_ui')),
+    path('', include('smartlinks.urls')),
     path('affiliate/', include('affiliate.urls')),
     path('network/', include('network.urls')),
     path('', include('affiliate_ui.urls', namespace='affiliate_ui')),

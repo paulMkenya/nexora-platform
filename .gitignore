@@ -111,3 +111,6 @@ volumes
 /project/settings/local.py
 
 sandbox
+
+# GeoIP databases (large binary files, managed outside git)
+data/geoip/*.mmdb
