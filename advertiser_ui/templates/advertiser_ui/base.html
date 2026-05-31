@@ -3,8 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}Nexora Advertiser{% endblock %}</title>
+  <title>{% block title %}{{ brand.name|default:"Nexora" }} Advertiser{% endblock %}</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% endif %}
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              primary: '{{ brand.primary_color|default:"#6366f1" }}',
+              secondary: '{{ brand.secondary_color|default:"#4f46e5" }}',
+            }
+          }
+        }
+      }
+    }
+  </script>
   <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
 </head>
 <body class="h-full">
@@ -16,10 +31,14 @@
 
     {# Brand #}
     <div class="flex items-center h-16 px-6 bg-gray-800">
+      {% if brand.logo %}
+      <img src="{{ brand.logo }}" alt="{{ brand.name|default:'Nexora' }}" class="h-7 w-auto mr-2">
+      {% else %}
       <svg class="w-6 h-6 text-indigo-400 mr-2" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
       </svg>
-      <span class="text-white font-semibold text-lg tracking-tight">Nexora</span>
+      {% endif %}
+      <span class="text-white font-semibold text-lg tracking-tight">{{ brand.name|default:"Nexora" }}</span>
     </div>
 
     {# User chip #}

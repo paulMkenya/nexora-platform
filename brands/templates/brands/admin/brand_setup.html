@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brand Setup — {{ brand.name }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8">
+<div class="max-w-2xl mx-auto">
+  <div class="flex items-center gap-3 mb-6">
+    <a href="{% url 'brands_admin:brand_list' %}" class="text-indigo-600 hover:text-indigo-900 text-sm">← Brands</a>
+    <h1 class="text-2xl font-semibold text-gray-800">Setup Instructions — {{ brand.name }}</h1>
+  </div>
+
+  <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+    <p class="text-green-800 font-medium">Brand <strong>{{ brand.name }}</strong> created successfully.</p>
+    <p class="text-green-700 text-sm mt-1">Complete the steps below before the brand is live.</p>
+  </div>
+
+  {# Step 1: DNS #}
+  <div class="bg-white shadow rounded-lg p-6 mb-4">
+    <h2 class="text-lg font-semibold text-gray-800 mb-3">
+      <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold mr-2">1</span>
+      Point DNS to this server
+    </h2>
+    <p class="text-sm text-gray-600 mb-3">
+      Create the following DNS records at your domain registrar.
+      Both domains must resolve to <strong class="font-mono">162.220.165.68</strong>.
+    </p>
+    <div class="bg-gray-50 rounded border border-gray-200 p-4 font-mono text-sm space-y-2">
+      <div class="grid grid-cols-3 gap-4 text-gray-500 text-xs uppercase mb-1">
+        <span>Type</span><span>Name</span><span>Value</span>
+      </div>
+      <div class="grid grid-cols-3 gap-4">
+        <span class="text-blue-700">A</span>
+        <span>{{ brand.primary_domain }}</span>
+        <span>162.220.165.68</span>
+      </div>
+      <div class="grid grid-cols-3 gap-4">
+        <span class="text-blue-700">A</span>
+        <span>{{ brand.tracking_domain }}</span>
+        <span>162.220.165.68</span>
+      </div>
+    </div>
+    <p class="text-xs text-gray-500 mt-2">
+      Or use CNAME records pointing to <code>cpa.cloudtrade.pro</code> if your registrar supports CNAME flattening.
+    </p>
+  </div>
+
+  {# Step 2: NPM #}
+  <div class="bg-white shadow rounded-lg p-6 mb-4">
+    <h2 class="text-lg font-semibold text-gray-800 mb-3">
+      <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold mr-2">2</span>
+      Add proxy hosts in Nginx Proxy Manager
+    </h2>
+    <p class="text-sm text-gray-600 mb-3">
+      Open <a href="http://127.0.0.1:81" class="text-indigo-600 hover:underline" target="_blank">NPM Admin (127.0.0.1:81)</a>
+      and add <strong>two new proxy hosts</strong> — one per domain.
+      Use the same settings for both:
+    </p>
+    <table class="w-full text-sm border-collapse">
+      <tbody class="divide-y divide-gray-100">
+        <tr class="bg-gray-50"><td class="px-3 py-2 font-medium text-gray-600 w-40">Domain Names</td>
+          <td class="px-3 py-2 font-mono">{{ brand.primary_domain }}</td></tr>
+        <tr><td class="px-3 py-2 font-medium text-gray-600">Forward Hostname</td>
+          <td class="px-3 py-2 font-mono">nexora-web</td></tr>
+        <tr class="bg-gray-50"><td class="px-3 py-2 font-medium text-gray-600">Forward Port</td>
+          <td class="px-3 py-2 font-mono">8000</td></tr>
+        <tr><td class="px-3 py-2 font-medium text-gray-600">SSL Certificate</td>
+          <td class="px-3 py-2">Request a new Let's Encrypt certificate</td></tr>
+        <tr class="bg-gray-50"><td class="px-3 py-2 font-medium text-gray-600">Force SSL</td>
+          <td class="px-3 py-2">✓ Enabled</td></tr>
+        <tr><td class="px-3 py-2 font-medium text-gray-600">HTTP/2 Support</td>
+          <td class="px-3 py-2">✓ Enabled</td></tr>
+      </tbody>
+    </table>
+    <p class="text-sm text-gray-600 mt-3">
+      Repeat for the tracking domain:
+      <code class="bg-gray-100 px-1 rounded font-mono text-xs">{{ brand.tracking_domain }}</code>
+    </p>
+    <div class="mt-3 bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800">
+      <strong>Note:</strong> Let's Encrypt requires the DNS A/CNAME records to be live and propagated
+      before SSL issuance will succeed. Allow up to 10 minutes for DNS propagation.
+    </div>
+  </div>
+
+  {# Step 3: Verify #}
+  <div class="bg-white shadow rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-800 mb-3">
+      <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold mr-2">3</span>
+      Verify
+    </h2>
+    <p class="text-sm text-gray-600 mb-2">Once DNS and NPM are configured, verify with:</p>
+    <pre class="bg-gray-900 text-green-400 rounded p-4 text-xs overflow-x-auto">curl -I https://{{ brand.primary_domain }}/healthz
+curl -I https://{{ brand.tracking_domain }}/healthz</pre>
+    <p class="text-xs text-gray-500 mt-2">Both should return <code>HTTP/2 200</code>.</p>
+  </div>
+
+  <div class="flex gap-3">
+    <a href="{% url 'brands_admin:brand_edit' brand.pk %}"
+       class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700">
+      Edit Brand Settings
+    </a>
+    <a href="{% url 'brands_admin:brand_list' %}"
+       class="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50">
+      Back to Brands
+    </a>
+  </div>
+</div>
+</body>
+</html>

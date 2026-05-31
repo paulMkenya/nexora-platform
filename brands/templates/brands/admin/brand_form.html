@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ action }} Brand — Nexora Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8">
+<div class="max-w-2xl mx-auto">
+  <div class="flex items-center gap-3 mb-6">
+    <a href="{% url 'brands_admin:brand_list' %}" class="text-indigo-600 hover:text-indigo-900 text-sm">← Brands</a>
+    <h1 class="text-2xl font-semibold text-gray-800">{{ action }} Brand</h1>
+  </div>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="mb-4 px-4 py-3 rounded bg-red-50 text-red-700 border border-red-200 text-sm">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post" class="bg-white shadow rounded-lg p-6 space-y-5">
+    {% csrf_token %}
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+        <input type="text" name="name" value="{{ brand.name|default:post.name }}" required
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Slug *</label>
+        <input type="text" name="slug" value="{{ brand.slug|default:post.slug }}"
+               {% if action == 'Edit' %}readonly class="w-full border border-gray-200 bg-gray-50 rounded-md px-3 py-2 text-sm text-gray-500"
+               {% else %}required class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500"{% endif %}>
+        {% if action == 'Edit' %}
+        <input type="hidden" name="slug" value="{{ brand.slug }}">
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Primary Domain *</label>
+        <input type="text" name="primary_domain" value="{{ brand.primary_domain|default:post.primary_domain }}" required
+               placeholder="e.g. app.mybrand.com"
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Tracking Domain *</label>
+        <input type="text" name="tracking_domain" value="{{ brand.tracking_domain|default:post.tracking_domain }}" required
+               placeholder="e.g. t.mybrand.com"
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Support Email</label>
+      <input type="email" name="support_email" value="{{ brand.support_email|default:post.support_email }}"
+             placeholder="support@mybrand.com"
+             class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
+        <div class="flex items-center gap-2">
+          <input type="color" name="primary_color" value="{{ brand.primary_color|default:'#6366f1' }}"
+                 class="h-9 w-14 border border-gray-300 rounded cursor-pointer">
+          <input type="text" id="primary_color_hex" value="{{ brand.primary_color|default:'#6366f1' }}"
+                 class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
+                 oninput="document.querySelector('[name=primary_color]').value=this.value">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Secondary Color</label>
+        <div class="flex items-center gap-2">
+          <input type="color" name="secondary_color" value="{{ brand.secondary_color|default:'#4f46e5' }}"
+                 class="h-9 w-14 border border-gray-300 rounded cursor-pointer">
+          <input type="text" id="secondary_color_hex" value="{{ brand.secondary_color|default:'#4f46e5' }}"
+                 class="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono"
+                 oninput="document.querySelector('[name=secondary_color]').value=this.value">
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Logo URL</label>
+        <input type="url" name="logo" value="{{ brand.logo|default:post.logo }}"
+               placeholder="https://cdn.example.com/logo.svg"
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Favicon URL</label>
+        <input type="url" name="favicon" value="{{ brand.favicon|default:post.favicon }}"
+               placeholder="https://cdn.example.com/favicon.ico"
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Terms URL</label>
+        <input type="url" name="terms_url" value="{{ brand.terms_url|default:post.terms_url }}"
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Privacy URL</label>
+        <input type="url" name="privacy_url" value="{{ brand.privacy_url|default:post.privacy_url }}"
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <input type="checkbox" name="is_default" id="is_default"
+             {% if brand.is_default %}checked{% endif %}
+             class="h-4 w-4 text-indigo-600 border-gray-300 rounded">
+      <label for="is_default" class="text-sm text-gray-700">Set as default brand (unsets current default)</label>
+    </div>
+
+    <div class="flex items-center justify-end gap-3 pt-2">
+      <a href="{% url 'brands_admin:brand_list' %}" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancel</a>
+      <button type="submit"
+              class="px-6 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700">
+        {{ action }} Brand
+      </button>
+    </div>
+  </form>
+</div>
+</body>
+</html>

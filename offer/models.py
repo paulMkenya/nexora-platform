@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from countries_plus.models import Country
 from tinymce import models as tinymce_models
+from brands.managers import BrandScopedManager
 
 
 ACTIVE_STATUS = 'Active'
@@ -19,6 +20,15 @@ class Offer(models.Model):
     class Meta:
         ordering = ('-id',)
 
+    objects = BrandScopedManager()
+
+    brand = models.ForeignKey(
+        'brands.Brand',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='offers',
+    )
     title = models.CharField(max_length=256, default='')
     description = models.TextField(blank=True, default='')
     description_html = tinymce_models.HTMLField(default='', blank=True)
@@ -128,6 +138,15 @@ class Payout(models.Model):
 
 
 class Advertiser(models.Model):
+    objects = BrandScopedManager()
+
+    brand = models.ForeignKey(
+        'brands.Brand',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='advertisers',
+    )
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

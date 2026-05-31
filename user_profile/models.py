@@ -11,6 +11,13 @@ class Profile(models.Model):
         AFFILIATE_MANAGER = 'AFFILIATE_MANAGER', 'Affiliate Manager'
         NETWORK_ADMIN = 'NETWORK_ADMIN', 'Network Admin'
 
+    brand = models.ForeignKey(
+        'brands.Brand',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='users',
+    )
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     manager = models.ForeignKey(
         get_user_model(),

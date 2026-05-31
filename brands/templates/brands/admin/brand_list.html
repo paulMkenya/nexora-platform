@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brands — Nexora Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8">
+<div class="max-w-5xl mx-auto">
+  <div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-semibold text-gray-800">Brands</h1>
+    <a href="{% url 'brands_admin:brand_create' %}"
+       class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700">
+      + New Brand
+    </a>
+  </div>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="mb-4 px-4 py-3 rounded {% if msg.tags == 'error' %}bg-red-50 text-red-700 border border-red-200{% else %}bg-green-50 text-green-700 border border-green-200{% endif %}">
+        {{ msg }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="bg-white shadow rounded-lg overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Slug</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Primary Domain</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tracking Domain</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Default</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Colors</th>
+          <th class="px-6 py-3"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {% for brand in brands %}
+        <tr>
+          <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ brand.name }}</td>
+          <td class="px-6 py-4 text-sm text-gray-500 font-mono">{{ brand.slug }}</td>
+          <td class="px-6 py-4 text-sm text-gray-500">{{ brand.primary_domain }}</td>
+          <td class="px-6 py-4 text-sm text-gray-500">{{ brand.tracking_domain }}</td>
+          <td class="px-6 py-4 text-sm">
+            {% if brand.is_default %}
+              <span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Default</span>
+            {% endif %}
+          </td>
+          <td class="px-6 py-4">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded border border-gray-200" style="background:{{ brand.primary_color }}" title="{{ brand.primary_color }}"></span>
+              <span class="w-5 h-5 rounded border border-gray-200" style="background:{{ brand.secondary_color }}" title="{{ brand.secondary_color }}"></span>
+            </div>
+          </td>
+          <td class="px-6 py-4 text-sm text-right space-x-3">
+            <a href="{% url 'brands_admin:brand_setup' brand.pk %}" class="text-indigo-600 hover:text-indigo-900">Setup</a>
+            <a href="{% url 'brands_admin:brand_edit' brand.pk %}" class="text-indigo-600 hover:text-indigo-900">Edit</a>
+            {% if not brand.is_default %}
+            <form method="post" action="{% url 'brands_admin:brand_delete' brand.pk %}" class="inline"
+                  onsubmit="return confirm('Delete brand {{ brand.name }}?')">
+              {% csrf_token %}
+              <button type="submit" class="text-red-600 hover:text-red-900">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="7" class="px-6 py-8 text-center text-gray-400">No brands yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>
