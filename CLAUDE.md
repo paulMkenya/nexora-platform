@@ -61,7 +61,12 @@ These containers are shared across the cloudtrade stack. Never add postgres or r
 
 | URL prefix | App | Purpose |
 |------------|-----|---------|
-| `/admin/` | Django admin | Staff admin panel |
+| `/admin/` | Django admin | Staff admin panel (model admin) |
+| `/admin/dashboard/` | `brands.views.admin_views.dashboard` | Operator home — nav cards + at-a-glance stats |
+| `/admin/affiliates/` | `affiliate_ui` | Affiliate management (approve/reject/suspend) |
+| `/admin/payouts/` | `payouts` | Payout requests (approve, dispatch, CSV, batches) |
+| `/admin/fraud/` | `fraud` | Fraud review (flagged clicks/conversions, whitelist) |
+| `/admin/brands/` | `brands` | Brand CRUD + setup |
 | `/login/`, `/dashboard/` | `affiliate_ui` | Server-rendered affiliate UI |
 | `/api/` | `api` + `dictionaries` | REST API + Swagger at `/api/` |
 | `/affiliate/` | `affiliate` | Affiliate API |
@@ -104,6 +109,39 @@ docker exec -it cloudtrade-postgres psql -U cloudtrade -d cloudtrade_main
 
 Settings module: `project.settings` → tries `local.py`, falls back to `prod.py` (production).
 Static files: served by Whitenoise from `/app/staticfiles/` (collected on each `nexora-web` startup).
+
+A project-level template dir is enabled (`TEMPLATES['DIRS'] = [BASE_DIR/templates]`), searched
+before app templates — used for the admin overrides and shared admin partials below.
+
+## Operator Admin UI
+
+The custom (non-model) operator tools live under `/admin/*` (see the URL table above) and are
+gated by `staff_member_required`, except `/admin/affiliates/` which uses a network-admin /
+affiliate-manager / superuser role check. `/admin/dashboard/` is the operator home.
+
+- **Shared nav:** `templates/admin_shared/nav.html` — a self-contained, framework-agnostic header
+  (works on both the Bootstrap and Tailwind admin pages) included across affiliates, payouts,
+  fraud, brands and the dashboard. Pass `active` to highlight the current tool.
+- **Dashboard:** `templates/admin_shared/dashboard.html`, rendered by `brands.views.admin_views.dashboard`.
+  Brand-scoped affiliate stats (via `request.brand`); payout/fraud counts are network-wide.
+- **Django admin link:** `templates/admin/base_site.html` overrides the admin header to add a
+  prominent "→ Operator Dashboard" button. Do not remove the override or the link disappears.
+
+## Currencies & Country (data conventions)
+
+- **Currencies:** `offer.Currency` (`code`, `name`, `symbol`) is the single currency source,
+  seeded with all ISO-4217 currencies (~155) by `offer/migrations/0028_seed_currencies.py` from
+  `offer/currencies.py`. The seed is idempotent (matched by `code`) — re-running keeps existing
+  rows and their FKs (`offer.Payout.currency`). Use `offer.currencies.currency_choices()` for any
+  new currency dropdown. Free-text currency CharFields (`payouts`, `billing`) keep their stored
+  values; the billing wallet admin renders currency as a dropdown.
+- **Country:** the single source of country data is **`countries_plus`** (252 rows) — never add
+  another. Country is stored as the **ISO-3166-1 alpha-2 code** on `user_profile.Profile.country`
+  and `offer.Advertiser.country` (blank = unset). Build dropdowns with
+  `user_profile.geo.country_choices()` (name + ISO, alpha-2 sort); display stored codes with the
+  `geo_extras` template tags (`country_flag`, `country_name`, `country_display`).
+  `offer/migrations/0029_standardize_country.py` is the backfill safety net (maps names→codes,
+  logs unmatched, never deletes).
 
 ## Reporting Architecture (Sprint 8)
 
