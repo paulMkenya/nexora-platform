@@ -45,4 +45,8 @@ _celery.conf.beat_schedule = {
         'task': 'payouts.tasks.generate.generate_payout_requests',
         'schedule': crontab(minute=30, hour=2),
     },
+    'refresh-reporting-views': {
+        'task': 'reporting.tasks.refresh_reporting_views',
+        'schedule': 300,  # every 5 minutes
+    },
 }

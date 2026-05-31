@@ -27,8 +27,9 @@ urlpatterns = [
     path('admin/', admin.site.urls),
 
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/', SpectacularSwaggerView.as_view(url_name='schema'),
-        name='swagger-ui'),
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    # legacy alias kept for backward compatibility
+    path('api/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui-legacy'),
 
     path('api/token/', TokenObtainPairView.as_view(),
         name='token_obtain_pair'),
@@ -44,4 +45,6 @@ urlpatterns = [
     path('api/', include('dictionaries.urls')),
     path('tinymce/', include('tinymce.urls')),
     path('api/', include('api.urls')),
+    path('api/v1/', include('reporting.urls')),
+    path('api/v1/', include('public_api.urls')),
 ]
