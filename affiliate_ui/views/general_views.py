@@ -1,8 +1,10 @@
 from django.conf import settings
+from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum, Prefetch
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import redirect, render, get_object_or_404
 from django.contrib.auth.views import LoginView
+from django.views.decorators.http import require_POST
 
 from affiliate_ui.gates import require_approved_affiliate
 from offer.models import Offer, Category, Payout, ACTIVE_STATUS
@@ -71,6 +73,13 @@ def generate_tracking_link(offer_id: int, pid: int) -> str:
     base_url = settings.TRACKER_URL
     url = f"{base_url}/click?offer_id={offer_id}&pid={pid}"
     return url
+
+
+@require_POST
+@login_required
+def affiliate_logout(request):
+    auth_logout(request)
+    return redirect('/')
 
 
 @require_approved_affiliate

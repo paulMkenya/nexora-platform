@@ -1,6 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
-from .views.general_views import AffiliateLoginView, dashboard, offer_list, offer_detail
+from .views.general_views import AffiliateLoginView, affiliate_logout, dashboard, offer_list, offer_detail
 from .views.registration_views import register, verify_email
 from .views.report_views import daily_report_view, offer_report_view, goal_report_view
 from payouts.views.affiliate_views import (
@@ -14,6 +14,7 @@ app_name = 'affiliate_ui'
 urlpatterns = [
     path('', RedirectView.as_view(url='dashboard/', permanent=False), name='home'),
     path('login/', AffiliateLoginView.as_view(), name='login'),
+    path('logout/', affiliate_logout, name='logout'),
     path('register/', register, name='register'),
     path('verify-email/<str:token>/', verify_email, name='verify_email'),
     path('dashboard/', dashboard, name='dashboard'),
