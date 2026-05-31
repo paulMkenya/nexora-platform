@@ -33,8 +33,11 @@
             <div class="container">
                 <a class="navbar-brand" href="{% url 'affiliate_ui:dashboard' %}">
                   {% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ brand.name }}" style="height:24px;margin-right:6px">{% endif %}{{ brand.name|default:"Nexora" }}</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                  <span class="navbar-toggler-icon"></span>
+                </button>
                 <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav">
+                    <ul class="navbar-nav me-auto">
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'affiliate_ui:dashboard' %}"
                                 >Dashboard</a
@@ -81,17 +84,21 @@
                                         >Goal Report</a
                                     >
                                 </li>
-                                <!-- <li>
-                                    <a
-                                        class="dropdown-item"
-                                        href=""
-                                        >Sub Reports</a
-                                    >
-                                </li> -->
                             </ul>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'affiliate_ui:payouts' %}">Payouts</a>
+                        </li>
+                    </ul>
+                    <ul class="navbar-nav ms-auto align-items-center">
+                        <li class="nav-item me-2">
+                            <span class="text-muted small">{{ request.user.get_full_name|default:request.user.username }}</span>
+                        </li>
+                        <li class="nav-item">
+                            <form method="post" action="{% url 'affiliate_ui:logout' %}" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-outline-secondary btn-sm">Log out</button>
+                            </form>
                         </li>
                     </ul>
                 </div>
