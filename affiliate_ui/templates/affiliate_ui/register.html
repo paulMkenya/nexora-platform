@@ -1,0 +1,82 @@
+{% extends 'affiliate_ui/base.html' %}
+
+{% block title %}Join as Affiliate — {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header text-center">
+        <h2 class="card-title mb-0">Create your affiliate account</h2>
+      </div>
+      <div class="card-body">
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          {% if form.non_field_errors %}
+          <div class="alert alert-danger">
+            {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label">{{ form.first_name.label }}</label>
+              <input type="text" name="first_name" class="form-control {% if form.first_name.errors %}is-invalid{% endif %}"
+                     value="{{ form.first_name.value|default:'' }}" required>
+              {% if form.first_name.errors %}<div class="invalid-feedback">{{ form.first_name.errors|join:", " }}</div>{% endif %}
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">{{ form.last_name.label }}</label>
+              <input type="text" name="last_name" class="form-control {% if form.last_name.errors %}is-invalid{% endif %}"
+                     value="{{ form.last_name.value|default:'' }}" required>
+              {% if form.last_name.errors %}<div class="invalid-feedback">{{ form.last_name.errors|join:", " }}</div>{% endif %}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.email.label }}</label>
+            <input type="email" name="email" class="form-control {% if form.email.errors %}is-invalid{% endif %}"
+                   value="{{ form.email.value|default:'' }}" required>
+            {% if form.email.errors %}<div class="invalid-feedback">{{ form.email.errors|join:", " }}</div>{% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.password1.label }}</label>
+            <input type="password" name="password1" class="form-control {% if form.password1.errors %}is-invalid{% endif %}" required>
+            {% if form.password1.errors %}<div class="invalid-feedback">{{ form.password1.errors|join:", " }}</div>{% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">{{ form.password2.label }}</label>
+            <input type="password" name="password2" class="form-control {% if form.password2.errors %}is-invalid{% endif %}" required>
+            {% if form.password2.errors %}<div class="invalid-feedback">{{ form.password2.errors|join:", " }}</div>{% endif %}
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-sm-7">
+              <label class="form-label">{{ form.traffic_source.label }}</label>
+              <input type="text" name="traffic_source" class="form-control"
+                     value="{{ form.traffic_source.value|default:'' }}" placeholder="e.g. SEO, push, social">
+            </div>
+            <div class="col-sm-5">
+              <label class="form-label">{{ form.country.label }}</label>
+              <input type="text" name="country" class="form-control" maxlength="2"
+                     value="{{ form.country.value|default:'' }}" placeholder="US">
+            </div>
+          </div>
+
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">Create account</button>
+          </div>
+        </form>
+      </div>
+      <div class="card-footer text-center text-muted small">
+        Already have an account? <a href="{% url 'affiliate_ui:login' %}">Log in</a>
+        {% if brand.terms_url %} &middot; <a href="{{ brand.terms_url }}" target="_blank">Terms</a>{% endif %}
+        {% if brand.privacy_url %} &middot; <a href="{{ brand.privacy_url }}" target="_blank">Privacy</a>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

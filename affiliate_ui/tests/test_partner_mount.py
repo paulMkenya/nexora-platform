@@ -20,6 +20,8 @@ def _make_affiliate(username='partner_test_aff'):
     User = get_user_model()
     u = User.objects.create_user(username=username, password='pass')
     u.profile.role = Profile.Role.AFFILIATE
+    u.profile.affiliate_status = Profile.AffiliateStatus.APPROVED
+    u.profile.email_verified = True
     u.profile.save()
     return u
 

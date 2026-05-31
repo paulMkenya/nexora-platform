@@ -4,8 +4,10 @@ from django.db.models import Sum, Prefetch
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.views import LoginView
 
+from affiliate_ui.gates import require_approved_affiliate
 from offer.models import Offer, Category, Payout, ACTIVE_STATUS
 from tracker.models import Click, Conversion, APPROVED_STATUS
+from user_profile.models import Profile
 
 
 @login_required
@@ -18,15 +20,28 @@ def dashboard(request):
     total_earnings = conversions.filter(
         status=APPROVED_STATUS).aggregate(total=Sum('payout'))['total'] or 0
 
+    try:
+        profile = request.user.profile
+        is_pending = (
+            profile.role == Profile.Role.AFFILIATE
+            and (
+                profile.affiliate_status != Profile.AffiliateStatus.APPROVED
+                or not profile.email_verified
+            )
+        )
+    except Exception:
+        is_pending = False
+
     context = {
         'clicks_count': clicks_count,
         'conversions_count': conversions_count,
         'total_earnings': f'{total_earnings:.2f}',
+        'is_pending': is_pending,
     }
     return render(request, 'affiliate_ui/dashboard.html', context)
 
 
-@login_required
+@require_approved_affiliate
 def offer_list(request):
     search_query = request.GET.get('search', '')
     category_id = request.GET.get('category', None)
@@ -58,7 +73,7 @@ def generate_tracking_link(offer_id: int, pid: int) -> str:
     return url
 
 
-@login_required
+@require_approved_affiliate
 def offer_detail(request, offer_id):
     offer = get_object_or_404(Offer, pk=offer_id)
     tracking_link = generate_tracking_link(offer_id, request.user.id)

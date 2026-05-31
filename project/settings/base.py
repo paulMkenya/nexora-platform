@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'payouts',
     'reporting',
     'public_api',
+    'website',
 ]
 
 

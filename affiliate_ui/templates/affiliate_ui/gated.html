@@ -1,0 +1,33 @@
+{% extends 'affiliate_ui/base.html' %}
+
+{% block title %}Access Restricted — {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-md-7">
+    <div class="alert alert-warning">
+      <h4 class="alert-heading">Account not yet active</h4>
+      <p>
+        This section is available to approved affiliates only.
+        {% if not request.user.profile.email_verified %}
+        Please check your inbox and verify your email address first.
+        {% endif %}
+        {% if request.user.profile.affiliate_status == 'PENDING' %}
+        Your account is currently <strong>pending review</strong> by our team.
+        {% elif request.user.profile.affiliate_status == 'REJECTED' %}
+        Your application was <strong>not approved</strong>. Please contact support for more information.
+        {% elif request.user.profile.affiliate_status == 'SUSPENDED' %}
+        Your account has been <strong>suspended</strong>. Please contact support.
+        {% endif %}
+      </p>
+      <hr>
+      <p class="mb-0">
+        <a href="{% url 'affiliate_ui:dashboard' %}">← Back to dashboard</a>
+        {% if brand.support_email %}
+        &ensp;·&ensp; <a href="mailto:{{ brand.support_email }}">Contact support</a>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

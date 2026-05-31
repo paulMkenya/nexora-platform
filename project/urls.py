@@ -1,7 +1,6 @@
 """project URL Configuration"""
 from django.contrib import admin
 from django.urls import path, include
-from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -12,13 +11,14 @@ from affiliate_ui.views.general_views import AffiliateLoginView
 
 
 urlpatterns = [
-    path('', RedirectView.as_view(url='/login/', permanent=False), name='index'),
+    path('', include('website.urls', namespace='website')),
     path('healthz', healthz, name='healthz'),
 
     # Standalone /login/ kept for backward-compat (middleware tests, direct links)
     path('login/', AffiliateLoginView.as_view(), name='login'),
 
     path('admin/brands/', include('brands.urls', namespace='brands_admin')),
+    path('admin/affiliates/', include('affiliate_ui.admin_urls', namespace='affiliate_admin')),
     path('admin/fraud/', include('fraud.urls', namespace='fraud')),
     path('admin/payouts/', include('payouts.urls', namespace='payouts_admin')),
     path('mmp/', include('mmp.urls', namespace='mmp')),

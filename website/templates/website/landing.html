@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ brand.name|default:"Nexora" }} — CPA Affiliate Network</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% endif %}
+  <style>
+    :root {
+      --brand-primary: {{ brand.primary_color|default:"#6366f1" }};
+      --brand-secondary: {{ brand.secondary_color|default:"#4f46e5" }};
+    }
+  </style>
+</head>
+<body>
+  {# ================================================================ #}
+  {# REPLACE THIS BLOCK with the pasted landing page HTML.           #}
+  {# Brand variables available: brand.name, brand.primary_color,     #}
+  {# brand.secondary_color, brand.logo, brand.support_email,         #}
+  {# brand.terms_url, brand.privacy_url                              #}
+  {# CTA links: /partner/register/  /partner/login/                  #}
+  {# ================================================================ #}
+
+  <div style="font-family:sans-serif;max-width:640px;margin:80px auto;text-align:center">
+    <h1 style="color:var(--brand-primary)">{{ brand.name|default:"Nexora" }}</h1>
+    <p>High-performance CPA affiliate network.</p>
+    <a href="/partner/register/" style="
+       display:inline-block;margin:8px;padding:12px 28px;
+       background:var(--brand-primary);color:#fff;border-radius:6px;text-decoration:none">
+      Join as Affiliate
+    </a>
+    <a href="/partner/login/" style="
+       display:inline-block;margin:8px;padding:12px 28px;
+       border:2px solid var(--brand-primary);color:var(--brand-primary);
+       border-radius:6px;text-decoration:none">
+      Log In
+    </a>
+  </div>
+</body>
+</html>
