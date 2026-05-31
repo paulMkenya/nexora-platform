@@ -61,8 +61,12 @@
             </div>
             <div class="col-sm-5">
               <label class="form-label">{{ form.country.label }}</label>
-              <input type="text" name="country" class="form-control" maxlength="2"
-                     value="{{ form.country.value|default:'' }}" placeholder="US">
+              <select name="country" class="form-select {% if form.country.errors %}is-invalid{% endif %}">
+                {% for value, label in form.country.field.choices %}
+                <option value="{{ value }}" {% if form.country.value == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              {% if form.country.errors %}<div class="invalid-feedback">{{ form.country.errors|join:", " }}</div>{% endif %}
             </div>
           </div>
 

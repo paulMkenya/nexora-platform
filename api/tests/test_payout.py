@@ -17,7 +17,9 @@ class PayoutTestCase(APITestCase):
             id=1, is_staff=True, is_superuser=True, **credentials)
         self.client.login(**credentials)
         Offer.objects.create(id=1, title='a', description='a')
-        Currency.objects.create(id=1, code='USD', name='US Dollar')
+        # USD is pre-seeded by the offer currency data migration; reuse it.
+        self.currency = Currency.objects.get_or_create(
+            code='USD', defaults={'name': 'US Dollar'})[0]
         Goal.objects.create(id=1, name='Reg')
         Country.objects.create(
             iso='RU', iso3='RUS', iso_numeric=1, name='Russia'
@@ -26,7 +28,7 @@ class PayoutTestCase(APITestCase):
     def test_create(self):
         data = {
             'offer_id': 1,
-            'currency_id': 1,
+            'currency_id': self.currency.id,
             'goal_id': 1,
             'revenue': '1.0',
             'payout': '0.8',

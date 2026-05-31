@@ -8,6 +8,7 @@ from rest_framework_simplejwt.views import (
 )
 from project.views import healthz
 from affiliate_ui.views.general_views import AffiliateLoginView
+from brands.views.admin_views import dashboard as admin_dashboard
 
 
 urlpatterns = [
@@ -17,6 +18,7 @@ urlpatterns = [
     # Standalone /login/ kept for backward-compat (middleware tests, direct links)
     path('login/', AffiliateLoginView.as_view(), name='login'),
 
+    path('admin/dashboard/', admin_dashboard, name='admin_dashboard'),
     path('admin/brands/', include('brands.urls', namespace='brands_admin')),
     path('admin/affiliates/', include('affiliate_ui.admin_urls', namespace='affiliate_admin')),
     path('admin/fraud/', include('fraud.urls', namespace='fraud')),

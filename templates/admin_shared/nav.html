@@ -1,0 +1,39 @@
+{% comment %}
+Shared network-admin header/nav. Self-contained styling (scoped under .nx-anav)
+so it renders consistently whether the host page uses Bootstrap or Tailwind.
+Pass `active` in context to highlight the current tool:
+  dashboard | affiliates | payouts | fraud | brands
+{% endcomment %}
+<style>
+  .nx-anav{background:#111827;color:#e5e7eb;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .nx-anav *{box-sizing:border-box;}
+  .nx-anav-inner{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding:10px 16px;}
+  .nx-anav-brand{font-weight:700;font-size:15px;color:#fff;margin-right:14px;text-decoration:none;white-space:nowrap;}
+  .nx-anav a.nx-anav-link{color:#cbd5e1;text-decoration:none;font-size:13.5px;padding:7px 11px;border-radius:6px;white-space:nowrap;}
+  .nx-anav a.nx-anav-link:hover{background:#1f2937;color:#fff;}
+  .nx-anav a.nx-anav-link.active{background:#6366f1;color:#fff;}
+  .nx-anav .nx-anav-spacer{flex:1 1 auto;}
+  .nx-anav-logout{display:inline;margin:0;}
+  .nx-anav-logout button{background:transparent;border:1px solid #4b5563;color:#cbd5e1;font-size:13px;padding:6px 12px;border-radius:6px;cursor:pointer;}
+  .nx-anav-logout button:hover{background:#374151;color:#fff;}
+</style>
+<nav class="nx-anav">
+  <div class="nx-anav-inner">
+    <a class="nx-anav-brand" href="/admin/dashboard/">{{ brand.name|default:"Nexora" }} · Admin</a>
+    <a class="nx-anav-link {% if active == 'dashboard' %}active{% endif %}" href="/admin/dashboard/">Dashboard</a>
+    <a class="nx-anav-link {% if active == 'affiliates' %}active{% endif %}" href="/admin/affiliates/">Affiliates</a>
+    <a class="nx-anav-link {% if active == 'payouts' %}active{% endif %}" href="/admin/payouts/">Payouts</a>
+    <a class="nx-anav-link {% if active == 'fraud' %}active{% endif %}" href="/admin/fraud/">Fraud Review</a>
+    <a class="nx-anav-link {% if active == 'brands' %}active{% endif %}" href="/admin/brands/">Brands</a>
+    <a class="nx-anav-link" href="/api/schema/swagger-ui/">API Docs</a>
+    <a class="nx-anav-link" href="/admin/">Django Admin</a>
+    <span class="nx-anav-spacer"></span>
+    {% if request.user.is_authenticated %}
+    <span style="font-size:13px;color:#9ca3af;margin-right:8px;">{{ request.user.get_full_name|default:request.user.username }}</span>
+    <form class="nx-anav-logout" method="post" action="/admin/logout/">
+      {% csrf_token %}
+      <button type="submit">Log out</button>
+    </form>
+    {% endif %}
+  </div>
+</nav>

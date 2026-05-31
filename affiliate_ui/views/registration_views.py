@@ -71,7 +71,8 @@ def register(request):
             profile.affiliate_status = Profile.AffiliateStatus.PENDING
             profile.email_verified = False
             profile.brand = brand
-            profile.save(update_fields=['role', 'affiliate_status', 'email_verified', 'brand'])
+            profile.country = (d.get('country') or '').upper()
+            profile.save(update_fields=['role', 'affiliate_status', 'email_verified', 'brand', 'country'])
             token = _make_token(user.pk)
             _send_verification_email(request, user, token)
             login(request, user)

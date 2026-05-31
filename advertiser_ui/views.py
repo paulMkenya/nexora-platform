@@ -294,7 +294,26 @@ def wallet(request):
 
 @advertiser_required
 def settings_view(request):
-    return render(request, 'advertiser_ui/settings.html')
+    from user_profile.geo import country_choices, country_display
+
+    advertiser = _get_advertiser(request)
+
+    if request.method == 'POST' and advertiser is not None:
+        country = (request.POST.get('country') or '').upper()
+        valid = {code for code, _ in country_choices(include_blank=False)}
+        if country and country not in valid:
+            messages.error(request, 'Please select a valid country.')
+        else:
+            advertiser.country = country
+            advertiser.save(update_fields=['country'])
+            messages.success(request, 'Settings updated.')
+        return redirect('advertiser_ui:settings')
+
+    return render(request, 'advertiser_ui/settings.html', {
+        'advertiser': advertiser,
+        'country_choices': country_choices(),
+        'country_display': country_display(advertiser.country) if advertiser else '',
+    })
 
 
 def advertiser_logout(request):

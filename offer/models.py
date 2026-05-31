@@ -96,11 +96,16 @@ class Goal(models.Model):
 
 
 class Currency(models.Model):
+    class Meta:
+        ordering = ('code',)
+        verbose_name_plural = 'Currencies'
+
     code = models.CharField(max_length=3)
     name = models.CharField(max_length=128)
+    symbol = models.CharField(max_length=8, default='', blank=True)
 
     def __str__(self):
-        return self.name
+        return f'{self.code} — {self.name}'
 
 
 class Payout(models.Model):
@@ -159,6 +164,8 @@ class Advertiser(models.Model):
     contact_person = models.CharField(max_length=64, default='')
     messenger = models.CharField(max_length=64, default='')
     site = models.CharField(max_length=64, default='')
+    # ISO-3166-1 alpha-2 country code (sourced from countries_plus). Blank = unset.
+    country = models.CharField(max_length=2, default='', blank=True)
     comment = models.TextField(default='', blank=True)
 
     def __str__(self):

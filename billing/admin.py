@@ -1,5 +1,23 @@
+from django import forms
 from django.contrib import admin
+
+from offer.currencies import currency_choices
 from .models import AdvertiserWallet, WalletTopUp, WalletTransaction, Invoice
+
+
+class AdvertiserWalletForm(forms.ModelForm):
+    class Meta:
+        model = AdvertiserWallet
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Currency is a dropdown sourced from the seeded ISO-4217 currency list.
+        choices = currency_choices()
+        current = self.initial.get('currency') or getattr(self.instance, 'currency', '')
+        if current and current not in dict(choices):
+            choices = [(current, current)] + choices
+        self.fields['currency'] = forms.ChoiceField(choices=choices, required=True)
 
 
 class WalletTransactionInline(admin.TabularInline):
@@ -18,6 +36,7 @@ class WalletTopUpInline(admin.TabularInline):
 
 @admin.register(AdvertiserWallet)
 class AdvertiserWalletAdmin(admin.ModelAdmin):
+    form = AdvertiserWalletForm
     list_display = ('advertiser', 'balance', 'currency', 'credit_limit', 'low_balance_threshold',
                     'low_balance_alert_sent')
     list_filter = ('currency',)
