@@ -60,6 +60,8 @@ INSTALLED_APPS = [
     'mmp',
     'billing',
     'payouts',
+    'reporting',
+    'public_api',
 ]
 
 
@@ -170,10 +172,14 @@ LOGIN_URL = '/partner/login/'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        'public_api.authentication.APIKeyAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.BasicAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
+    'DEFAULT_THROTTLE_RATES': {
+        'api_key': '1000/hour',
+    },
     'DEFAULT_PARSER_CLASSES': (
         'rest_framework.parsers.JSONParser',
         # 'rest_framework.parsers.MultiPartParser',
@@ -261,6 +267,10 @@ NOWPAYMENTS_IPN_SECRET = os.environ.get('NOWPAYMENTS_IPN_SECRET', '')
 CRYPTO_HOT_WALLET_KEY = os.environ.get('CRYPTO_HOT_WALLET_KEY', '')
 # 'nowpayments' (default) or 'self_custodial'
 CRYPTO_PAYOUT_PROVIDER = os.environ.get('CRYPTO_PAYOUT_PROVIDER', 'nowpayments')
+
+# Reporting aggregation backend.  'postgres' = materialized views (default).
+# Switch to 'clickhouse' when any brand exceeds ~10M clicks/month.
+REPORTING_BACKEND = os.environ.get('REPORTING_BACKEND', 'postgres')
 
 GEOIP_COUNTRY_DB = os.environ.get(
     'GEOIP_COUNTRY_DB',

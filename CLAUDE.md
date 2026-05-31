@@ -104,3 +104,39 @@ docker exec -it cloudtrade-postgres psql -U cloudtrade -d cloudtrade_main
 
 Settings module: `project.settings` → tries `local.py`, falls back to `prod.py` (production).
 Static files: served by Whitenoise from `/app/staticfiles/` (collected on each `nexora-web` startup).
+
+## Reporting Architecture (Sprint 8)
+
+### Backend abstraction
+The reporting layer uses a pluggable `AggregationBackend` interface (`reporting/backends/base.py`).
+The active backend is selected by `REPORTING_BACKEND` in Django settings.
+
+| Value | Implementation | Status |
+|-------|---------------|--------|
+| `'postgres'` | `PostgresMatViewBackend` (default) | Active |
+| `'clickhouse'` | `ClickHouseBackend` | Future |
+
+### Postgres materialized views
+Four matviews are created by `reporting/migrations/0001_reporting_matviews.py`:
+- `reporting_click_hourly` / `reporting_click_daily`
+- `reporting_conversion_hourly` / `reporting_conversion_daily`
+
+Refreshed every **5 minutes** by the `refresh-reporting-views` Celery beat task.
+
+### ClickHouse upgrade trigger
+When any brand exceeds **~10M clicks/month**, switch to ClickHouse:
+1. `pip install clickhouse-driver` (or `clickhouse-connect`)
+2. Implement `ClickHouseBackend(AggregationBackend)` in `reporting/backends/clickhouse.py`
+3. Set `REPORTING_BACKEND=clickhouse` in `.env.prod`
+
+No view, URL, serializer, or test code needs to change — only the backend implementation.
+
+### Public API (Sprint 8)
+- API key auth: `Authorization: ApiKey <secret>` — or exchange for JWT via `POST /api/v1/auth/token`
+- Swagger UI: `/api/schema/swagger-ui/`
+- Postman collection: `docs/postman_collection.json`
+
+Rate limiting is per-API-key (`APIKey.requests_per_hour`, default 1000). Backed by Redis.
+
+Webhook delivery uses HMAC-SHA256 (`X-Nexora-Signature: sha256=<hex>`).
+Retry schedule: 60s → 300s → 1800s (3 attempts).  After 3 failures the delivery is marked `failed`.

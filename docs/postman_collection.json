@@ -1,0 +1,282 @@
+{
+  "info": {
+    "name": "Nexora Platform API v1",
+    "_postman_id": "nexora-api-v1",
+    "description": "Nexora CPA Network Platform — Public API v1.\n\nAuth: Exchange your API key for a JWT via POST /api/v1/auth/token, then use 'Authorization: Bearer <token>' on all subsequent requests.\n\nAlternatively send 'Authorization: ApiKey <secret>' directly.\n\nSwagger UI: /api/schema/swagger-ui/",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "https://cpa.cloudtrade.pro", "type": "string"},
+    {"key": "api_key_secret", "value": "", "type": "string"},
+    {"key": "client_id", "value": "", "type": "string"},
+    {"key": "access_token", "value": "", "type": "string"}
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "OAuth2 Token (client credentials)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) { pm.collectionVariables.set('access_token', json.access_token); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/token",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{client_id}}\",\n  \"client_secret\": \"{{api_key_secret}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List API Keys",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/auth/keys",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "Create API Key",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/keys",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"name\": \"My Integration Key\",\n  \"requests_per_hour\": 5000\n}"}
+          }
+        },
+        {
+          "name": "Deactivate API Key",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/v1/auth/keys/1",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Clicks Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/reports/clicks?date_from=2024-01-01&date_to=2024-01-31&group_by=period,offer,country",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "reports", "clicks"],
+              "query": [
+                {"key": "date_from", "value": "2024-01-01"},
+                {"key": "date_to", "value": "2024-01-31"},
+                {"key": "group_by", "value": "period,offer,country"},
+                {"key": "offer_id", "value": "", "disabled": true},
+                {"key": "country", "value": "", "disabled": true},
+                {"key": "device", "value": "", "disabled": true},
+                {"key": "traffic_source", "value": "", "disabled": true},
+                {"key": "cursor", "value": "", "disabled": true},
+                {"key": "page_size", "value": "100", "disabled": true}
+              ]
+            },
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "Conversions Report",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/reports/conversions?date_from=2024-01-01&date_to=2024-01-31&group_by=period,offer",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "reports", "conversions"],
+              "query": [
+                {"key": "date_from", "value": "2024-01-01"},
+                {"key": "date_to", "value": "2024-01-31"},
+                {"key": "group_by", "value": "period,offer"},
+                {"key": "cursor", "value": "", "disabled": true}
+              ]
+            },
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "Revenue Report (with EPC + CR)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/reports/revenue?date_from=2024-01-01&date_to=2024-01-31&group_by=period,offer",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "reports", "revenue"],
+              "query": [
+                {"key": "date_from", "value": "2024-01-01"},
+                {"key": "date_to", "value": "2024-01-31"},
+                {"key": "group_by", "value": "period,offer"}
+              ]
+            },
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Advertiser API",
+      "item": [
+        {
+          "name": "List Offers",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/advertiser/offers",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "Create Offer",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/advertiser/offers",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"title\": \"New Offer\",\n  \"tracking_link\": \"https://t.cloudtrade.pro/click\",\n  \"status\": \"Active\"\n}"}
+          }
+        },
+        {
+          "name": "Update Offer",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/v1/advertiser/offers/1",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"status\": \"Paused\"\n}"}
+          }
+        },
+        {
+          "name": "Delete Offer",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/v1/advertiser/offers/1",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "List Conversions",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/advertiser/conversions",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "Bulk Approve Conversions",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/advertiser/conversions/bulk_approve",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"ids\": [\"<uuid1>\", \"<uuid2>\"],\n  \"comment\": \"Verified via CRM\"\n}"}
+          }
+        },
+        {
+          "name": "Bulk Reject Conversions",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/advertiser/conversions/bulk_reject",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"ids\": [\"<uuid1>\"],\n  \"comment\": \"Fraud detected\"\n}"}
+          }
+        },
+        {
+          "name": "Get Wallet Balance",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/advertiser/wallet",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Network Admin API",
+      "item": [
+        {
+          "name": "List All Offers (brand-scoped)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/admin/offers",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "List Advertisers",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/admin/advertisers",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "List Conversions",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/admin/conversions",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "List Webhook Endpoints",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/admin/webhooks",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "Create Webhook Endpoint",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/admin/webhooks",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://your-server.com/hooks/nexora\",\n  \"secret\": \"your-signing-secret\",\n  \"events\": [\"offer.created\", \"conversion.approved\", \"payout.paid\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Webhook Endpoint",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/v1/admin/webhooks/1",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        },
+        {
+          "name": "List Delivery Log",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/admin/webhooks/1/deliveries",
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{access_token}}"}]}
+          }
+        }
+      ]
+    }
+  ]
+}
