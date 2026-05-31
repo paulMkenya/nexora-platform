@@ -1,4 +1,5 @@
 import datetime
+from collections import defaultdict
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render, get_object_or_404, redirect
@@ -6,6 +7,38 @@ from django.contrib import messages
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from brands.models import Brand
+
+
+_BRAND_FORM_FIELDS = (
+    'name', 'slug', 'primary_domain', 'tracking_domain', 'support_email',
+    'logo', 'favicon', 'terms_url', 'privacy_url', 'primary_color',
+    'secondary_color', 'is_default',
+)
+
+
+def _form_data(request, brand=None):
+    """Return the ``post`` mapping that brand_form.html prefills inputs from.
+
+    The template reads every field via ``post.<field>``. Two hazards are handled
+    here:
+
+    1. A missing template variable used as a *filter argument* raises
+       VariableDoesNotExist (it is not swallowed like a missing top-level
+       variable), so ``post`` must resolve for every field on every render path.
+       A ``defaultdict(str)`` yields '' for any field not present.
+    2. The form must NOT prefill from the global ``brand`` template variable —
+       that is the *request's* brand injected by brands.context_processors and
+       would leak the current brand's data onto the create form. Prefill is
+       driven solely by this dict: seeded from the edited ``brand`` on GET, and
+       overridden by the submitted values on a POST re-render.
+    """
+    data = defaultdict(str)
+    if brand is not None:
+        for field in _BRAND_FORM_FIELDS:
+            data[field] = getattr(brand, field)
+    if request.method == 'POST':
+        data.update(request.POST.dict())
+    return data
 
 
 @staff_member_required
@@ -82,7 +115,7 @@ def brand_create(request):
             for err in errors:
                 messages.error(request, err)
             return render(request, 'brands/admin/brand_form.html', {
-                'action': 'Create', 'post': request.POST,
+                'action': 'Create', 'post': _form_data(request),
             })
         brand = Brand.objects.create(
             slug=slug,
@@ -101,7 +134,9 @@ def brand_create(request):
         messages.success(request, f'Brand "{brand.name}" created successfully.')
         return redirect('brands_admin:brand_setup', pk=brand.pk)
 
-    return render(request, 'brands/admin/brand_form.html', {'action': 'Create'})
+    return render(request, 'brands/admin/brand_form.html', {
+        'action': 'Create', 'post': _form_data(request),
+    })
 
 
 @staff_member_required
@@ -124,7 +159,9 @@ def brand_edit(request, pk):
         messages.success(request, f'Brand "{brand.name}" updated.')
         return redirect('brands_admin:brand_list')
 
-    return render(request, 'brands/admin/brand_form.html', {'action': 'Edit', 'brand': brand})
+    return render(request, 'brands/admin/brand_form.html', {
+        'action': 'Edit', 'post': _form_data(request, brand),
+    })
 
 
 @staff_member_required
