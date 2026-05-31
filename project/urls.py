@@ -19,8 +19,10 @@ urlpatterns = [
     path('login/', AffiliateLoginView.as_view(), name='login'),
 
     path('admin/fraud/', include('fraud.urls', namespace='fraud')),
+    path('admin/payouts/', include('payouts.urls', namespace='payouts_admin')),
     path('mmp/', include('mmp.urls', namespace='mmp')),
     path('', include('billing.urls', namespace='billing')),
+    path('webhooks/', include('payouts.webhook_urls')),
     path('admin/', admin.site.urls),
 
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

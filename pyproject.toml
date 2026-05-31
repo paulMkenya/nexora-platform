@@ -29,6 +29,8 @@ pytz = "^2025.2"
 geoip2 = ">=4.8"
 user-agents = ">=2.2"
 weasyprint = ">=61"
+web3 = ">=6.0"
+tronpy = ">=0.4"
 
 
 [tool.poetry.group.dev.dependencies]

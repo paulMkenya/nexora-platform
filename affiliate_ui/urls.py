@@ -2,6 +2,11 @@ from django.urls import path
 from django.views.generic import RedirectView
 from .views.general_views import AffiliateLoginView, dashboard, offer_list, offer_detail
 from .views.report_views import daily_report_view, offer_report_view, goal_report_view
+from payouts.views.affiliate_views import (
+    payouts_home, add_payout_method, delete_payout_method,
+    set_default_method, request_early_payout, update_payout_settings,
+    validate_address_api, fee_estimate_api,
+)
 
 app_name = 'affiliate_ui'
 
@@ -14,4 +19,13 @@ urlpatterns = [
     path('reports/daily/', daily_report_view, name='daily_report'),
     path('reports/offer/', offer_report_view, name='offer_report'),
     path('reports/goal/', goal_report_view, name='goal_report'),
+    # Payouts
+    path('payouts/', payouts_home, name='payouts'),
+    path('payouts/methods/add/', add_payout_method, name='add_payout_method'),
+    path('payouts/methods/<int:pk>/delete/', delete_payout_method, name='delete_payout_method'),
+    path('payouts/methods/<int:pk>/set-default/', set_default_method, name='set_default_method'),
+    path('payouts/request/', request_early_payout, name='request_early_payout'),
+    path('payouts/settings/', update_payout_settings, name='update_payout_settings'),
+    path('payouts/api/validate-address/', validate_address_api, name='validate_address_api'),
+    path('payouts/api/fee-estimate/', fee_estimate_api, name='fee_estimate_api'),
 ]

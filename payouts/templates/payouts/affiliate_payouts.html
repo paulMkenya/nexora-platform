@@ -1,0 +1,227 @@
+{% extends "affiliate_ui/base.html" %}
+{% block title %}Payouts — Nexora{% endblock %}
+{% block content %}
+<h2 class="mb-4">Payouts</h2>
+
+{% if messages %}
+  {% for msg in messages %}
+    <div class="alert alert-{{ msg.tags|default:'info' }} alert-dismissible fade show" role="alert">
+      {{ msg }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endfor %}
+{% endif %}
+
+{# Earnings summary #}
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-success">
+      <div class="card-body">
+        <h6 class="card-subtitle mb-2 text-muted">Pending Earnings</h6>
+        <h3 class="card-title text-success">${{ pending_earnings }}</h3>
+        <p class="card-text small text-muted">
+          Min threshold: ${{ settings.min_threshold }} &bull; Net {{ settings.net_terms }} days
+        </p>
+        {% if pending_earnings >= settings.min_threshold %}
+          <form method="post" action="{% url 'affiliate_ui:request_early_payout' %}">
+            {% csrf_token %}
+            <button class="btn btn-sm btn-success">Request Early Payout</button>
+          </form>
+        {% else %}
+          <span class="text-muted small">Below threshold</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Payout Methods #}
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <strong>Payout Methods</strong>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addMethodModal">+ Add Method</button>
+  </div>
+  <div class="card-body">
+    {% if methods %}
+      <table class="table table-sm">
+        <thead><tr><th>Method</th><th>Details</th><th>Default</th><th>Verified</th><th></th></tr></thead>
+        <tbody>
+          {% for m in methods %}
+          <tr>
+            <td>{{ m.get_method_display }}</td>
+            <td class="small text-muted">{{ m.details }}</td>
+            <td>{% if m.is_default %}<span class="badge bg-success">Default</span>{% endif %}</td>
+            <td>{% if m.verified %}<span class="badge bg-info">Verified</span>{% else %}<span class="badge bg-secondary">Pending</span>{% endif %}</td>
+            <td>
+              {% if not m.is_default %}
+                <form method="post" action="{% url 'affiliate_ui:set_default_method' m.pk %}" class="d-inline">
+                  {% csrf_token %}<button class="btn btn-xs btn-outline-secondary btn-sm">Set Default</button>
+                </form>
+              {% endif %}
+              <form method="post" action="{% url 'affiliate_ui:delete_payout_method' m.pk %}" class="d-inline" onsubmit="return confirm('Remove this method?')">
+                {% csrf_token %}<button class="btn btn-xs btn-outline-danger btn-sm">Remove</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="text-muted">No payout methods added yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{# Payout History #}
+<div class="card mb-4">
+  <div class="card-header"><strong>Payout History</strong></div>
+  <div class="card-body">
+    {% if payout_requests %}
+      <table class="table table-sm">
+        <thead><tr><th>#</th><th>Amount</th><th>Method</th><th>Status</th><th>Period</th><th>Paid At</th><th>Ref</th></tr></thead>
+        <tbody>
+          {% for r in payout_requests %}
+          <tr>
+            <td>{{ r.pk }}</td>
+            <td>${{ r.amount }}</td>
+            <td>{{ r.get_method_display }}</td>
+            <td><span class="badge bg-{% if r.status == 'paid' %}success{% elif r.status == 'failed' %}danger{% elif r.status == 'processing' %}warning{% else %}secondary{% endif %}">{{ r.status }}</span></td>
+            <td class="small">{{ r.period_start }} – {{ r.period_end }}</td>
+            <td class="small">{{ r.paid_at|default:'-' }}</td>
+            <td class="small text-muted text-truncate" style="max-width:120px">{{ r.tx_ref|default:'-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="text-muted">No payout requests yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{# Settings #}
+<div class="card mb-4">
+  <div class="card-header"><strong>Payout Settings</strong></div>
+  <div class="card-body">
+    <form method="post" action="{% url 'affiliate_ui:update_payout_settings' %}">
+      {% csrf_token %}
+      <div class="mb-3">
+        <label class="form-label">Schedule</label>
+        <select name="schedule" class="form-select" style="max-width:200px">
+          {% for val, label in schedule_choices %}
+            <option value="{{ val }}" {% if settings.schedule == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button class="btn btn-sm btn-secondary">Save Settings</button>
+    </form>
+  </div>
+</div>
+
+{# Add Method Modal #}
+<div class="modal fade" id="addMethodModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Payout Method</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{% url 'affiliate_ui:add_payout_method' %}">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Method</label>
+            <select name="method" id="methodSelect" class="form-select" onchange="showMethodFields(this.value)">
+              {% for val, label in method_choices %}
+                <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div id="fields-paypal" class="method-fields">
+            <div class="mb-3"><label class="form-label">PayPal Email</label><input name="email" type="email" class="form-control" placeholder="your@paypal.com"></div>
+          </div>
+          <div id="fields-wise" class="method-fields d-none">
+            <div class="mb-3"><label class="form-label">Wise Email</label><input name="email" type="email" class="form-control"></div>
+            <div class="mb-3"><label class="form-label">Wise Recipient ID</label><input name="recipient_id" class="form-control" placeholder="Recipient ID from Wise dashboard"></div>
+          </div>
+          <div id="fields-paxum" class="method-fields d-none">
+            <div class="mb-3"><label class="form-label">Paxum Email</label><input name="email" type="email" class="form-control"></div>
+          </div>
+          <div id="fields-mpesa" class="method-fields d-none">
+            <div class="mb-3"><label class="form-label">M-Pesa Phone (e.g. 254712345678)</label><input name="phone" class="form-control" placeholder="254..."></div>
+          </div>
+          <div id="fields-bank" class="method-fields d-none">
+            <div class="mb-3"><label class="form-label">Bank Name</label><input name="bank_name" class="form-control"></div>
+            <div class="mb-3"><label class="form-label">Account Number</label><input name="account_number" class="form-control"></div>
+            <div class="mb-3"><label class="form-label">Routing / SWIFT</label><input name="swift" class="form-control"></div>
+          </div>
+          <div id="fields-crypto" class="method-fields d-none">
+            <div class="mb-3">
+              <label class="form-label">Network</label>
+              <select name="network" id="networkSelect" class="form-select" onchange="onNetworkChange()">
+                {% for n in supported_networks %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Wallet Address</label>
+              <input name="wallet_address" id="walletAddressInput" class="form-control" placeholder="Wallet address">
+              <div id="addrValidation" class="form-text"></div>
+            </div>
+            <div id="feeEstimate" class="alert alert-info d-none small"></div>
+          </div>
+
+          <div class="mb-3 form-check">
+            <input type="checkbox" name="is_default" value="1" class="form-check-input" id="isDefaultCheck">
+            <label class="form-check-label" for="isDefaultCheck">Set as default</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Method</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function showMethodFields(method) {
+  document.querySelectorAll('.method-fields').forEach(el => el.classList.add('d-none'));
+  const target = document.getElementById('fields-' + method);
+  if (target) target.classList.remove('d-none');
+}
+
+function onNetworkChange() {
+  validateAddress();
+  fetchFeeEstimate();
+}
+
+function validateAddress() {
+  const network = document.getElementById('networkSelect').value;
+  const address = document.getElementById('walletAddressInput').value;
+  const info = document.getElementById('addrValidation');
+  if (!address) { info.textContent = ''; return; }
+  fetch(`{% url 'affiliate_ui:validate_address_api' %}?network=${encodeURIComponent(network)}&address=${encodeURIComponent(address)}`)
+    .then(r => r.json())
+    .then(d => {
+      info.textContent = d.valid ? '✓ Valid address' : '✗ Invalid address format';
+      info.className = 'form-text ' + (d.valid ? 'text-success' : 'text-danger');
+    });
+}
+
+function fetchFeeEstimate() {
+  const network = document.getElementById('networkSelect').value;
+  const feeDiv = document.getElementById('feeEstimate');
+  fetch(`{% url 'affiliate_ui:fee_estimate_api' %}?network=${encodeURIComponent(network)}&amount=100`)
+    .then(r => r.json())
+    .then(d => {
+      feeDiv.textContent = 'Estimated fee: ' + d.fee_estimate;
+      feeDiv.classList.remove('d-none');
+    });
+}
+
+document.getElementById('walletAddressInput')?.addEventListener('input', validateAddress);
+showMethodFields('paypal');
+</script>
+{% endblock %}
