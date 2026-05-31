@@ -41,4 +41,8 @@ _celery.conf.beat_schedule = {
         'task': 'billing.tasks.invoice.generate_monthly_invoices',
         'schedule': crontab(minute=5, hour=0, day_of_month=1),
     },
+    'generate-payout-requests': {
+        'task': 'payouts.tasks.generate.generate_payout_requests',
+        'schedule': crontab(minute=30, hour=2),
+    },
 }

@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'fraud',
     'mmp',
     'billing',
+    'payouts',
 ]
 
 
@@ -242,6 +243,21 @@ PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY', '')
 # Media files (invoice PDFs etc.)
 MEDIA_ROOT = os.environ.get('MEDIA_ROOT', os.path.join(BASE_DIR, 'media'))
 MEDIA_URL = '/media/'
+
+# Payout provider keys (blank = feature disabled)
+WISE_API_KEY = os.environ.get('WISE_API_KEY', '')
+WISE_PROFILE_ID = os.environ.get('WISE_PROFILE_ID', '')
+MPESA_CONSUMER_KEY = os.environ.get('MPESA_CONSUMER_KEY', '')
+MPESA_CONSUMER_SECRET = os.environ.get('MPESA_CONSUMER_SECRET', '')
+MPESA_B2C_SHORTCODE = os.environ.get('MPESA_B2C_SHORTCODE', '')
+PAYPAL_CLIENT_ID = os.environ.get('PAYPAL_CLIENT_ID', '')
+PAYPAL_CLIENT_SECRET = os.environ.get('PAYPAL_CLIENT_SECRET', '')
+PAXUM_ACCOUNT_EMAIL = os.environ.get('PAXUM_ACCOUNT_EMAIL', '')
+NOWPAYMENTS_API_KEY = os.environ.get('NOWPAYMENTS_API_KEY', '')
+NOWPAYMENTS_IPN_SECRET = os.environ.get('NOWPAYMENTS_IPN_SECRET', '')
+CRYPTO_HOT_WALLET_KEY = os.environ.get('CRYPTO_HOT_WALLET_KEY', '')
+# 'nowpayments' (default) or 'self_custodial'
+CRYPTO_PAYOUT_PROVIDER = os.environ.get('CRYPTO_PAYOUT_PROVIDER', 'nowpayments')
 
 GEOIP_COUNTRY_DB = os.environ.get(
     'GEOIP_COUNTRY_DB',
