@@ -1,6 +1,6 @@
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_http_methods
 
 from mmp.models import MMP, MMPCallback, VENDOR_CHOICES
 
@@ -9,10 +9,11 @@ _VALID_VENDORS = {v for v, _ in VENDOR_CHOICES}
 
 
 @csrf_exempt
-@require_GET
+@require_http_methods(['GET', 'POST'])
 def mmp_callback(request, vendor):
     """
     Receive an inbound postback from an MMP vendor.
+    Accepts both GET (query-string) and POST (form-body or query-string).
     Idempotent on (click_id, event_name): duplicate callbacks return 200 without
     creating a second conversion.
     """
@@ -28,13 +29,17 @@ def mmp_callback(request, vendor):
     click_id_param = patterns.get('click_id_param', 'click_id')
     event_name_param = patterns.get('event_name_param', 'event_name')
 
-    click_id = request.GET.get(click_id_param, '').strip()
-    event_name = request.GET.get(event_name_param, 'install').strip()
+    # Read params from query string first, then POST body as fallback
+    params = request.GET
+    click_id = params.get(click_id_param, '').strip()
+    if not click_id and request.method == 'POST':
+        click_id = request.POST.get(click_id_param, '').strip()
+    event_name = (params.get(event_name_param) or request.POST.get(event_name_param, 'install')).strip()
 
     if not click_id:
         return HttpResponse('Missing click_id', status=400)
 
-    raw_data = dict(request.GET)
+    raw_data = {**dict(request.GET), **dict(request.POST)}
 
     # Resolve offer from the tracker Click row (best-effort)
     offer = None

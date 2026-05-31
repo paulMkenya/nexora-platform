@@ -91,8 +91,23 @@ class TestMMPCallbackView:
         # since no real Celery worker runs in tests, we just confirm the row exists.
         assert cb is not None
 
-    def test_post_method_not_allowed(self):
+    def test_post_with_click_id_in_body_accepted(self):
         _ensure_mmp()
         c = Client()
-        resp = c.post('/mmp/callback/appsflyer/', data={'clickid': 'x', 'event_name': 'install'})
+        with mock.patch('mmp.views._process_callback'):
+            resp = c.post('/mmp/callback/appsflyer/',
+                          data={'clickid': 'post_click1', 'event_name': 'install'})
+        assert resp.status_code == 200
+        assert MMPCallback.objects.filter(click_id='post_click1', event_name='install').exists()
+
+    def test_post_without_click_id_returns_400(self):
+        _ensure_mmp()
+        c = Client()
+        resp = c.post('/mmp/callback/appsflyer/', data={'event_name': 'install'})
+        assert resp.status_code == 400
+
+    def test_delete_method_not_allowed(self):
+        _ensure_mmp()
+        c = Client()
+        resp = c.delete('/mmp/callback/appsflyer/')
         assert resp.status_code == 405
