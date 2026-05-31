@@ -126,6 +126,17 @@ affiliate-manager / superuser role check. `/admin/dashboard/` is the operator ho
   Brand-scoped affiliate stats (via `request.brand`); payout/fraud counts are network-wide.
 - **Django admin link:** `templates/admin/base_site.html` overrides the admin header to add a
   prominent "→ Operator Dashboard" button. Do not remove the override or the link disappears.
+- **Brand form prefill (gotcha):** `brands/admin/brand_form.html` prefills every input from a
+  single `post` mapping built by `brands.views.admin_views._form_data(request, brand=None)` — a
+  `defaultdict(str)` seeded from the edited brand on GET and overridden by `request.POST` on a
+  validation re-render. Two traps this guards against, both of which previously 500'd / leaked data:
+  1. A missing template variable used as a **filter argument** (e.g. the old
+     `{{ brand.x|default:post.x }}` when `post` was absent) raises `VariableDoesNotExist` — it is
+     **not** swallowed like a missing top-level variable. So `post` must resolve for every field on
+     every render path (GET and POST-error alike); the `defaultdict(str)` guarantees that.
+  2. Do **not** prefill the brand form from the `brand` template variable — that is the *request's*
+     brand injected by `brands.context_processors` and would leak the current brand onto the create
+     form. Prefill only from `post`.
 
 ## Currencies & Country (data conventions)
 
