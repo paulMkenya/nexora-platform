@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.test import TestCase
 from django.urls import reverse
 
@@ -17,7 +18,7 @@ class AdvertiserAccessTestCase(TestCase):
         response = self.client.get('/advertiser/')
         self.assertRedirects(
             response,
-            '/login/?next=/advertiser/',
+            f'{settings.LOGIN_URL}?next=/advertiser/',
             fetch_redirect_response=False,
         )
 

@@ -16,7 +16,7 @@ class ReportViewsTest(TestCase):
     def test_daily_report_view_login_required(self):
         self.client.logout()
         response = self.client.get(reverse('affiliate_ui:daily_report'))
-        self.assertRedirects(response, reverse('affiliate_ui:login') + '?next=/reports/daily/')
+        self.assertRedirects(response, reverse('affiliate_ui:login') + '?next=' + reverse('affiliate_ui:daily_report'))
 
     @patch('affiliate_ui.views.report_views.daily_report')
     @patch('offer.models.Offer.objects')

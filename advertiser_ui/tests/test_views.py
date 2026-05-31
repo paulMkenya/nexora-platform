@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.test import TestCase
 from django.urls import reverse
 
@@ -34,7 +35,7 @@ class DashboardViewTestCase(AdvertiserUiAccessMixin, TestCase):
 
     def test_unauthenticated_redirected_to_login(self):
         r = self.client.get(self.url)
-        self.assertRedirects(r, f'/login/?next={self.url}', fetch_redirect_response=False)
+        self.assertRedirects(r, f'{settings.LOGIN_URL}?next={self.url}', fetch_redirect_response=False)
 
     def test_advertiser_gets_200(self):
         self.client.force_login(self._advertiser())
@@ -92,7 +93,7 @@ class LogoutViewTestCase(AdvertiserUiAccessMixin, TestCase):
     def test_post_logs_out_and_redirects(self):
         self.client.force_login(self._advertiser())
         r = self.client.post(self.url)
-        self.assertRedirects(r, '/login/', fetch_redirect_response=False)
+        self.assertRedirects(r, settings.LOGIN_URL, fetch_redirect_response=False)
         # Session should be cleared
         self.assertNotIn('_auth_user_id', self.client.session)
 

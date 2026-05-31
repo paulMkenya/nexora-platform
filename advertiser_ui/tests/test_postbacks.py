@@ -7,6 +7,7 @@ import hmac as _hmac
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.conf import settings
 from django.test import TestCase, override_settings
 
 from offer.models import AdvertiserPostbackKey
@@ -110,7 +111,7 @@ class PostbackManagerTestCase(TestCase):
     def test_unauthenticated_redirected(self):
         self.client.logout()
         r = self.client.get('/advertiser/postbacks/')
-        self.assertRedirects(r, '/login/?next=/advertiser/postbacks/',
+        self.assertRedirects(r, f'{settings.LOGIN_URL}?next=/advertiser/postbacks/',
                              fetch_redirect_response=False)
 
 

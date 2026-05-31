@@ -1,18 +1,4 @@
-"""project URL Configuration
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/2.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
+"""project URL Configuration"""
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
@@ -22,11 +8,15 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from project.views import healthz
+from affiliate_ui.views.general_views import AffiliateLoginView
 
 
 urlpatterns = [
     path('', RedirectView.as_view(url='/login/', permanent=False), name='index'),
     path('healthz', healthz, name='healthz'),
+
+    # Standalone /login/ kept for backward-compat (middleware tests, direct links)
+    path('login/', AffiliateLoginView.as_view(), name='login'),
 
     path('admin/fraud/', include('fraud.urls', namespace='fraud')),
     path('mmp/', include('mmp.urls', namespace='mmp')),
@@ -43,10 +33,10 @@ urlpatterns = [
         name='token_refresh'),
 
     path('advertiser/', include('advertiser_ui.urls', namespace='advertiser_ui')),
+    path('partner/', include('affiliate_ui.urls', namespace='affiliate_ui')),
     path('', include('smartlinks.urls')),
     path('affiliate/', include('affiliate.urls')),
     path('network/', include('network.urls')),
-    path('', include('affiliate_ui.urls', namespace='affiliate_ui')),
     path('', include('tracker.urls')),
     path('api/', include('dictionaries.urls')),
     path('tinymce/', include('tinymce.urls')),

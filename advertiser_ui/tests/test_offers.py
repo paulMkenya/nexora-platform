@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -135,7 +136,7 @@ class OffersListIsolationTestCase(TestCase):
 
     def test_unauthenticated_redirected(self):
         r = self.client.get('/advertiser/offers/')
-        self.assertRedirects(r, '/login/?next=/advertiser/offers/',
+        self.assertRedirects(r, f'{settings.LOGIN_URL}?next=/advertiser/offers/',
                              fetch_redirect_response=False)
 
     def test_non_advertiser_role_gets_403(self):

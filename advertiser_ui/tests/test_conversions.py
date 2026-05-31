@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -98,7 +99,7 @@ class ConversionsListTestCase(TestCase):
     def test_unauthenticated_redirected(self):
         self.client.logout()
         r = self.client.get('/advertiser/conversions/')
-        self.assertRedirects(r, '/login/?next=/advertiser/conversions/',
+        self.assertRedirects(r, f'{settings.LOGIN_URL}?next=/advertiser/conversions/',
                              fetch_redirect_response=False)
 
     def test_non_advertiser_gets_403(self):
@@ -238,7 +239,7 @@ class BulkActionSecurityTestCase(TestCase):
     def test_unauthenticated_bulk_redirected(self):
         r = self.client.post('/advertiser/conversions/bulk/',
                              {'ids': [str(self.adv1_ids[0])], 'action': 'approve'})
-        self.assertRedirects(r, '/login/?next=/advertiser/conversions/bulk/',
+        self.assertRedirects(r, f'{settings.LOGIN_URL}?next=/advertiser/conversions/bulk/',
                              fetch_redirect_response=False)
 
 

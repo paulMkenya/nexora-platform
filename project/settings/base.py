@@ -161,8 +161,8 @@ STATICFILES_STORAGE = (
     'whitenoise.storage.CompressedManifestStaticFilesStorage'
 )
 
-LOGIN_REDIRECT_URL = '/dashboard/'
-LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/partner/dashboard/'
+LOGIN_URL = '/partner/login/'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

@@ -16,7 +16,7 @@ class ReportViewsTest(TestCase):
     def test_offer_report_view_login_required(self):
         self.client.logout()
         response = self.client.get(reverse('affiliate_ui:offer_report'))
-        self.assertRedirects(response, reverse('affiliate_ui:login') + '?next=/reports/offer/')
+        self.assertRedirects(response, reverse('affiliate_ui:login') + '?next=' + reverse('affiliate_ui:offer_report'))
 
     @patch('affiliate_ui.views.report_views.offer_report')
     def test_offer_report_view_renders_with_data(self, mock_offer_report):
