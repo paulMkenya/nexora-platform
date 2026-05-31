@@ -18,6 +18,7 @@ urlpatterns = [
     # Standalone /login/ kept for backward-compat (middleware tests, direct links)
     path('login/', AffiliateLoginView.as_view(), name='login'),
 
+    path('admin/brands/', include('brands.urls', namespace='brands_admin')),
     path('admin/fraud/', include('fraud.urls', namespace='fraud')),
     path('admin/payouts/', include('payouts.urls', namespace='payouts_admin')),
     path('mmp/', include('mmp.urls', namespace='mmp')),

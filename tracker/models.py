@@ -2,10 +2,20 @@ import uuid
 from django.db import models
 from offer.models import Advertiser, Offer, Goal, Currency
 from django.contrib.auth import get_user_model
+from brands.managers import BrandScopedManager
 
 
 class Click(models.Model):
+    objects = BrandScopedManager()
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    brand = models.ForeignKey(
+        'brands.Brand',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='clicks',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     sub1 = models.CharField(max_length=500, default="")
     sub2 = models.CharField(max_length=500, default="")
@@ -65,6 +75,15 @@ class Conversion(models.Model):
     class Meta:
         ordering = ('-created_at',)
 
+    objects = BrandScopedManager()
+
+    brand = models.ForeignKey(
+        'brands.Brand',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='conversions',
+    )
     id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False)
     click_id = models.UUIDField(editable=False, null=True, default=None)
