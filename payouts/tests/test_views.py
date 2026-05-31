@@ -6,9 +6,16 @@ from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 
 from payouts.models import PayoutMethod, PayoutRequest, PayoutSettings, METHOD_PAYPAL
+from user_profile.models import Profile
 
 User = get_user_model()
 CACHES_DUMMY = {'default': {'BACKEND': 'django.core.cache.backends.dummy.DummyCache'}}
+
+
+def _approve(user):
+    user.profile.affiliate_status = Profile.AffiliateStatus.APPROVED
+    user.profile.email_verified = True
+    user.profile.save()
 
 
 @override_settings(CACHES=CACHES_DUMMY)
@@ -16,6 +23,7 @@ class AffiliatePayoutsViewTest(TestCase):
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='affpay', password='pass')
+        _approve(self.user)
         self.client.force_login(self.user)
 
     def test_payouts_page_200(self):

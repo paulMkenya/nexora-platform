@@ -11,6 +11,12 @@ class Profile(models.Model):
         AFFILIATE_MANAGER = 'AFFILIATE_MANAGER', 'Affiliate Manager'
         NETWORK_ADMIN = 'NETWORK_ADMIN', 'Network Admin'
 
+    class AffiliateStatus(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        APPROVED = 'APPROVED', 'Approved'
+        REJECTED = 'REJECTED', 'Rejected'
+        SUSPENDED = 'SUSPENDED', 'Suspended'
+
     brand = models.ForeignKey(
         'brands.Brand',
         on_delete=models.SET_NULL,
@@ -31,6 +37,20 @@ class Profile(models.Model):
         choices=Role.choices,
         default=Role.AFFILIATE,
     )
+    affiliate_status = models.CharField(
+        max_length=10,
+        choices=AffiliateStatus.choices,
+        default=AffiliateStatus.PENDING,
+    )
+    email_verified = models.BooleanField(default=False)
 
     def __str__(self):
         return self.user.username
+
+    @property
+    def is_affiliate_active(self):
+        return (
+            self.role == self.Role.AFFILIATE
+            and self.affiliate_status == self.AffiliateStatus.APPROVED
+            and self.email_verified
+        )

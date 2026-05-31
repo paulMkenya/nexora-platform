@@ -5,6 +5,13 @@ from django.conf import settings
 
 from offer.models import Offer, Category, Payout, Currency, Goal, ACTIVE_STATUS, PAUSED_STATUS
 from affiliate_ui.views.general_views import generate_tracking_link
+from user_profile.models import Profile
+
+
+def _approve(user):
+    user.profile.affiliate_status = Profile.AffiliateStatus.APPROVED
+    user.profile.email_verified = True
+    user.profile.save()
 
 
 class OfferListViewTest(TestCase):
@@ -12,6 +19,7 @@ class OfferListViewTest(TestCase):
         self.username = 'testuser_offers'
         self.password = 'testpass123'
         self.user = User.objects.create_user(username=self.username, password=self.password)
+        _approve(self.user)
         self.offers_url = reverse('affiliate_ui:offer_list')
         self.login_url = reverse('affiliate_ui:login')
 
@@ -73,6 +81,7 @@ class OfferDetailViewTest(TestCase):
         self.username = 'testuser_offer_detail'
         self.password = 'testpass123'
         self.user = User.objects.create_user(username=self.username, password=self.password)
+        _approve(self.user)
         self.login_url = reverse('affiliate_ui:login')
 
         self.currency = Currency.objects.create(code='USD', name='US Dollar')

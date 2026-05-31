@@ -1,0 +1,25 @@
+{% extends 'affiliate_ui/base.html' %}
+
+{% block title %}Email Verification — {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-md-6 text-center">
+    {% if success %}
+    <div class="alert alert-success">
+      <h4>Email verified!</h4>
+      <p>Your email address has been confirmed. Your account is now pending review by our team — we'll notify you once approved.</p>
+    </div>
+    <a href="{% url 'affiliate_ui:dashboard' %}" class="btn btn-primary">Go to dashboard</a>
+    {% else %}
+    <div class="alert alert-danger">
+      <h4>Verification link invalid or expired</h4>
+      <p>This link may have expired (valid for 24 hours) or already been used. Please contact support if you need a new link.</p>
+    </div>
+    {% if brand.support_email %}
+    <a href="mailto:{{ brand.support_email }}" class="btn btn-outline-secondary">Contact support</a>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

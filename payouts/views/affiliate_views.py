@@ -5,6 +5,7 @@ from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from affiliate_ui.gates import require_approved_affiliate
 from payouts.crypto.validators import SUPPORTED_NETWORKS, validate_address
 from payouts.models import (
     METHOD_CHOICES, METHOD_CRYPTO, PayoutMethod, PayoutRequest,
@@ -15,7 +16,7 @@ from payouts.services import get_or_create_payout_settings, get_unpaid_earnings
 from datetime import date, timedelta
 
 
-@login_required
+@require_approved_affiliate
 def payouts_home(request):
     methods = PayoutMethod.objects.filter(affiliate=request.user)
     requests_qs = PayoutRequest.objects.filter(affiliate=request.user).select_related('payout_method')[:50]
@@ -37,7 +38,7 @@ def payouts_home(request):
     return render(request, 'payouts/affiliate_payouts.html', ctx)
 
 
-@login_required
+@require_approved_affiliate
 @require_POST
 def add_payout_method(request):
     method = request.POST.get('method', '').strip()
@@ -82,7 +83,7 @@ def add_payout_method(request):
     return redirect('affiliate_ui:payouts')
 
 
-@login_required
+@require_approved_affiliate
 @require_POST
 def delete_payout_method(request, pk):
     pm = get_object_or_404(PayoutMethod, pk=pk, affiliate=request.user)
@@ -91,7 +92,7 @@ def delete_payout_method(request, pk):
     return redirect('affiliate_ui:payouts')
 
 
-@login_required
+@require_approved_affiliate
 @require_POST
 def set_default_method(request, pk):
     pm = get_object_or_404(PayoutMethod, pk=pk, affiliate=request.user)
@@ -100,7 +101,7 @@ def set_default_method(request, pk):
     return redirect('affiliate_ui:payouts')
 
 
-@login_required
+@require_approved_affiliate
 @require_POST
 def request_early_payout(request):
     ps = get_or_create_payout_settings(request.user)
@@ -144,7 +145,7 @@ def request_early_payout(request):
     return redirect('affiliate_ui:payouts')
 
 
-@login_required
+@require_approved_affiliate
 @require_POST
 def update_payout_settings(request):
     ps = get_or_create_payout_settings(request.user)
