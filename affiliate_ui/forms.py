@@ -2,6 +2,8 @@ from django import forms
 from django.contrib.auth import get_user_model, password_validation
 from django.core.exceptions import ValidationError
 
+from user_profile.geo import country_choices
+
 User = get_user_model()
 
 
@@ -12,7 +14,12 @@ class AffiliateRegistrationForm(forms.Form):
     password1 = forms.CharField(widget=forms.PasswordInput, label='Password')
     password2 = forms.CharField(widget=forms.PasswordInput, label='Confirm password')
     traffic_source = forms.CharField(max_length=100, required=False, label='Traffic source (optional)')
-    country = forms.CharField(max_length=2, required=False, label='Country code (optional, ISO-3166-1 alpha-2)')
+    country = forms.ChoiceField(required=False, label='Country (optional)')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Single source of country data: countries_plus. Stored as ISO alpha-2.
+        self.fields['country'].choices = country_choices()
 
     def clean_email(self):
         email = self.cleaned_data['email'].lower()

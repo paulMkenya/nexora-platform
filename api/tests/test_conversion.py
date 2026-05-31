@@ -16,7 +16,8 @@ class ConversionTestCase(APITestCase):
             id=1, is_staff=True, is_superuser=True, **credentials)
         self.client.login(**credentials)
         Offer.objects.create(id=1, title='a', description='a')
-        Currency.objects.create(id=1, code="USD", name="Dollar")
+        # USD is pre-seeded by the offer currency data migration; reuse it.
+        Currency.objects.get_or_create(code="USD", defaults={"name": "Dollar"})
         Goal.objects.create(id=6, name='Lead')
 
     def test_create(self):

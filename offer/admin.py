@@ -105,9 +105,11 @@ class PayoutAdmin(admin.ModelAdmin):
 
 @admin.register(Currency)
 class CurrencyAdmin(admin.ModelAdmin):
-    pass
+    list_display = ('code', 'name', 'symbol')
+    search_fields = ('code', 'name')
 
 
 @admin.register(Advertiser)
 class AdvertiserAdmin(admin.ModelAdmin):
-    pass
+    list_display = ('company', 'email', 'country', 'brand')
+    list_filter = ('country',)

@@ -43,6 +43,8 @@ class Profile(models.Model):
         default=AffiliateStatus.PENDING,
     )
     email_verified = models.BooleanField(default=False)
+    # ISO-3166-1 alpha-2 country code (sourced from countries_plus). Blank = unset.
+    country = models.CharField(max_length=2, default='', blank=True)
 
     def __str__(self):
         return self.user.username

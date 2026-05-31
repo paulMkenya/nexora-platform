@@ -1,8 +1,47 @@
+import datetime
+
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from brands.models import Brand
+
+
+@staff_member_required
+def dashboard(request):
+    """Unified network-admin home with nav cards + at-a-glance stats.
+
+    Brand-scoped where a brand is resolved on the request (affiliates); payout
+    and fraud counts are network-wide as those models are not brand-scoped.
+    """
+    from user_profile.models import Profile
+    from payouts.models import PayoutRequest, STATUS_PENDING
+    from tracker.models import Conversion
+
+    brand = getattr(request, 'brand', None)
+
+    affiliate_qs = Profile.objects.filter(role=Profile.Role.AFFILIATE)
+    if brand:
+        affiliate_qs = affiliate_qs.filter(brand=brand)
+    pending_affiliates = affiliate_qs.filter(
+        affiliate_status=Profile.AffiliateStatus.PENDING
+    ).count()
+
+    pending_payouts = PayoutRequest.objects.filter(status=STATUS_PENDING).count()
+
+    since = timezone.now() - datetime.timedelta(hours=24)
+    flagged_conversions = Conversion.objects.filter(
+        created_at__gte=since, fraud_score__gt=0
+    ).count()
+
+    ctx = {
+        'active': 'dashboard',
+        'pending_affiliates': pending_affiliates,
+        'pending_payouts': pending_payouts,
+        'flagged_conversions': flagged_conversions,
+    }
+    return render(request, 'admin_shared/dashboard.html', ctx)
 
 
 @staff_member_required

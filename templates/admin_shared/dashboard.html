@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Operator Dashboard — {{ brand.name|default:"Nexora" }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-full">
+
+{% include 'admin_shared/nav.html' %}
+
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+  <div class="mb-8">
+    <h1 class="text-2xl font-semibold text-gray-800">Operator Dashboard</h1>
+    <p class="text-gray-500 text-sm mt-1">
+      {% if brand %}{{ brand.name }} network{% else %}All networks{% endif %} — at-a-glance status and tools.
+    </p>
+  </div>
+
+  {# ── At-a-glance stats ── #}
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+    <a href="/admin/affiliates/?status=PENDING"
+       class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="text-3xl font-bold text-amber-500">{{ pending_affiliates }}</div>
+      <div class="text-sm text-gray-600 mt-1">Pending affiliates</div>
+    </a>
+    <a href="/admin/payouts/?status=pending"
+       class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="text-3xl font-bold text-indigo-600">{{ pending_payouts }}</div>
+      <div class="text-sm text-gray-600 mt-1">Pending payouts</div>
+    </a>
+    <a href="/admin/fraud/"
+       class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="text-3xl font-bold text-red-600">{{ flagged_conversions }}</div>
+      <div class="text-sm text-gray-600 mt-1">Flagged conversions (24h)</div>
+    </a>
+  </div>
+
+  {# ── Tool cards ── #}
+  <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Admin Tools</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+    <a href="/admin/affiliates/" class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="font-semibold text-gray-800">Affiliate Management</div>
+      <div class="text-sm text-gray-500 mt-1">Review, approve, reject and suspend affiliate accounts.</div>
+    </a>
+
+    <a href="/admin/payouts/" class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="font-semibold text-gray-800">Payouts</div>
+      <div class="text-sm text-gray-500 mt-1">Approve, dispatch and export affiliate payout requests.</div>
+    </a>
+
+    <a href="/admin/fraud/" class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="font-semibold text-gray-800">Fraud Review</div>
+      <div class="text-sm text-gray-500 mt-1">Inspect flagged clicks/conversions and manage whitelists.</div>
+    </a>
+
+    <a href="/admin/brands/" class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="font-semibold text-gray-800">Brands</div>
+      <div class="text-sm text-gray-500 mt-1">Create and configure white-label brands.</div>
+    </a>
+
+    <a href="/api/schema/swagger-ui/" class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="font-semibold text-gray-800">Reporting / API Docs</div>
+      <div class="text-sm text-gray-500 mt-1">Swagger UI for the public reporting & network API.</div>
+    </a>
+
+    <a href="/admin/" class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">
+      <div class="font-semibold text-gray-800">Django Model Admin</div>
+      <div class="text-sm text-gray-500 mt-1">Raw database admin for all models.</div>
+    </a>
+
+  </div>
+</div>
+
+</body>
+</html>
