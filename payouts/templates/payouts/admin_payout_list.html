@@ -8,7 +8,14 @@
 <body class="bg-light">
 {% include 'admin_shared/nav.html' with active='payouts' %}
 <div class="container-fluid py-4">
-  <h2>Payout Requests</h2>
+  <h2>
+    Payout Requests
+    {% if show_all_brands %}
+      <span class="badge bg-dark align-middle" title="Superuser view across every brand">All brands</span>
+    {% elif brand %}
+      <span class="badge bg-secondary align-middle">{{ brand.name }}</span>
+    {% endif %}
+  </h2>
   <p><a href="{% url 'payouts_admin:batch_list' %}">Batch History</a></p>
 
   {# Filters #}

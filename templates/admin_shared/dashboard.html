@@ -13,9 +13,15 @@
 <div class="max-w-7xl mx-auto px-4 py-8">
 
   <div class="mb-8">
-    <h1 class="text-2xl font-semibold text-gray-800">Operator Dashboard</h1>
+    <h1 class="text-2xl font-semibold text-gray-800">
+      Operator Dashboard
+      {% if show_all_brands %}
+        <span class="ml-2 inline-flex items-center rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-medium text-white align-middle"
+              title="Superuser view: counts span every brand">All brands</span>
+      {% endif %}
+    </h1>
     <p class="text-gray-500 text-sm mt-1">
-      {% if brand %}{{ brand.name }} network{% else %}All networks{% endif %} — at-a-glance status and tools.
+      {% if show_all_brands %}All networks{% elif brand %}{{ brand.name }} network{% else %}Unscoped{% endif %} — at-a-glance status and tools.
     </p>
   </div>
 

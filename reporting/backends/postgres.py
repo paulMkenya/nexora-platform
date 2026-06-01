@@ -53,6 +53,10 @@ class PostgresMatViewBackend(AggregationBackend):
         return ConversionHourlyStats if delta <= 3 else ConversionDailyStats
 
     def _apply_filters(self, qs, filters: dict):
+        # offer_ids is an authorization allow-list (e.g. an advertiser's own
+        # offers). Present-but-empty means "match nothing" — never "no filter".
+        if filters.get('offer_ids') is not None:
+            qs = qs.filter(offer_id__in=filters['offer_ids'])
         if filters.get('offer_id'):
             qs = qs.filter(offer_id=filters['offer_id'])
         if filters.get('country'):
@@ -154,6 +158,17 @@ class PostgresMatViewBackend(AggregationBackend):
 
         select_sql = ', '.join(select_parts) + ', ' if select_parts else ''
 
+        # Authorization allow-list (e.g. an advertiser's own offers). Applied via
+        # the coalesced offer_id so it holds across both sides of the FULL OUTER
+        # JOIN. Present-but-empty means "match nothing", so short-circuit.
+        offer_ids = filters.get('offer_ids')
+        offer_filter_sql = ''
+        if offer_ids is not None:
+            if not offer_ids:
+                return ReportPage(results=[], next_cursor=None)
+            placeholders = ', '.join(['%s'] * len(offer_ids))
+            offer_filter_sql = f' AND COALESCE(c.offer_id, v.offer_id) IN ({placeholders})'
+
         sql = f"""
             SELECT
                 {select_sql}
@@ -180,11 +195,14 @@ class PostgresMatViewBackend(AggregationBackend):
             WHERE (c.brand_id = %s OR v.brand_id = %s)
               AND (c.period >= %s OR v.period >= %s)
               AND (c.period <= %s OR v.period <= %s)
+            {offer_filter_sql}
             {f'GROUP BY {group_by_sql}' if group_by_sql else ''}
             ORDER BY {order_by_sql}
         """
 
         revenue_args = [brand_id, brand_id, date_from, date_from, date_to, date_to]
+        if offer_ids:
+            revenue_args.extend(offer_ids)
 
         offset = _decode_cursor(cursor) if cursor else 0
         with connection.cursor() as cur:

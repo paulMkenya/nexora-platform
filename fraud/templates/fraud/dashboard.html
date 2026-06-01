@@ -15,7 +15,15 @@
   {# ── Header ── #}
   <div class="flex items-center justify-between mb-8">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">Fraud Dashboard</h1>
+      <h1 class="text-2xl font-bold text-gray-900">
+        Fraud Dashboard
+        {% if show_all_brands %}
+          <span class="ml-2 inline-flex items-center rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-medium text-white align-middle"
+                title="Superuser view across every brand">All brands</span>
+        {% elif brand %}
+          <span class="ml-2 inline-flex items-center rounded-full bg-gray-200 px-2.5 py-0.5 text-xs font-medium text-gray-700 align-middle">{{ brand.name }}</span>
+        {% endif %}
+      </h1>
       <p class="text-sm text-gray-500 mt-1">Last 24 hours</p>
     </div>
     <a href="/admin/" class="text-sm text-indigo-600 hover:underline">← Django Admin</a>
