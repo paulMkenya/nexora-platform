@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from reporting.backends import get_backend
+from reporting.permissions import IsAdvertiserOrNetworkAdmin, get_advertiser, is_network_admin
 
 _PAGE_SIZE = 100
 _DATE_FMT = '%Y-%m-%d'
@@ -40,6 +41,30 @@ def _build_filters(request: Request) -> dict:
         'traffic_source': request.query_params.get('traffic_source'),
         'affiliate_id': request.query_params.get('affiliate_id'),
     }
+
+
+def _scope_filters_to_caller(request: Request, filters: dict) -> dict:
+    """Restrict the report to what the caller is allowed to see.
+
+    Network admins (and superusers) get brand-wide aggregates unchanged. An
+    advertiser is hard-scoped to their own offers within request.brand by
+    injecting an ``offer_ids`` allow-list into the filters — this is enforced in
+    addition to brand scoping, never instead of it. An advertiser with no offers
+    yields an empty list, which the backend treats as "match nothing".
+    """
+    if is_network_admin(request.user):
+        return filters
+
+    advertiser = get_advertiser(request.user)
+    if advertiser is not None:
+        from offer.models import Offer
+        offer_ids = list(
+            Offer.objects
+            .filter(advertiser=advertiser, brand=request.brand)
+            .values_list('id', flat=True)
+        )
+        filters['offer_ids'] = offer_ids
+    return filters
 
 
 def _etag(brand_id: int, params: dict, results: list) -> str:
@@ -79,7 +104,7 @@ _COMMON_PARAMS = [
 
 
 class ClicksReportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdvertiserOrNetworkAdmin]
 
     @extend_schema(parameters=_COMMON_PARAMS, summary='Clicks report')
     def get(self, request: Request) -> Response:
@@ -89,7 +114,7 @@ class ClicksReportView(APIView):
         date_from = _parse_date(request.query_params.get('date_from'), now - timedelta(days=7))
         date_to = _parse_date(request.query_params.get('date_to'), now)
         group_by = _parse_group_by(request.query_params.get('group_by'))
-        filters = _build_filters(request)
+        filters = _scope_filters_to_caller(request, _build_filters(request))
         cursor = request.query_params.get('cursor')
         page_size = min(int(request.query_params.get('page_size', _PAGE_SIZE)), 1000)
 
@@ -107,7 +132,7 @@ class ClicksReportView(APIView):
 
 
 class ConversionsReportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdvertiserOrNetworkAdmin]
 
     @extend_schema(parameters=_COMMON_PARAMS, summary='Conversions report')
     def get(self, request: Request) -> Response:
@@ -117,7 +142,7 @@ class ConversionsReportView(APIView):
         date_from = _parse_date(request.query_params.get('date_from'), now - timedelta(days=7))
         date_to = _parse_date(request.query_params.get('date_to'), now)
         group_by = _parse_group_by(request.query_params.get('group_by'))
-        filters = _build_filters(request)
+        filters = _scope_filters_to_caller(request, _build_filters(request))
         cursor = request.query_params.get('cursor')
         page_size = min(int(request.query_params.get('page_size', _PAGE_SIZE)), 1000)
 
@@ -135,7 +160,7 @@ class ConversionsReportView(APIView):
 
 
 class RevenueReportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdvertiserOrNetworkAdmin]
 
     @extend_schema(parameters=_COMMON_PARAMS, summary='Revenue report with EPC and CR')
     def get(self, request: Request) -> Response:
@@ -145,7 +170,7 @@ class RevenueReportView(APIView):
         date_from = _parse_date(request.query_params.get('date_from'), now - timedelta(days=7))
         date_to = _parse_date(request.query_params.get('date_to'), now)
         group_by = _parse_group_by(request.query_params.get('group_by'))
-        filters = _build_filters(request)
+        filters = _scope_filters_to_caller(request, _build_filters(request))
         cursor = request.query_params.get('cursor')
         page_size = min(int(request.query_params.get('page_size', _PAGE_SIZE)), 1000)
 

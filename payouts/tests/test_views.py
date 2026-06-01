@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 
+from brands.models import Brand
 from payouts.models import PayoutMethod, PayoutRequest, PayoutSettings, METHOD_PAYPAL
 from user_profile.models import Profile
 
@@ -123,6 +124,10 @@ class AdminPayoutViewTest(TestCase):
 
     def test_bulk_approve(self):
         user = User.objects.create_user(username='aff_approve', password='pass')
+        # Payout views are brand-scoped for non-superuser operators; the
+        # affiliate must share the operator's (default) brand to be actionable.
+        user.profile.brand = Brand.get_default()
+        user.profile.save(update_fields=['brand'])
         req = PayoutRequest.objects.create(
             affiliate=user, amount=Decimal('100'), method=METHOD_PAYPAL, status='pending',
         )
@@ -133,6 +138,8 @@ class AdminPayoutViewTest(TestCase):
 
     def test_mark_paid(self):
         user = User.objects.create_user(username='aff_mark', password='pass')
+        user.profile.brand = Brand.get_default()
+        user.profile.save(update_fields=['brand'])
         req = PayoutRequest.objects.create(
             affiliate=user, amount=Decimal('100'), method=METHOD_PAYPAL, status='approved',
         )

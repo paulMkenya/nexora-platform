@@ -1,6 +1,7 @@
 """Network-admin payout views at /admin/payouts/."""
 import csv
 import io
+import logging
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.http import HttpResponse
@@ -8,10 +9,26 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from brands.scoping import sees_all_brands
 from payouts.models import (
     METHOD_CHOICES, PayoutBatch, PayoutRequest,
     STATUS_APPROVED, STATUS_PAID,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _scope_payouts(request, qs):
+    """Confine a PayoutRequest queryset to request.brand unless superuser.
+
+    Payout requests carry no brand of their own; their brand is the affiliate's
+    (Profile.brand). Brand-scoped operators only ever see/act on their own
+    brand's requests; orphaned requests (affiliate without a brand) are excluded
+    here and remain visible to superusers only.
+    """
+    if sees_all_brands(request.user):
+        return qs
+    return qs.filter(affiliate__profile__brand=getattr(request, 'brand', None))
 
 
 @staff_member_required
@@ -19,11 +36,20 @@ def payout_list(request):
     status_filter = request.GET.get('status', '')
     provider_filter = request.GET.get('provider', '')
 
-    qs = PayoutRequest.objects.select_related('affiliate', 'payout_method').order_by('-created_at')
+    qs = _scope_payouts(
+        request,
+        PayoutRequest.objects.select_related('affiliate', 'payout_method').order_by('-created_at'),
+    )
     if status_filter:
         qs = qs.filter(status=status_filter)
     if provider_filter:
         qs = qs.filter(method=provider_filter)
+
+    show_all_brands = sees_all_brands(request.user)
+    if show_all_brands:
+        orphans = PayoutRequest.objects.filter(affiliate__profile__brand__isnull=True).count()
+        if orphans:
+            logger.warning('payout_list: %s payout request(s) have no brand link', orphans)
 
     from payouts.models import REQUEST_STATUS_CHOICES
     ctx = {
@@ -32,6 +58,7 @@ def payout_list(request):
         'provider_filter': provider_filter,
         'status_choices': REQUEST_STATUS_CHOICES,
         'method_choices': METHOD_CHOICES,
+        'show_all_brands': show_all_brands,
     }
     return render(request, 'payouts/admin_payout_list.html', ctx)
 
@@ -42,7 +69,8 @@ def bulk_approve(request):
     ids = request.POST.getlist('ids')
     if not ids:
         return redirect('payouts_admin:payout_list')
-    PayoutRequest.objects.filter(pk__in=ids, status__in=['pending']).update(status=STATUS_APPROVED)
+    _scope_payouts(request, PayoutRequest.objects.filter(pk__in=ids, status__in=['pending'])).update(
+        status=STATUS_APPROVED)
     return redirect('payouts_admin:payout_list')
 
 
@@ -54,7 +82,7 @@ def mark_paid(request):
         return redirect('payouts_admin:payout_list')
     tx_ref = request.POST.get('tx_ref', '')
     now = timezone.now()
-    reqs = PayoutRequest.objects.filter(pk__in=ids)
+    reqs = list(_scope_payouts(request, PayoutRequest.objects.filter(pk__in=ids)))
     for req in reqs:
         req.status = STATUS_PAID
         req.paid_at = now
@@ -70,7 +98,7 @@ def dispatch_approved(request):
     """Dispatch all approved payout requests through their provider."""
     from payouts.providers.dispatch import dispatch_payout
     ids = request.POST.getlist('ids')
-    qs = PayoutRequest.objects.filter(status=STATUS_APPROVED)
+    qs = _scope_payouts(request, PayoutRequest.objects.filter(status=STATUS_APPROVED))
     if ids:
         qs = qs.filter(pk__in=ids)
     dispatched = 0
@@ -85,9 +113,9 @@ def dispatch_approved(request):
 def download_batch_csv(request):
     """Download CSV of pending/approved requests grouped by provider."""
     provider = request.GET.get('provider', '')
-    qs = PayoutRequest.objects.filter(
+    qs = _scope_payouts(request, PayoutRequest.objects.filter(
         status__in=[STATUS_APPROVED, 'pending']
-    ).select_related('affiliate', 'payout_method')
+    ).select_related('affiliate', 'payout_method'))
     if provider:
         qs = qs.filter(method=provider)
 

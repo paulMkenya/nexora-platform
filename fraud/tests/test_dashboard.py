@@ -40,9 +40,13 @@ class TestFraudDashboard(TestCase):
         self.assertContains(response, 'Fraud Dashboard')
 
     def test_shows_flagged_clicks(self):
+        # The dashboard is brand-scoped for non-superusers, so the click must
+        # belong to the brand resolved on the request (the seeded default brand).
+        from brands.models import Brand
         offer = Offer.objects.create(title='Offer', tracking_link='http://x.com')
         Click.objects.create(
             ip='9.9.9.9', ua='bot', offer=offer, affiliate=self.non_staff,
+            brand=Brand.get_default(),
             revenue=Decimal('0'), payout=Decimal('0'),
             fraud_score=80, fraud_reasons=['bot_ua:bot'], is_bot=True,
         )

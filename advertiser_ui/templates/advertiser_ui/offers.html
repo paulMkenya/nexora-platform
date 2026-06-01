@@ -12,6 +12,18 @@
 
 {% else %}
 
+  {# ── Header actions ── #}
+  <div class="mb-5 flex items-center justify-between">
+    <p class="text-sm text-gray-500">{{ total_count }} offer{{ total_count|pluralize }}</p>
+    <a href="{% url 'advertiser_ui:offer_create' %}"
+       class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+      </svg>
+      New Offer
+    </a>
+  </div>
+
   {# ── Status filter pills ── #}
   {% url 'advertiser_ui:offers' as offers_url %}
   <div class="mb-5 flex flex-wrap gap-2">
@@ -56,6 +68,7 @@
           <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Clicks (30d)</th>
           <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Convs (30d)</th>
           <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Revenue (30d)</th>
+          <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-100 bg-white">
@@ -96,6 +109,23 @@
 
           <td class="px-6 py-4 text-right font-semibold text-indigo-700">
             ${{ offer.revenue_30d|floatformat:2 }}
+          </td>
+
+          <td class="px-6 py-4">
+            <div class="flex items-center justify-end gap-2">
+              <a href="{% url 'advertiser_ui:offer_edit' offer.pk %}"
+                 class="text-xs font-medium text-indigo-600 hover:underline">Edit</a>
+              <form method="post" action="{% url 'advertiser_ui:offer_set_status' offer.pk %}" class="inline">
+                {% csrf_token %}
+                {% if offer.status == 'Active' %}
+                  <input type="hidden" name="status" value="Paused">
+                  <button type="submit" class="text-xs font-medium text-yellow-700 hover:underline">Pause</button>
+                {% else %}
+                  <input type="hidden" name="status" value="Active">
+                  <button type="submit" class="text-xs font-medium text-green-700 hover:underline">Activate</button>
+                {% endif %}
+              </form>
+            </div>
           </td>
 
         </tr>

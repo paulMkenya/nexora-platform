@@ -1,0 +1,127 @@
+{% extends 'advertiser_ui/base.html' %}
+
+{% block title %}{% if is_edit %}Edit Offer{% else %}New Offer{% endif %} — Nexora Advertiser{% endblock %}
+{% block page_title %}{% if is_edit %}Edit Offer{% else %}New Offer{% endif %}{% endblock %}
+
+{% block content %}
+
+{% if no_account %}
+  <div class="rounded-lg border border-yellow-300 bg-yellow-50 p-6 text-center">
+    <p class="text-sm font-semibold text-yellow-800">No advertiser account linked.</p>
+  </div>
+{% else %}
+
+  {% if messages %}
+    <div class="mb-4 space-y-2">
+      {% for m in messages %}
+        <div class="rounded-md px-4 py-2 text-sm {% if m.tags == 'error' %}bg-red-50 text-red-700{% elif m.tags == 'warning' %}bg-yellow-50 text-yellow-800{% else %}bg-green-50 text-green-700{% endif %}">{{ m }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post" class="max-w-3xl space-y-6">
+    {% csrf_token %}
+
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1" for="id_title">Title <span class="text-red-500">*</span></label>
+        <input id="id_title" name="title" type="text" required value="{{ data.title }}"
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1" for="id_description">Description</label>
+        <textarea id="id_description" name="description" rows="3"
+                  class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">{{ data.description }}</textarea>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_tracking_link">Tracking link <span class="text-red-500">*</span></label>
+          <input id="id_tracking_link" name="tracking_link" type="text" required value="{{ data.tracking_link }}"
+                 class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_preview_link">Preview link</label>
+          <input id="id_preview_link" name="preview_link" type="text" value="{{ data.preview_link }}"
+                 class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1" for="id_status">Status</label>
+        <select id="id_status" name="status" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if data.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    {# ── Targeting ── #}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
+      <h2 class="text-sm font-semibold text-gray-700">Targeting</h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_countries">Countries</label>
+          <select id="id_countries" name="countries" multiple size="8"
+                  class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+            {% for value, label in country_choices %}
+              <option value="{{ value }}" {% if value in selected_countries %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <p class="mt-1 text-xs text-gray-400">Leave empty to target all countries.</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_categories">Categories</label>
+          <select id="id_categories" name="categories" multiple size="8"
+                  class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+            {% for cat in categories %}
+              <option value="{{ cat.id }}" {% if cat.id|stringformat:'s' in selected_categories %}selected{% endif %}>{{ cat.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    {# ── Initial payout (create only) ── #}
+    {% if not is_edit %}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
+      <h2 class="text-sm font-semibold text-gray-700">Initial payout <span class="font-normal text-gray-400">(optional)</span></h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_payout_amount">Payout</label>
+          <input id="id_payout_amount" name="payout_amount" type="text" placeholder="0.00"
+                 class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_revenue">Revenue</label>
+          <input id="id_revenue" name="revenue" type="text" placeholder="(defaults to payout)"
+                 class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_currency">Currency</label>
+          <select id="id_currency" name="currency" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+            <option value="">—</option>
+            {% for code, label in currency_choices %}
+              <option value="{{ code }}" {% if code == 'USD' %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="flex items-center gap-3">
+      <button type="submit"
+              class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700">
+        {% if is_edit %}Save changes{% else %}Create offer{% endif %}
+      </button>
+      <a href="{% url 'advertiser_ui:offers' %}" class="text-sm text-gray-500 hover:underline">Cancel</a>
+    </div>
+  </form>
+
+{% endif %}
+{% endblock %}

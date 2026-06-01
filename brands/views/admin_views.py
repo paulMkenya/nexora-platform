@@ -45,34 +45,40 @@ def _form_data(request, brand=None):
 def dashboard(request):
     """Unified network-admin home with nav cards + at-a-glance stats.
 
-    Brand-scoped where a brand is resolved on the request (affiliates); payout
-    and fraud counts are network-wide as those models are not brand-scoped.
+    All counts are brand-scoped to request.brand for ordinary operators; a
+    superuser (platform owner) sees network-wide totals across every brand and
+    the page shows an "all brands" indicator.
     """
     from user_profile.models import Profile
     from payouts.models import PayoutRequest, STATUS_PENDING
     from tracker.models import Conversion
+    from brands.scoping import sees_all_brands
 
     brand = getattr(request, 'brand', None)
+    show_all_brands = sees_all_brands(request.user)
 
     affiliate_qs = Profile.objects.filter(role=Profile.Role.AFFILIATE)
-    if brand:
+    payout_qs = PayoutRequest.objects.filter(status=STATUS_PENDING)
+    since = timezone.now() - datetime.timedelta(hours=24)
+    conv_qs = Conversion.objects.filter(created_at__gte=since, fraud_score__gt=0)
+
+    if not show_all_brands:
         affiliate_qs = affiliate_qs.filter(brand=brand)
+        payout_qs = payout_qs.filter(affiliate__profile__brand=brand)
+        conv_qs = conv_qs.filter(brand=brand)
+
     pending_affiliates = affiliate_qs.filter(
         affiliate_status=Profile.AffiliateStatus.PENDING
     ).count()
-
-    pending_payouts = PayoutRequest.objects.filter(status=STATUS_PENDING).count()
-
-    since = timezone.now() - datetime.timedelta(hours=24)
-    flagged_conversions = Conversion.objects.filter(
-        created_at__gte=since, fraud_score__gt=0
-    ).count()
+    pending_payouts = payout_qs.count()
+    flagged_conversions = conv_qs.count()
 
     ctx = {
         'active': 'dashboard',
         'pending_affiliates': pending_affiliates,
         'pending_payouts': pending_payouts,
         'flagged_conversions': flagged_conversions,
+        'show_all_brands': show_all_brands,
     }
     return render(request, 'admin_shared/dashboard.html', ctx)
 

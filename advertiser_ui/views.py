@@ -6,11 +6,13 @@ from django.contrib.auth import logout
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Count
 from django.http import HttpResponse, HttpResponseForbidden
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from offer.models import Offer
+from offer.models import (
+    ACTIVE_STATUS, PAUSED_STATUS, Category, Offer, offer_statuses,
+)
 
 from advertiser.decorators import advertiser_required
 from advertiser_ui.services import (
@@ -319,3 +321,187 @@ def settings_view(request):
 def advertiser_logout(request):
     logout(request)
     return redirect('affiliate_ui:login')
+
+
+# ── offer create / edit / status ────────────────────────────────────────────
+
+def _offer_form_ctx(request, offer=None):
+    """Build the context for offer_form.html (create or edit).
+
+    On a POST re-render the submitted values win (so validation errors don't
+    wipe the form); otherwise we seed from the edited offer, or empty defaults
+    for a fresh create.
+    """
+    from offer.currencies import currency_choices
+    from user_profile.geo import country_choices
+
+    if request.method == 'POST':
+        data = {
+            'title': request.POST.get('title', ''),
+            'description': request.POST.get('description', ''),
+            'tracking_link': request.POST.get('tracking_link', ''),
+            'preview_link': request.POST.get('preview_link', ''),
+            'status': request.POST.get('status', ACTIVE_STATUS),
+        }
+        selected_countries = set(request.POST.getlist('countries'))
+        selected_categories = set(request.POST.getlist('categories'))
+    elif offer is not None:
+        data = {
+            'title': offer.title,
+            'description': offer.description,
+            'tracking_link': offer.tracking_link,
+            'preview_link': offer.preview_link,
+            'status': offer.status,
+        }
+        selected_countries = set(offer.countries.values_list('iso', flat=True))
+        selected_categories = {str(cid) for cid in offer.categories.values_list('id', flat=True)}
+    else:
+        data = {'status': ACTIVE_STATUS}
+        selected_countries = set()
+        selected_categories = set()
+
+    return {
+        'offer': offer,
+        'is_edit': offer is not None,
+        'data': data,
+        'status_choices': offer_statuses,
+        'country_choices': country_choices(include_blank=False),
+        'selected_countries': selected_countries,
+        'categories': Category.objects.all(),
+        'selected_categories': selected_categories,
+        'currency_choices': currency_choices(),
+    }
+
+
+def _apply_offer_targeting(offer, request):
+    """Set the offer's country (countries_plus) and category M2M from POST."""
+    from countries_plus.models import Country
+    iso_codes = [c.strip().upper() for c in request.POST.getlist('countries') if c.strip()]
+    offer.countries.set(Country.objects.filter(iso__in=iso_codes))
+    cat_ids = [c for c in request.POST.getlist('categories') if c.isdigit()]
+    offer.categories.set(Category.objects.filter(id__in=cat_ids))
+
+
+def _maybe_create_initial_payout(offer, request):
+    """Optionally create one Payout row from the create form's payout fields."""
+    from decimal import Decimal, InvalidOperation
+    from offer.models import Currency, FIXED_PAYOUT, Payout
+
+    raw_payout = (request.POST.get('payout_amount') or '').strip()
+    if not raw_payout:
+        return
+    try:
+        payout_val = Decimal(raw_payout)
+        revenue_val = Decimal((request.POST.get('revenue') or '').strip() or raw_payout)
+    except (InvalidOperation, ValueError):
+        messages.warning(request, 'Payout amount ignored (not a valid number).')
+        return
+    currency = Currency.objects.filter(code=(request.POST.get('currency') or '').strip()).first()
+    if currency is None:
+        messages.warning(request, 'Payout ignored (select a currency).')
+        return
+    Payout.objects.create(
+        offer=offer, revenue=revenue_val, payout=payout_val,
+        currency=currency, goal_value='1', type=FIXED_PAYOUT,
+    )
+
+
+def _validate_offer_post(request):
+    """Return (title, tracking_link, status, errors) parsed from the request."""
+    title = (request.POST.get('title') or '').strip()
+    tracking_link = (request.POST.get('tracking_link') or '').strip()
+    status = request.POST.get('status', ACTIVE_STATUS)
+    if status not in dict(offer_statuses):
+        status = ACTIVE_STATUS
+    errors = []
+    if not title:
+        errors.append('Title is required.')
+    if not tracking_link:
+        errors.append('Tracking link is required.')
+    return title, tracking_link, status, errors
+
+
+@advertiser_required
+def offer_create(request):
+    advertiser = _get_advertiser(request)
+    if not advertiser:
+        return render(request, 'advertiser_ui/offer_form.html', {'no_account': True})
+
+    if request.method == 'POST':
+        title, tracking_link, status, errors = _validate_offer_post(request)
+        if errors:
+            for err in errors:
+                messages.error(request, err)
+            return render(request, 'advertiser_ui/offer_form.html', _offer_form_ctx(request))
+
+        offer = Offer.objects.create(
+            title=title,
+            description=(request.POST.get('description') or '').strip(),
+            tracking_link=tracking_link,
+            preview_link=(request.POST.get('preview_link') or '').strip(),
+            status=status,
+            advertiser=advertiser,
+            brand=getattr(request, 'brand', None),
+        )
+        _apply_offer_targeting(offer, request)
+        _maybe_create_initial_payout(offer, request)
+        messages.success(request, f'Offer "{offer.title}" created.')
+        return redirect('advertiser_ui:offers')
+
+    return render(request, 'advertiser_ui/offer_form.html', _offer_form_ctx(request))
+
+
+def _get_own_offer(request, advertiser, offer_id):
+    """Fetch an offer strictly scoped to this advertiser AND request.brand."""
+    return get_object_or_404(
+        Offer, pk=offer_id, advertiser=advertiser, brand=getattr(request, 'brand', None),
+    )
+
+
+@advertiser_required
+def offer_edit(request, offer_id):
+    advertiser = _get_advertiser(request)
+    if not advertiser:
+        return HttpResponseForbidden()
+    offer = _get_own_offer(request, advertiser, offer_id)
+
+    if request.method == 'POST':
+        title, tracking_link, status, errors = _validate_offer_post(request)
+        if not request.POST.get('status'):
+            status = offer.status
+        if errors:
+            for err in errors:
+                messages.error(request, err)
+            return render(request, 'advertiser_ui/offer_form.html', _offer_form_ctx(request, offer))
+
+        offer.title = title
+        offer.description = (request.POST.get('description') or '').strip()
+        offer.tracking_link = tracking_link
+        offer.preview_link = (request.POST.get('preview_link') or '').strip()
+        offer.status = status
+        offer.save()
+        _apply_offer_targeting(offer, request)
+        messages.success(request, f'Offer "{offer.title}" updated.')
+        return redirect('advertiser_ui:offers')
+
+    return render(request, 'advertiser_ui/offer_form.html', _offer_form_ctx(request, offer))
+
+
+@require_POST
+@advertiser_required
+def offer_set_status(request, offer_id):
+    """Pause/activate (or set any valid status) for one of the advertiser's offers."""
+    advertiser = _get_advertiser(request)
+    if not advertiser:
+        return HttpResponseForbidden()
+    offer = _get_own_offer(request, advertiser, offer_id)
+
+    target = request.POST.get('status', '')
+    if target not in dict(offer_statuses):
+        # No explicit target → toggle between Active and Paused.
+        target = PAUSED_STATUS if offer.status == ACTIVE_STATUS else ACTIVE_STATUS
+
+    offer.status = target
+    offer.save(update_fields=['status'])
+    messages.success(request, f'Offer "{offer.title}" set to {target}.')
+    return redirect('advertiser_ui:offers')
