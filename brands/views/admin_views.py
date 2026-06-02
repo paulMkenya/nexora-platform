@@ -6,6 +6,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
+from brands.email import send_test_email
 from brands.models import Brand
 from brands.permissions import brand_admin_required, platform_owner_required
 from brands.scoping import operator_brand
@@ -207,6 +208,17 @@ def brand_email_settings(request):
         return redirect('/admin/dashboard/')
 
     if request.method == 'POST':
+        # "Send test email" uses the brand's currently-SAVED settings (not the
+        # unsaved form), and reports the outcome inline via messages.
+        if request.POST.get('action') == 'test':
+            to_address = request.user.email
+            if not to_address:
+                messages.error(request, 'Your account has no email address to send the test to.')
+            else:
+                ok, msg = send_test_email(brand, to_address)
+                (messages.success if ok else messages.error)(request, msg)
+            return redirect('brands_admin:email_settings')
+
         brand.smtp_host = request.POST.get('smtp_host', '').strip()
         try:
             brand.smtp_port = int(request.POST.get('smtp_port') or 587)
