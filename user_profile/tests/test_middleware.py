@@ -28,17 +28,17 @@ class RolePortalMiddlewareTestCase(TestCase):
         response = self.client.get('/login/')
         self.assertRedirects(response, '/advertiser/', fetch_redirect_response=False)
 
-    def test_affiliate_manager_redirected_to_admin_on_login_get(self):
+    def test_affiliate_manager_redirected_to_affiliates_on_login_get(self):
         user = self._make_user('mgr', 'pass', Profile.Role.AFFILIATE_MANAGER)
         self.client.force_login(user)
         response = self.client.get('/login/')
-        self.assertRedirects(response, '/admin/', fetch_redirect_response=False)
+        self.assertRedirects(response, '/admin/affiliates/', fetch_redirect_response=False)
 
-    def test_network_admin_redirected_to_admin_on_login_get(self):
+    def test_network_admin_redirected_to_dashboard_on_login_get(self):
         user = self._make_user('nadm', 'pass', Profile.Role.NETWORK_ADMIN)
         self.client.force_login(user)
         response = self.client.get('/login/')
-        self.assertRedirects(response, '/admin/', fetch_redirect_response=False)
+        self.assertRedirects(response, '/admin/dashboard/', fetch_redirect_response=False)
 
     def test_unauthenticated_user_reaches_login_page(self):
         response = self.client.get('/login/')
@@ -56,15 +56,15 @@ class RolePortalMiddlewareTestCase(TestCase):
         response = self.client.post('/login/', {'username': 'adv2', 'password': 'pass'})
         self.assertRedirects(response, '/advertiser/', fetch_redirect_response=False)
 
-    def test_affiliate_manager_post_login_redirected_to_admin(self):
+    def test_affiliate_manager_post_login_redirected_to_affiliates(self):
         self._make_user('mgr2', 'pass', Profile.Role.AFFILIATE_MANAGER)
         response = self.client.post('/login/', {'username': 'mgr2', 'password': 'pass'})
-        self.assertRedirects(response, '/admin/', fetch_redirect_response=False)
+        self.assertRedirects(response, '/admin/affiliates/', fetch_redirect_response=False)
 
-    def test_network_admin_post_login_redirected_to_admin(self):
+    def test_network_admin_post_login_redirected_to_dashboard(self):
         self._make_user('nadm2', 'pass', Profile.Role.NETWORK_ADMIN)
         response = self.client.post('/login/', {'username': 'nadm2', 'password': 'pass'})
-        self.assertRedirects(response, '/admin/', fetch_redirect_response=False)
+        self.assertRedirects(response, '/admin/dashboard/', fetch_redirect_response=False)
 
     def test_post_login_with_next_param_not_overridden(self):
         """When ?next= is present the login view's own redirect is respected."""

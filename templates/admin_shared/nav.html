@@ -19,14 +19,25 @@ Pass `active` in context to highlight the current tool:
 </style>
 <nav class="nx-anav">
   <div class="nx-anav-inner">
+    {% if is_affiliate_manager %}
+    {# Affiliate manager: only their assigned affiliates + logout. #}
+    <a class="nx-anav-brand" href="/admin/affiliates/">{{ brand.name|default:"Nexora" }} · Manager</a>
+    <a class="nx-anav-link {% if active == 'affiliates' %}active{% endif %}" href="/admin/affiliates/">My Affiliates</a>
+    {% else %}
     <a class="nx-anav-brand" href="/admin/dashboard/">{{ brand.name|default:"Nexora" }} · Admin</a>
     <a class="nx-anav-link {% if active == 'dashboard' %}active{% endif %}" href="/admin/dashboard/">Dashboard</a>
     <a class="nx-anav-link {% if active == 'affiliates' %}active{% endif %}" href="/admin/affiliates/">Affiliates</a>
     <a class="nx-anav-link {% if active == 'payouts' %}active{% endif %}" href="/admin/payouts/">Payouts</a>
     <a class="nx-anav-link {% if active == 'fraud' %}active{% endif %}" href="/admin/fraud/">Fraud Review</a>
+    <a class="nx-anav-link {% if active == 'roles' %}active{% endif %}" href="/admin/roles/">{% if is_platform_owner %}Roles &amp; Admins{% else %}Managers{% endif %}</a>
+    {% if is_platform_owner %}
     <a class="nx-anav-link {% if active == 'brands' %}active{% endif %}" href="/admin/brands/">Brands</a>
+    {% endif %}
     <a class="nx-anav-link" href="/api/schema/swagger-ui/">API Docs</a>
+    {% if is_platform_owner %}
     <a class="nx-anav-link" href="/admin/">Django Admin</a>
+    {% endif %}
+    {% endif %}
     <span class="nx-anav-spacer"></span>
     {% if request.user.is_authenticated %}
     <span style="font-size:13px;color:#9ca3af;margin-right:8px;">{{ request.user.get_full_name|default:request.user.username }}</span>
