@@ -14,11 +14,17 @@ class RolePortalMiddleware:
     1. Authenticated user visits the login page (GET) → redirect to their portal.
     2. Successful login POST with no `next` param → override the default
        LOGIN_REDIRECT_URL with the role-based portal URL.
-    3. A non-superuser who reaches the Django *model admin* (``/admin/`` and its
-       model pages) is bounced to their operator portal with a message. The
-       custom operator console (/admin/dashboard/, /admin/affiliates/, …) lives
-       under the same /admin/ prefix but in its own URL namespaces, so it is not
-       affected — only views in the ``admin`` namespace are.
+    3. Lock down the Django *model admin* (``django.contrib.admin`` — the
+       ``admin`` URL namespace):
+         * On a non-platform (brand/tenant) host the model admin and even its
+           login page are never served — the request is redirected to the
+           brand's operator login, so Django branding never leaks onto a
+           white-labelled domain.
+         * On a platform host the model admin works, but an authenticated
+           non-superuser is bounced to their operator portal with a message.
+       The custom operator console (/admin/dashboard/, /admin/affiliates/, …)
+       lives under the same /admin/ prefix but in its own URL namespaces, so it
+       is untouched — only views in the ``admin`` namespace are intercepted.
     """
 
     PORTAL_BY_ROLE = {
@@ -57,25 +63,38 @@ class RolePortalMiddleware:
         return response
 
     def process_view(self, request, view_func, view_args, view_kwargs):
-        """Reserve the Django model admin for the platform owner (superuser).
+        """Gate the Django model admin by host (and, on platform hosts, by role).
 
         Runs in process_view (after MessageMiddleware has initialised
-        ``request._messages``) so it can attach a user-facing message. The custom
-        operator console lives under /admin/ too but in its own URL namespaces,
-        so only views in the ``admin`` namespace are intercepted — and the admin
-        logout view is left alone so brand admins can still sign out.
+        ``request._messages``) so it can attach a user-facing message. Only views
+        in the ``admin`` namespace are intercepted; the custom operator console
+        under /admin/ uses other namespaces and is left alone.
         """
-        if not request.user.is_authenticated or request.user.is_superuser:
-            return None
         match = request.resolver_match
-        if match is None or match.app_name != 'admin' or match.url_name == 'logout':
+        if match is None or match.app_name != 'admin':
             return None
-        messages.info(
-            request,
-            'The Django admin is reserved for the platform owner. '
-            'Here is your operator console.',
-        )
-        return redirect(self._portal_for(request.user))
+
+        host = request.get_host().split(':')[0].lower()
+        if host not in settings.PLATFORM_ADMIN_HOSTS:
+            # Brand/tenant domain: the Django admin (and its login) must never be
+            # shown — not even to superusers or anonymous visitors. Send them to
+            # this brand's operator login instead.
+            return redirect(settings.LOGIN_URL)
+
+        # Platform host: the model admin is for the platform owner only. Bounce
+        # an authenticated non-superuser to their console (leave logout alone).
+        if (
+            request.user.is_authenticated
+            and not request.user.is_superuser
+            and match.url_name != 'logout'
+        ):
+            messages.info(
+                request,
+                'The Django admin is reserved for the platform owner. '
+                'Here is your operator console.',
+            )
+            return redirect(self._portal_for(request.user))
+        return None
 
     def _portal_for(self, user):
         try:

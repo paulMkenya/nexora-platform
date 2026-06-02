@@ -172,6 +172,20 @@ STATICFILES_STORAGE = (
 LOGIN_REDIRECT_URL = '/partner/dashboard/'
 LOGIN_URL = '/partner/login/'
 
+# Hosts on which the Django *model admin* (django.contrib.admin) is allowed.
+# On any other (brand/tenant) host the model admin and its login are never
+# served — requests are redirected to the brand's operator login — so Django
+# branding never leaks onto a white-labelled domain. Defaults to the platform
+# owner's primary domain; override via env (comma-separated).
+PLATFORM_ADMIN_HOSTS = [
+    h.strip().lower()
+    for h in os.environ.get('PLATFORM_ADMIN_HOSTS', 'cpa.cloudtrade.pro').split(',')
+    if h.strip()
+]
+
+# Branding for the Django model admin chrome (see project/urls.py).
+ADMIN_SITE_HEADER = os.environ.get('ADMIN_SITE_HEADER', 'Nexora Platform Admin')
+
 # Email — driven by env. When EMAIL_HOST is set (in .env.prod) real SMTP is used;
 # otherwise we fall back to the console backend so the app never errors on a
 # missing mail server (the messages are logged instead of sent). The test runner
