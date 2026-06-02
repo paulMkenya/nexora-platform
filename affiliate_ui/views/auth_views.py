@@ -6,6 +6,8 @@ connection when configured, and use the brand's host (from the request) for the
 link. Works for every account type — affiliate, brand admin, platform owner —
 since they all share the auth User model.
 """
+import logging
+
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.forms import PasswordResetForm
 from django.core.mail import EmailMultiAlternatives
@@ -14,9 +16,17 @@ from django.urls import reverse_lazy
 
 from brands.email import connection_for_brand, from_email_for_brand
 
+logger = logging.getLogger(__name__)
+
 
 class BrandPasswordResetForm(PasswordResetForm):
-    """PasswordResetForm that sends through a brand-specific connection."""
+    """PasswordResetForm that sends through a brand-specific connection.
+
+    Sending is fail-safe: if the brand's SMTP is misconfigured/unreachable, the
+    error is logged server-side and swallowed so the reset view still renders
+    the normal "done" page. This preserves Django's privacy default (never
+    reveal whether an address exists, never leak SMTP details to the visitor).
+    """
 
     connection = None
 
@@ -29,7 +39,10 @@ class BrandPasswordResetForm(PasswordResetForm):
         if html_email_template_name is not None:
             html = loader.render_to_string(html_email_template_name, context)
             message.attach_alternative(html, 'text/html')
-        message.send()
+        try:
+            message.send(fail_silently=False)
+        except Exception:
+            logger.warning('Password-reset email send failed (to=%s)', to_email, exc_info=True)
 
 
 class BrandPasswordResetView(auth_views.PasswordResetView):
