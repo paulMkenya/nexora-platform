@@ -3,10 +3,10 @@ import logging
 
 from django.contrib.auth import get_user_model, login
 from django.core import signing
-from django.core.mail import send_mail
 from django.shortcuts import redirect, render
 
 from affiliate_ui.forms import AffiliateRegistrationForm
+from brands.email import send_brand_mail
 from user_profile.models import Profile
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ def _send_verification_email(request, user, token):
         f'This link expires in 24 hours.\n'
     )
     try:
-        send_mail(subject, body, None, [user.email], fail_silently=False)
+        send_brand_mail(brand, subject, body, [user.email], fail_silently=False)
     except Exception:
         logger.warning('SMTP not configured — verification URL: %s', verify_url)
 

@@ -7,7 +7,8 @@ from django.contrib import messages
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from brands.models import Brand
-from brands.permissions import platform_owner_required
+from brands.permissions import brand_admin_required, platform_owner_required
+from brands.scoping import operator_brand
 
 
 _BRAND_FORM_FIELDS = (
@@ -189,3 +190,40 @@ def brand_setup(request, pk):
     """Show operator setup instructions after brand creation."""
     brand = get_object_or_404(Brand, pk=pk)
     return render(request, 'brands/admin/brand_setup.html', {'brand': brand})
+
+
+@brand_admin_required
+@require_http_methods(['GET', 'POST'])
+def brand_email_settings(request):
+    """Per-brand outbound SMTP settings.
+
+    A brand admin edits their *own* brand; the platform owner edits the brand of
+    the host they're on. The SMTP password is write-only — it's stored encrypted
+    and never rendered back, so leaving it blank on save keeps the current one.
+    """
+    brand = operator_brand(request.user) or getattr(request, 'brand', None)
+    if brand is None:
+        messages.error(request, 'No brand is associated with your account.')
+        return redirect('/admin/dashboard/')
+
+    if request.method == 'POST':
+        brand.smtp_host = request.POST.get('smtp_host', '').strip()
+        try:
+            brand.smtp_port = int(request.POST.get('smtp_port') or 587)
+        except ValueError:
+            brand.smtp_port = 587
+        brand.smtp_username = request.POST.get('smtp_username', '').strip()
+        brand.smtp_use_tls = request.POST.get('smtp_use_tls') == 'on'
+        brand.smtp_from_email = request.POST.get('smtp_from_email', '').strip()
+        new_password = request.POST.get('smtp_password', '')
+        if new_password:
+            brand.set_smtp_password(new_password)
+        brand.save()
+        messages.success(request, 'Email settings saved.')
+        return redirect('brands_admin:email_settings')
+
+    return render(request, 'brands/admin/email_settings.html', {
+        'brand': brand,
+        'active': 'email_settings',
+        'has_password': bool(brand.smtp_password_encrypted),
+    })

@@ -1,4 +1,19 @@
+import base64
+import hashlib
+
+from cryptography.fernet import Fernet, InvalidToken
+from django.conf import settings
 from django.db import models
+
+
+def _fernet():
+    """Symmetric cipher for brand secrets, keyed off the Django SECRET_KEY.
+
+    Note: encrypted values are tied to SECRET_KEY; rotating it makes stored SMTP
+    passwords undecryptable (they then read as empty and must be re-entered).
+    """
+    key = base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode()).digest())
+    return Fernet(key)
 
 
 class Brand(models.Model):
@@ -14,6 +29,18 @@ class Brand(models.Model):
     terms_url = models.CharField(max_length=500, blank=True, default='')
     privacy_url = models.CharField(max_length=500, blank=True, default='')
     is_default = models.BooleanField(default=False)
+
+    # Per-brand outbound email (SMTP). When configured, the brand's
+    # transactional mail (password resets, approval/verification notices) is sent
+    # through this connection instead of the platform default. The password is
+    # stored Fernet-encrypted; never rendered back to the UI.
+    smtp_host = models.CharField(max_length=255, blank=True, default='')
+    smtp_port = models.PositiveIntegerField(default=587)
+    smtp_username = models.CharField(max_length=255, blank=True, default='')
+    smtp_password_encrypted = models.CharField(max_length=512, blank=True, default='')
+    smtp_use_tls = models.BooleanField(default=True)
+    smtp_from_email = models.CharField(max_length=254, blank=True, default='')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -31,3 +58,23 @@ class Brand(models.Model):
     @classmethod
     def get_default(cls):
         return cls.objects.filter(is_default=True).first() or cls.objects.order_by('id').first()
+
+    # --- per-brand SMTP helpers ---
+
+    def set_smtp_password(self, raw):
+        """Store (or clear) the SMTP password, encrypted at rest."""
+        self.smtp_password_encrypted = _fernet().encrypt(raw.encode()).decode() if raw else ''
+
+    def get_smtp_password(self):
+        """Decrypt the stored SMTP password ('' if unset or undecryptable)."""
+        if not self.smtp_password_encrypted:
+            return ''
+        try:
+            return _fernet().decrypt(self.smtp_password_encrypted.encode()).decode()
+        except (InvalidToken, ValueError):
+            return ''
+
+    @property
+    def smtp_configured(self):
+        """True when this brand has enough to send its own mail."""
+        return bool(self.smtp_host and self.smtp_from_email)
