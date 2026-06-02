@@ -94,6 +94,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'brands.context_processors.brand_context',
+                'brands.context_processors.operator_roles',
             ],
         },
     },

@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from brands.models import Brand
+from brands.permissions import platform_owner_required
 
 
 _BRAND_FORM_FIELDS = (
@@ -52,10 +53,10 @@ def dashboard(request):
     from user_profile.models import Profile
     from payouts.models import PayoutRequest, STATUS_PENDING
     from tracker.models import Conversion
-    from brands.scoping import sees_all_brands
+    from brands.scoping import scope_brand, sees_all_brands
 
-    brand = getattr(request, 'brand', None)
     show_all_brands = sees_all_brands(request.user)
+    brand = scope_brand(request)
 
     affiliate_qs = Profile.objects.filter(role=Profile.Role.AFFILIATE)
     payout_qs = PayoutRequest.objects.filter(status=STATUS_PENDING)
@@ -83,7 +84,7 @@ def dashboard(request):
     return render(request, 'admin_shared/dashboard.html', ctx)
 
 
-@staff_member_required
+@platform_owner_required
 def brand_list(request):
     brands = Brand.objects.all()
     return render(request, 'brands/admin/brand_list.html', {'brands': brands})
@@ -108,7 +109,7 @@ def _validate_new_brand(slug, name, primary_domain, tracking_domain):
     return errors
 
 
-@staff_member_required
+@platform_owner_required
 @require_http_methods(['GET', 'POST'])
 def brand_create(request):
     if request.method == 'POST':
@@ -145,7 +146,7 @@ def brand_create(request):
     })
 
 
-@staff_member_required
+@platform_owner_required
 @require_http_methods(['GET', 'POST'])
 def brand_edit(request, pk):
     brand = get_object_or_404(Brand, pk=pk)
@@ -170,7 +171,7 @@ def brand_edit(request, pk):
     })
 
 
-@staff_member_required
+@platform_owner_required
 @require_http_methods(['POST'])
 def brand_delete(request, pk):
     brand = get_object_or_404(Brand, pk=pk)
@@ -183,7 +184,7 @@ def brand_delete(request, pk):
     return redirect('brands_admin:brand_list')
 
 
-@staff_member_required
+@platform_owner_required
 def brand_setup(request, pk):
     """Show operator setup instructions after brand creation."""
     brand = get_object_or_404(Brand, pk=pk)

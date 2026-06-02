@@ -9,7 +9,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from brands.scoping import sees_all_brands
+from brands.scoping import scope_brand, sees_all_brands
 from payouts.models import (
     METHOD_CHOICES, PayoutBatch, PayoutRequest,
     STATUS_APPROVED, STATUS_PAID,
@@ -19,16 +19,18 @@ logger = logging.getLogger(__name__)
 
 
 def _scope_payouts(request, qs):
-    """Confine a PayoutRequest queryset to request.brand unless superuser.
+    """Confine a PayoutRequest queryset to the operator's own brand unless superuser.
 
     Payout requests carry no brand of their own; their brand is the affiliate's
     (Profile.brand). Brand-scoped operators only ever see/act on their own
-    brand's requests; orphaned requests (affiliate without a brand) are excluded
-    here and remain visible to superusers only.
+    brand's requests — bound to the operator's assigned brand, not the request
+    host, so the console can't be widened by visiting another brand's domain.
+    Orphaned requests (affiliate without a brand) are excluded here and remain
+    visible to superusers only.
     """
     if sees_all_brands(request.user):
         return qs
-    return qs.filter(affiliate__profile__brand=getattr(request, 'brand', None))
+    return qs.filter(affiliate__profile__brand=scope_brand(request))
 
 
 @staff_member_required

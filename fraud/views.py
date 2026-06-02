@@ -7,7 +7,7 @@ from django.shortcuts import render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from brands.scoping import sees_all_brands
+from brands.scoping import scope_brand, sees_all_brands
 from fraud.models import FraudWhitelist
 from tracker.models import Click, Conversion, REJECTED_STATUS
 
@@ -29,7 +29,7 @@ def dashboard(request):
     clicks = Click.objects.all()
     conversions = Conversion.objects.all()
     if not show_all_brands:
-        brand = getattr(request, 'brand', None)
+        brand = scope_brand(request)
         clicks = clicks.filter(brand=brand)
         conversions = conversions.filter(brand=brand)
     elif Click.objects.filter(brand__isnull=True, fraud_score__gt=0).exists():

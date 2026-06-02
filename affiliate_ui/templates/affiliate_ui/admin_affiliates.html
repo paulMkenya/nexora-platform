@@ -36,13 +36,14 @@
           <th>Email verified</th>
           <th>Status</th>
           <th>Joined</th>
-          <th>Actions</th>
+          <th>Manager</th>
+          {% if can_moderate %}<th>Actions</th>{% endif %}
         </tr>
       </thead>
       <tbody>
         {% for profile in profiles %}
         <tr>
-          <td>{{ profile.user.get_full_name|default:profile.user.username }}</td>
+          <td><a href="{% url 'affiliate_admin:detail' profile.pk %}">{{ profile.user.get_full_name|default:profile.user.username }}</a></td>
           <td>{{ profile.user.email }}</td>
           <td>
             {% if profile.country %}
@@ -71,6 +72,23 @@
           </td>
           <td>{{ profile.user.date_joined|date:"Y-m-d" }}</td>
           <td>
+            {% if can_moderate %}
+            <form method="post" action="{% url 'affiliate_admin:assign_manager' profile.pk %}" class="d-flex gap-1">
+              {% csrf_token %}
+              <select name="manager" class="form-select form-select-sm w-auto">
+                <option value="">— Unassigned —</option>
+                {% for m in managers %}
+                <option value="{{ m.pk }}" {% if profile.manager_id == m.pk %}selected{% endif %}>{{ m.username }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-outline-secondary btn-sm">Set</button>
+            </form>
+            {% else %}
+            {{ profile.manager.username|default:"—" }}
+            {% endif %}
+          </td>
+          {% if can_moderate %}
+          <td>
             <div class="btn-group btn-group-sm">
               {% if profile.affiliate_status != 'APPROVED' %}
               <form method="post" action="{% url 'affiliate_admin:approve' profile.pk %}" class="d-inline">
@@ -92,9 +110,10 @@
               {% endif %}
             </div>
           </td>
+          {% endif %}
         </tr>
         {% empty %}
-        <tr><td colspan="7" class="text-center text-muted">No affiliates found.</td></tr>
+        <tr><td colspan="9" class="text-center text-muted">No affiliates found.</td></tr>
         {% endfor %}
       </tbody>
     </table>
