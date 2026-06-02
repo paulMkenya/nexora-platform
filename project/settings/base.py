@@ -172,6 +172,25 @@ STATICFILES_STORAGE = (
 LOGIN_REDIRECT_URL = '/partner/dashboard/'
 LOGIN_URL = '/partner/login/'
 
+# Email — driven by env. When EMAIL_HOST is set (in .env.prod) real SMTP is used;
+# otherwise we fall back to the console backend so the app never errors on a
+# missing mail server (the messages are logged instead of sent). The test runner
+# overrides this with the locmem backend automatically.
+EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
+EMAIL_BACKEND = os.environ.get(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.smtp.EmailBackend' if EMAIL_HOST
+    else 'django.core.mail.backends.console.EmailBackend',
+)
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'true').lower() in ('1', 'true', 'yes')
+EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'false').lower() in ('1', 'true', 'yes')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@cloudtrade.pro')
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+PASSWORD_RESET_TIMEOUT = int(os.environ.get('PASSWORD_RESET_TIMEOUT', str(60 * 60 * 24)))  # 24h
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'public_api.authentication.APIKeyAuthentication',

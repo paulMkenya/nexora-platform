@@ -12,10 +12,10 @@ import logging
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from brands.email import send_brand_mail
 from brands.permissions import affiliate_console_required, brand_admin_required
 from brands.scoping import (
     is_affiliate_manager,
@@ -76,7 +76,7 @@ def _notify_approved(request, user):
         f'Log in at: https://{host}/partner/login/\n'
     )
     try:
-        send_mail(subject, body, None, [user.email], fail_silently=False)
+        send_brand_mail(brand, subject, body, [user.email], fail_silently=False)
     except Exception:
         logger.warning('SMTP not configured — approved notification for %s', user.email)
 
