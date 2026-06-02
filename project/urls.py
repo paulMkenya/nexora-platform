@@ -1,4 +1,5 @@
 """project URL Configuration"""
+from django.conf import settings
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
@@ -9,6 +10,12 @@ from rest_framework_simplejwt.views import (
 from project.views import healthz
 from affiliate_ui.views.general_views import AffiliateLoginView
 from brands.views.admin_views import dashboard as admin_dashboard
+
+# Rebrand the Django model-admin chrome so it never reads "Django administration"
+# (even on the platform owner host).
+admin.site.site_header = settings.ADMIN_SITE_HEADER
+admin.site.site_title = settings.ADMIN_SITE_HEADER
+admin.site.index_title = settings.ADMIN_SITE_HEADER
 
 
 urlpatterns = [

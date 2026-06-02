@@ -42,7 +42,7 @@ Pass `active` in context to highlight the current tool:
     <span class="nx-anav-spacer"></span>
     {% if request.user.is_authenticated %}
     <span style="font-size:13px;color:#9ca3af;margin-right:8px;">{{ request.user.get_full_name|default:request.user.username }}</span>
-    <form class="nx-anav-logout" method="post" action="/admin/logout/">
+    <form class="nx-anav-logout" method="post" action="/partner/logout/">
       {% csrf_token %}
       <button type="submit">Log out</button>
     </form>

@@ -6,7 +6,7 @@ Roles under test:
   * AFFILIATE MGR   = AFFILIATE_MANAGER + Profile.brand; only assigned affiliates.
 """
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from brands.models import Brand
 from user_profile.models import Profile
@@ -55,6 +55,7 @@ class AdminHierarchyBase(TestCase):
         self.aff_b = _user('aff_b1', Profile.Role.AFFILIATE, self.brand_b)
 
 
+@override_settings(PLATFORM_ADMIN_HOSTS=['testserver'])
 class BrandAdminScopeTest(AdminHierarchyBase):
     def test_brand_admin_sees_only_own_brand(self):
         self.client.force_login(self.admin_a)
@@ -93,6 +94,7 @@ class BrandAdminScopeTest(AdminHierarchyBase):
         self.assertEqual(self.client.get('/admin/brands/').status_code, 403)
 
 
+@override_settings(PLATFORM_ADMIN_HOSTS=['testserver'])
 class AffiliateManagerScopeTest(AdminHierarchyBase):
     def test_manager_sees_only_assigned_affiliates(self):
         self.client.force_login(self.mgr_a)
@@ -229,6 +231,7 @@ class RoleAppointmentTest(AdminHierarchyBase):
         self.assertEqual(self.client.get('/admin/roles/').status_code, 403)
 
 
+@override_settings(PLATFORM_ADMIN_HOSTS=['testserver'])
 class PlatformOwnerTest(AdminHierarchyBase):
     def test_owner_sees_all_brands_affiliates(self):
         self.client.force_login(self.owner)
