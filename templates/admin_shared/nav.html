@@ -2,7 +2,7 @@
 Shared network-admin header/nav. Self-contained styling (scoped under .nx-anav)
 so it renders consistently whether the host page uses Bootstrap or Tailwind.
 Pass `active` in context to highlight the current tool:
-  dashboard | affiliates | payouts | fraud | brands
+  dashboard | affiliates | offers | payouts | fraud | brands
 {% endcomment %}
 <style>
   .nx-anav{background:#111827;color:#e5e7eb;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
@@ -27,6 +27,7 @@ Pass `active` in context to highlight the current tool:
     <a class="nx-anav-brand" href="/admin/dashboard/">{{ brand.name|default:"Nexora" }} · Admin</a>
     <a class="nx-anav-link {% if active == 'dashboard' %}active{% endif %}" href="/admin/dashboard/">Dashboard</a>
     <a class="nx-anav-link {% if active == 'affiliates' %}active{% endif %}" href="/admin/affiliates/">Affiliates</a>
+    <a class="nx-anav-link {% if active == 'offers' %}active{% endif %}" href="/admin/offers/">Offers</a>
     <a class="nx-anav-link {% if active == 'payouts' %}active{% endif %}" href="/admin/payouts/">Payouts</a>
     <a class="nx-anav-link {% if active == 'fraud' %}active{% endif %}" href="/admin/fraud/">Fraud Review</a>
     <a class="nx-anav-link {% if active == 'roles' %}active{% endif %}" href="/admin/roles/">{% if is_platform_owner %}Roles &amp; Admins{% else %}Managers{% endif %}</a>

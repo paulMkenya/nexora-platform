@@ -26,6 +26,7 @@ urlpatterns = [
     path('login/', AffiliateLoginView.as_view(), name='login'),
 
     path('admin/dashboard/', admin_dashboard, name='admin_dashboard'),
+    path('admin/offers/', include('brands.offer_urls', namespace='offers_admin')),
     path('admin/roles/', include('brands.role_urls', namespace='roles_admin')),
     path('admin/brands/', include('brands.urls', namespace='brands_admin')),
     path('admin/affiliates/', include('affiliate_ui.admin_urls', namespace='affiliate_admin')),
