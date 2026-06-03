@@ -49,18 +49,53 @@
       </div>
 
       <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1" for="id_status">Status</label>
-        <select id="id_status" name="status" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
-          {% for value, label in status_choices %}
-            <option value="{{ value }}" {% if data.status == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
+        <label class="block text-xs font-medium text-gray-500 mb-1" for="id_icon">Offer image / creative URL</label>
+        <input id="id_icon" name="icon" type="url" value="{{ data.icon }}" placeholder="https://…/creative.png"
+               oninput="document.getElementById('icon_preview').src=this.value"
+               class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+        <div class="mt-2">
+          <img id="icon_preview" src="{{ data.icon }}" alt=""
+               onerror="this.style.display='none'" {% if not data.icon %}style="display:none"{% endif %}
+               class="h-20 w-20 rounded-md border border-gray-200 object-cover bg-gray-50">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_revenue_model">Revenue model</label>
+          <select id="id_revenue_model" name="revenue_model" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+            {% for value, label in revenue_model_choices %}
+              <option value="{{ value }}" {% if data.revenue_model == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1" for="id_status">Status</label>
+          <select id="id_status" name="status" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+            {% for value, label in status_choices %}
+              <option value="{{ value }}" {% if data.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
       </div>
     </div>
 
     {# ── Targeting ── #}
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
       <h2 class="text-sm font-semibold text-gray-700">Targeting</h2>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1" for="id_country_mode">Country targeting</label>
+        <select id="id_country_mode" name="country_mode" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+          {% for value, label in country_mode_choices %}
+            <option value="{{ value }}" {% if data.country_mode == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <p class="mt-1 text-xs text-gray-400">
+          <strong>Global</strong> ignores the list below. <strong>Allow list</strong> = accept only the
+          selected countries. <strong>Block list</strong> = accept everywhere except the selected countries.
+        </p>
+      </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
@@ -71,7 +106,7 @@
               <option value="{{ value }}" {% if value in selected_countries %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
-          <p class="mt-1 text-xs text-gray-400">Leave empty to target all countries.</p>
+          <p class="mt-1 text-xs text-gray-400">Used by the allow / block list modes above.</p>
         </div>
 
         <div>
@@ -79,10 +114,21 @@
           <select id="id_categories" name="categories" multiple size="8"
                   class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
             {% for cat in categories %}
-              <option value="{{ cat.id }}" {% if cat.id|stringformat:'s' in selected_categories %}selected{% endif %}>{{ cat.name }}</option>
+              <option value="{{ cat.id }}" {% if cat.id|stringformat:'s' in selected_categories %}selected{% endif %}>{{ cat.name }}{% if cat.is_adult %} (adult){% endif %}</option>
             {% endfor %}
           </select>
         </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1" for="id_traffic_sources">Accepted traffic sources</label>
+        <select id="id_traffic_sources" name="traffic_sources" multiple size="6"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm">
+          {% for ts in traffic_sources %}
+            <option value="{{ ts.id }}" {% if ts.id|stringformat:'s' in selected_traffic %}selected{% endif %}>{{ ts.name }}</option>
+          {% endfor %}
+        </select>
+        <p class="mt-1 text-xs text-gray-400">Which traffic sources this offer accepts. Leave empty to accept any.</p>
       </div>
     </div>
 

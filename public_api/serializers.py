@@ -45,7 +45,7 @@ class AdvertiserOfferSerializer(serializers.ModelSerializer):
         model = Offer
         fields = (
             'id', 'title', 'description', 'tracking_link', 'preview_link',
-            'status', 'icon', 'advertiser', 'brand',
+            'status', 'revenue_model', 'country_mode', 'icon', 'advertiser', 'brand',
         )
         read_only_fields = ('brand',)
 
