@@ -3,8 +3,12 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from django.conf import settings
 
-from offer.models import Offer, Category, Payout, Currency, Goal, ACTIVE_STATUS, PAUSED_STATUS
+from offer.models import (
+    Offer, Category, Payout, Currency, Goal, OfferTrafficSource, TrafficSource,
+    ACTIVE_STATUS, PAUSED_STATUS, ALLOW_LIST, CPA, CPL,
+)
 from affiliate_ui.views.general_views import generate_tracking_link
+from brands.models import Brand
 from user_profile.models import Profile
 
 
@@ -26,7 +30,7 @@ class OfferListViewTest(TestCase):
         self.category1 = Category.objects.create(name='Finance')
         self.category2 = Category.objects.create(name='E-commerce')
 
-        self.currency = Currency.objects.create(code='USD', name='US Dollar')
+        self.currency = Currency.objects.create(code='USD', name='US Dollar', symbol='$')
         self.goal = Goal.objects.create(name='Test Goal')
 
         self.offer1 = Offer.objects.create(
@@ -74,6 +78,72 @@ class OfferListViewTest(TestCase):
         response = self.client.get(self.offers_url, {'category': self.category1.id})
         self.assertContains(response, 'Credit Card Offer')
         self.assertNotContains(response, 'Online Store Discount')
+
+
+class OfferBrowseFilterTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='browse', password='pass')
+        _approve(self.user)
+        self.client.login(username='browse', password='pass')
+        self.url = reverse('affiliate_ui:offer_list')
+
+        self.currency = Currency.objects.create(code='USD', name='US Dollar', symbol='$')
+        self.cat = Category.objects.create(name='Finance')
+        self.seo = TrafficSource.objects.create(name='SEO')
+        self.push = TrafficSource.objects.create(name='Push')
+
+        self.cpa = Offer.objects.create(title='CPA Offer', status=ACTIVE_STATUS, revenue_model=CPA)
+        Payout.objects.create(offer=self.cpa, revenue=10, payout=5, currency=self.currency)
+        OfferTrafficSource.objects.create(offer=self.cpa, traffic_source=self.seo, allowed=True)
+
+        self.cpl = Offer.objects.create(title='CPL Offer', status=ACTIVE_STATUS, revenue_model=CPL)
+        Payout.objects.create(offer=self.cpl, revenue=80, payout=50, currency=self.currency)
+        OfferTrafficSource.objects.create(offer=self.cpl, traffic_source=self.push, allowed=True)
+
+    def test_filter_by_revenue_model(self):
+        r = self.client.get(self.url, {'revenue_model': CPL})
+        self.assertContains(r, 'CPL Offer')
+        self.assertNotContains(r, 'CPA Offer')
+
+    def test_filter_by_payout_range(self):
+        r = self.client.get(self.url, {'payout_min': '40'})
+        self.assertContains(r, 'CPL Offer')
+        self.assertNotContains(r, 'CPA Offer')
+        r = self.client.get(self.url, {'payout_max': '10'})
+        self.assertContains(r, 'CPA Offer')
+        self.assertNotContains(r, 'CPL Offer')
+
+    def test_filter_by_traffic_source(self):
+        r = self.client.get(self.url, {'traffic_source': self.seo.id})
+        self.assertContains(r, 'CPA Offer')
+        self.assertNotContains(r, 'CPL Offer')
+
+    def test_filter_by_country_allow_list(self):
+        from countries_plus.models import Country
+        ke = Country.objects.get_or_create(
+            iso='KE', defaults={'name': 'Kenya', 'iso3': 'KEN', 'iso_numeric': 404})[0]
+        self.cpl.country_mode = ALLOW_LIST
+        self.cpl.save()
+        self.cpl.countries.add(ke)
+        # CPA stays ALLOW_ALL → always shown; CPL only for KE.
+        r = self.client.get(self.url, {'country': 'KE'})
+        self.assertContains(r, 'CPL Offer')
+        r = self.client.get(self.url, {'country': 'NG'})
+        self.assertNotContains(r, 'CPL Offer')
+        self.assertContains(r, 'CPA Offer')
+
+    def test_brand_isolation(self):
+        other_brand = Brand.objects.create(
+            slug='other', name='Other', primary_domain='other.test',
+            tracking_domain='t.other.test')
+        foreign = Offer.objects.create(
+            title='Foreign Brand Offer', status=ACTIVE_STATUS, brand=other_brand)
+        r = self.client.get(self.url)
+        self.assertNotContains(r, 'Foreign Brand Offer')
+        # And the detail page 404s for an offer outside the affiliate's brand.
+        self.assertEqual(
+            self.client.get(reverse('affiliate_ui:offer_detail', args=[foreign.id])).status_code,
+            404)
 
 
 class OfferDetailViewTest(TestCase):

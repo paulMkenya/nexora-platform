@@ -1,13 +1,16 @@
+from decimal import Decimal, InvalidOperation
+
 from django.conf import settings
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum, Prefetch
+from django.db.models import Q, Sum, Prefetch
 from django.shortcuts import redirect, render, get_object_or_404
 from django.contrib.auth.views import LoginView
 from django.views.decorators.http import require_POST
 
 from affiliate_ui.gates import require_approved_affiliate
-from offer.models import Offer, Category, Payout, ACTIVE_STATUS
+from offer.models import Offer, Category, Payout, TrafficSource, ACTIVE_STATUS, revenue_models
+from user_profile.geo import country_choices
 from tracker.models import Click, Conversion, APPROVED_STATUS
 from user_profile.models import Profile
 
@@ -43,28 +46,80 @@ def dashboard(request):
     return render(request, 'affiliate_ui/dashboard.html', context)
 
 
+def _eligible_offers(request):
+    """Active offers the affiliate may browse: scoped to their brand.
+
+    Unbranded (legacy / network-wide) offers stay visible to everyone; another
+    brand's offers are never shown — preserving brand isolation.
+    """
+    brand = getattr(request, 'brand', None)
+    return (
+        Offer.objects
+        .filter(status=ACTIVE_STATUS)
+        .filter(Q(brand=brand) | Q(brand__isnull=True))
+    )
+
+
+def _parse_decimal(raw):
+    try:
+        return Decimal(raw)
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
 @require_approved_affiliate
 def offer_list(request):
-    search_query = request.GET.get('search', '')
-    category_id = request.GET.get('category', None)
+    search_query = (request.GET.get('search') or '').strip()
+    category_id = request.GET.get('category') or None
+    country = (request.GET.get('country') or '').strip().upper()
+    revenue_model = request.GET.get('revenue_model') or ''
+    traffic_source_id = request.GET.get('traffic_source') or None
+    payout_min = _parse_decimal(request.GET.get('payout_min'))
+    payout_max = _parse_decimal(request.GET.get('payout_max'))
 
-    offers = Offer.objects.prefetch_related(
-        Prefetch('payouts', queryset=Payout.objects.order_by('-payout'))
-    ).filter(status=ACTIVE_STATUS)
+    offers = _eligible_offers(request).prefetch_related(
+        Prefetch('payouts', queryset=Payout.objects.order_by('-payout')),
+        'categories',
+    )
 
     if search_query:
         offers = offers.filter(title__icontains=search_query)
-
     if category_id:
         offers = offers.filter(categories__id=category_id)
+    if revenue_model in dict(revenue_models):
+        offers = offers.filter(revenue_model=revenue_model)
+    if traffic_source_id:
+        offers = offers.filter(
+            offertrafficsource__traffic_source_id=traffic_source_id,
+            offertrafficsource__allowed=True,
+        )
+    if payout_min is not None:
+        offers = offers.filter(payouts__payout__gte=payout_min)
+    if payout_max is not None:
+        offers = offers.filter(payouts__payout__lte=payout_max)
 
-    categories = Category.objects.all()
+    offers = offers.distinct()
+
+    # Country filter applies the offer's include/exclude targeting logic. Done in
+    # Python so ALLOW_ALL / ALLOW_LIST / BLOCK_LIST semantics stay in one place
+    # (Offer.accepts_country).
+    offer_rows = list(offers)
+    if country:
+        offer_rows = [o for o in offer_rows if o.accepts_country(country)]
 
     context = {
-        'offers': offers,
-        'categories': categories,
+        'offers': offer_rows,
+        'categories': Category.objects.all(),
+        'traffic_sources': TrafficSource.objects.order_by('name'),
+        'revenue_model_choices': revenue_models,
+        'country_choices': country_choices(),
         'search_query': search_query,
         'selected_category': int(category_id) if category_id else None,
+        'selected_country': country,
+        'selected_revenue_model': revenue_model,
+        'selected_traffic_source': int(traffic_source_id) if traffic_source_id else None,
+        'payout_min': request.GET.get('payout_min', ''),
+        'payout_max': request.GET.get('payout_max', ''),
     }
     return render(request, 'affiliate_ui/offers.html', context)
 
@@ -84,7 +139,7 @@ def affiliate_logout(request):
 
 @require_approved_affiliate
 def offer_detail(request, offer_id):
-    offer = get_object_or_404(Offer, pk=offer_id)
+    offer = get_object_or_404(_eligible_offers(request), pk=offer_id)
     tracking_link = generate_tracking_link(offer_id, request.user.id)
     context = {
         'offer': offer,

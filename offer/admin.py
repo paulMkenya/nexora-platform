@@ -75,19 +75,26 @@ class OfferAdmin(admin.ModelAdmin):
         Landing_inline,
     )
     list_display = (
-        'title', 'id', 'status', 'advertiser',
+        'title', 'id', 'status', 'revenue_model', 'country_mode', 'advertiser',
     )
+    list_filter = ('status', 'revenue_model', 'country_mode', 'categories')
+    search_fields = ('title',)
+    filter_horizontal = ('countries', 'categories')
     actions = [duplicate_offer]
 
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    pass
+    list_display = ('name', 'is_adult')
+    list_filter = ('is_adult',)
+    list_editable = ('is_adult',)
+    search_fields = ('name',)
 
 
 @admin.register(TrafficSource)
 class TrafficSourceAdmin(admin.ModelAdmin):
-    pass
+    list_display = ('name',)
+    search_fields = ('name',)
 
 
 @admin.register(Goal)

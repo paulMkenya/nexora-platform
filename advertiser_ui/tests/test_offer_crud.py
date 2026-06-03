@@ -9,7 +9,10 @@ from decimal import Decimal
 from django.test import TestCase, override_settings
 
 from brands.models import Brand
-from offer.models import ACTIVE_STATUS, PAUSED_STATUS, Currency, Offer
+from offer.models import (
+    ACTIVE_STATUS, ALLOW_LIST, BLOCK_LIST, CPL, PAUSED_STATUS,
+    Category, Currency, Offer, TrafficSource,
+)
 
 from .factories import make_advertiser_user, make_offer
 
@@ -121,3 +124,50 @@ class OfferCrudTestCase(TestCase):
         self.assertEqual(resp.status_code, 404)
         other.refresh_from_db()
         self.assertEqual(other.status, ACTIVE_STATUS)
+
+    def test_create_offer_with_revenue_model_and_traffic_sources(self):
+        seo = TrafficSource.objects.create(name='SEO')
+        push = TrafficSource.objects.create(name='Push')
+        cat = Category.objects.create(name='Finance')
+        self.client.force_login(self.user1)
+        self.client.post('/advertiser/offers/new/', {
+            'title': 'Rich Offer',
+            'tracking_link': 'https://example.com/track',
+            'status': ACTIVE_STATUS,
+            'revenue_model': CPL,
+            'country_mode': BLOCK_LIST,
+            'icon': 'https://cdn.example.com/creative.png',
+            'categories': [str(cat.id)],
+            'traffic_sources': [str(seo.id), str(push.id)],
+        })
+        offer = Offer.objects.get(title='Rich Offer')
+        self.assertEqual(offer.revenue_model, CPL)
+        self.assertEqual(offer.country_mode, BLOCK_LIST)
+        self.assertEqual(offer.icon, 'https://cdn.example.com/creative.png')
+        self.assertEqual(set(offer.categories.all()), {cat})
+        accepted = set(
+            offer.offertrafficsource_set.filter(allowed=True)
+            .values_list('traffic_source__name', flat=True))
+        self.assertEqual(accepted, {'SEO', 'Push'})
+
+    def test_edit_updates_revenue_model_and_traffic_sources(self):
+        offer = make_offer(self.adv1, 'Editable', status=ACTIVE_STATUS)
+        offer.brand = Brand.get_default()
+        offer.save(update_fields=['brand'])
+        seo = TrafficSource.objects.create(name='SEO')
+
+        self.client.force_login(self.user1)
+        self.client.post(f'/advertiser/offers/{offer.pk}/edit/', {
+            'title': 'Editable',
+            'tracking_link': 'https://example.com/track',
+            'status': ACTIVE_STATUS,
+            'revenue_model': CPL,
+            'country_mode': ALLOW_LIST,
+            'traffic_sources': [str(seo.id)],
+        })
+        offer.refresh_from_db()
+        self.assertEqual(offer.revenue_model, CPL)
+        self.assertEqual(offer.country_mode, ALLOW_LIST)
+        self.assertEqual(
+            list(offer.offertrafficsource_set.values_list('traffic_source_id', flat=True)),
+            [seo.id])

@@ -42,7 +42,7 @@ Server-rendered UI. Backward-compat standalone login also at `/login/`.
 | **Self-registration** | `/partner/register/` | public | Creates `AFFILIATE` profile, status `PENDING`, `email_verified=False`, stamps `request.brand`; sends verification email; auto-login |
 | Email verification | `/partner/verify-email/<token>/` | public | Signed token, 24h expiry; flips `email_verified=True` |
 | **Dashboard** | `/partner/dashboard/` | login | Clicks/conversions counts + approved earnings. Shows **pending banner** (`is_pending`) for unapproved/unverified affiliates — reachable even when gated |
-| Offer list | `/partner/offers/` | **approved affiliate** | Active offers, search + category filter |
+| Offer list | `/partner/offers/` | **approved affiliate** | Card/grid browse of active offers **within the affiliate's brand**. Combinable server-side filters: search, category, country (applies the offer's include/exclude targeting), revenue model, payout min/max, traffic-source compatibility |
 | Offer detail | `/partner/offers/<id>/` | **approved affiliate** | Shows generated tracking link (`TRACKER_URL/click?offer_id=&pid=<user id>`) |
 | Report — daily | `/partner/reports/daily/` | login | `affiliate.dao.daily_report`, date range + offer filter |
 | Report — by offer | `/partner/reports/offer/` | login | |
@@ -76,7 +76,10 @@ Server-rendered UI, all guarded by `advertiser_required`. Views degrade to a
 | Feature | Route | Who | Notes |
 |---|---|---|---|
 | **Dashboard** | `/advertiser/` | advertiser | Today / 7d / 30d stats |
-| Offers (list) | `/advertiser/offers/` | advertiser | **Read-only list** with status filter + counts. No CRUD in this UI — create/edit is via the Public API (§5) or Django admin (§3) |
+| Offers (list) | `/advertiser/offers/` | advertiser | List with status filter + counts |
+| **Offer create** | `/advertiser/offers/new/` | advertiser | Self-service create — auto-stamped with the advertiser + `request.brand`. Fields: name, category, description, creative image/URL (with preview), revenue model + initial payout + currency, accepted traffic sources, country targeting (mode + list), tracking/preview URL, status |
+| Offer edit | `/advertiser/offers/<id>/edit/` | advertiser | Own offer only (scoped to advertiser + brand) |
+| Offer pause/activate | `/advertiser/offers/<id>/status/` (POST) | advertiser | Own offer only |
 | **Conversions** | `/advertiser/conversions/` | advertiser | Paginated, filter by offer/status/date/sub1–5 |
 | Conversions bulk action | `/advertiser/conversions/bulk/` (POST) | advertiser | approve / reject / hold (own offers only) |
 | Conversions CSV export | `/advertiser/conversions/export/` | advertiser | |

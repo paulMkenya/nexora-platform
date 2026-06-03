@@ -15,6 +15,37 @@ offer_statuses = (
 )
 
 
+# Revenue / payout models selectable per offer. These are the industry-standard
+# affiliate pricing models; the value stored is the short code.
+CPA = 'CPA'
+CPL = 'CPL'
+CPS = 'CPS'
+CPI = 'CPI'
+CPC = 'CPC'
+REVSHARE = 'RevShare'
+HYBRID = 'Hybrid'
+revenue_models = (
+    (CPA, 'CPA — Cost Per Action'),
+    (CPL, 'CPL — Cost Per Lead'),
+    (CPS, 'CPS — Cost Per Sale'),
+    (CPI, 'CPI — Cost Per Install'),
+    (CPC, 'CPC — Cost Per Click'),
+    (REVSHARE, 'RevShare — Revenue Share'),
+    (HYBRID, 'Hybrid — CPA + RevShare'),
+)
+
+
+# Country targeting modes (see Offer.accepts_country / targeting_display).
+ALLOW_ALL = 'ALLOW_ALL'
+ALLOW_LIST = 'ALLOW_LIST'
+BLOCK_LIST = 'BLOCK_LIST'
+country_modes = (
+    (ALLOW_ALL, 'Global — accept all countries'),
+    (ALLOW_LIST, 'Allow list — only listed countries'),
+    (BLOCK_LIST, 'Block list — all except listed countries'),
+)
+
+
 class Offer(models.Model):
 
     class Meta:
@@ -40,6 +71,12 @@ class Offer(models.Model):
         'TrafficSource', through='OfferTrafficSource', blank=True)
     status = models.CharField(max_length=20, choices=offer_statuses,
                               default=ACTIVE_STATUS)
+    revenue_model = models.CharField(
+        max_length=16, choices=revenue_models, default=CPA,
+        help_text='Pricing model affiliates are paid under for this offer.')
+    country_mode = models.CharField(
+        max_length=12, choices=country_modes, default=ALLOW_ALL,
+        help_text='How the country list below is applied.')
     icon = models.CharField(max_length=255,
                             default=None, blank=True, null=True)
     advertiser = models.ForeignKey(
@@ -59,9 +96,52 @@ class Offer(models.Model):
     def __str__(self):
         return f"({self.id}) {self.title}"
 
+    def accepts_country(self, code):
+        """Return True if a click from ISO alpha-2 ``code`` is accepted.
+
+        Used consistently wherever country eligibility is checked. ALLOW_ALL
+        always accepts; ALLOW_LIST accepts only listed countries; BLOCK_LIST
+        accepts everything except the listed countries.
+        """
+        if self.country_mode == ALLOW_ALL:
+            return True
+        listed = {c.upper() for c in self.countries.values_list('iso', flat=True)}
+        code = (code or '').upper()
+        if self.country_mode == ALLOW_LIST:
+            return code in listed
+        if self.country_mode == BLOCK_LIST:
+            return code not in listed
+        return True
+
+    def targeting_display(self):
+        """Human-readable summary of the effective country targeting.
+
+        e.g. "Global", "KE, UG, TZ only", "Global except NG, GH".
+        """
+        if self.country_mode == ALLOW_ALL:
+            return 'Global'
+        codes = sorted(c.upper() for c in self.countries.values_list('iso', flat=True))
+        if not codes:
+            # No countries listed: an allow-list accepts nobody; a block-list
+            # blocks nobody (i.e. effectively global).
+            return 'No countries' if self.country_mode == ALLOW_LIST else 'Global'
+        joined = ', '.join(codes)
+        if self.country_mode == ALLOW_LIST:
+            return f'{joined} only'
+        return f'Global except {joined}'
+
 
 class Category(models.Model):
+    class Meta:
+        ordering = ('name',)
+        verbose_name_plural = 'Categories'
+
     name = models.CharField(max_length=256)
+    # Adult / restricted vertical (e.g. Adult, some Dating). Lets the platform
+    # owner flag verticals that need extra handling.
+    is_adult = models.BooleanField(
+        default=False,
+        help_text='Adult / restricted vertical.')
 
     def __str__(self):
         return self.name
