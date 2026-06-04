@@ -13,6 +13,22 @@
 
 {% else %}
 
+  {% if is_pending %}
+  <div class="mb-6 rounded-lg border border-yellow-300 bg-yellow-50 p-5">
+    <p class="text-sm font-semibold text-yellow-800">Your advertiser account is pending approval</p>
+    <p class="mt-1 text-sm text-yellow-700">
+      {% if advertiser and not advertiser.email_verified %}
+      Please verify your email address (check your inbox), and a {{ brand.name|default:"Nexora" }}
+      admin will review your account shortly.
+      {% else %}
+      A {{ brand.name|default:"Nexora" }} admin will review your account shortly.
+      {% endif %}
+      You can browse your dashboard now, but <strong>creating offers and funding a wallet</strong>
+      unlock once your account is approved.
+    </p>
+  </div>
+  {% endif %}
+
   {# ── Period stat rows ── #}
   {% for period_label, stats in period_rows %}
   <div class="mb-8">

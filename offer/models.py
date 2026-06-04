@@ -225,6 +225,12 @@ class Payout(models.Model):
 class Advertiser(models.Model):
     objects = BrandScopedManager()
 
+    class AdvertiserStatus(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        APPROVED = 'APPROVED', 'Approved'
+        REJECTED = 'REJECTED', 'Rejected'
+        SUSPENDED = 'SUSPENDED', 'Suspended'
+
     brand = models.ForeignKey(
         'brands.Brand',
         on_delete=models.SET_NULL,
@@ -247,9 +253,29 @@ class Advertiser(models.Model):
     # ISO-3166-1 alpha-2 country code (sourced from countries_plus). Blank = unset.
     country = models.CharField(max_length=2, default='', blank=True)
     comment = models.TextField(default='', blank=True)
+    # Self-registration / approval gating (mirrors the affiliate model on
+    # user_profile.Profile). New self-registered advertisers start PENDING and
+    # unverified; only APPROVED + email_verified advertisers may create offers
+    # and have their offers shown to affiliates. Existing advertisers (created
+    # before onboarding existed) are grandfathered to APPROVED + verified by the
+    # data migration so the live offer flow is never interrupted.
+    advertiser_status = models.CharField(
+        max_length=10,
+        choices=AdvertiserStatus.choices,
+        default=AdvertiserStatus.PENDING,
+    )
+    email_verified = models.BooleanField(default=False)
 
     def __str__(self):
         return self.company
+
+    @property
+    def is_active_advertiser(self):
+        """True once the advertiser is approved AND has verified their email."""
+        return (
+            self.advertiser_status == self.AdvertiserStatus.APPROVED
+            and self.email_verified
+        )
 
 
 class Landing(models.Model):

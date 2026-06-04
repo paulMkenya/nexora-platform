@@ -21,6 +21,7 @@ from offer.offer_form import (
 )
 
 from advertiser.decorators import advertiser_required
+from advertiser_ui.gates import is_active_advertiser, require_active_advertiser
 from advertiser_ui.services import (
     CONVERSION_STATUSES,
     bulk_update_conversions,
@@ -70,6 +71,10 @@ def dashboard(request):
             ('Last 7 days',  data['last_7']),
             ('Last 30 days', data['last_30']),
         ],
+        # Pending/unverified advertisers reach the dashboard but see a banner and
+        # are blocked from offers/wallet by require_active_advertiser.
+        'is_pending': not is_active_advertiser(request.user),
+        'advertiser': advertiser,
     }
     return render(request, 'advertiser_ui/dashboard.html', ctx)
 
@@ -272,6 +277,7 @@ def mmp_callbacks(request):
     })
 
 
+@require_active_advertiser
 @advertiser_required
 def wallet(request):
     advertiser = _get_advertiser(request)
@@ -337,6 +343,7 @@ def advertiser_logout(request):
 # brand stamping and the strict own-offer scoping.
 
 
+@require_active_advertiser
 @advertiser_required
 def offer_create(request):
     advertiser = _get_advertiser(request)
@@ -365,6 +372,7 @@ def _get_own_offer(request, advertiser, offer_id):
     )
 
 
+@require_active_advertiser
 @advertiser_required
 def offer_edit(request, offer_id):
     advertiser = _get_advertiser(request)
@@ -387,6 +395,7 @@ def offer_edit(request, offer_id):
 
 
 @require_POST
+@require_active_advertiser
 @advertiser_required
 def offer_set_status(request, offer_id):
     """Pause/activate (or set any valid status) for one of the advertiser's offers."""

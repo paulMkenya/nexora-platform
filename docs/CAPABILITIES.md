@@ -18,9 +18,15 @@
 `Profile.AffiliateStatus`: `PENDING` (default) · `APPROVED` · `REJECTED` · `SUSPENDED`,
 plus a separate `email_verified` boolean.
 
+`offer.Advertiser` carries the parallel onboarding state for advertisers:
+`Advertiser.AdvertiserStatus` (`PENDING` default · `APPROVED` · `REJECTED` · `SUSPENDED`)
+and its own `email_verified` boolean. Advertisers that predate self-registration
+were grandfathered to `APPROVED` + verified (migration `offer/0033`).
+
 Gating helpers:
 - **`affiliate_ui.gates.require_approved_affiliate`** — AFFILIATE role **AND** status `APPROVED` **AND** `email_verified`; otherwise 403 (`affiliate_ui/gated.html`).
 - **`advertiser.decorators.advertiser_required`** — login + `role == ADVERTISER`, else `PermissionDenied` (403).
+- **`advertiser_ui.gates.require_active_advertiser`** — ADVERTISER role **AND** `Advertiser.advertiser_status == APPROVED` **AND** `Advertiser.email_verified`; otherwise 403 (`advertiser_ui/gated.html`). Gates offer create/edit/status and the wallet. The dashboard stays reachable with a pending banner.
 - **`affiliate_ui.views.admin_views._require_network_admin`** — `NETWORK_ADMIN` / `AFFILIATE_MANAGER` / `is_superuser`.
 - **`staff_member_required`** — Django staff flag (used by payouts, fraud, brands, dashboard).
 - **`public_api.views.network.IsNetworkAdmin`** — `is_superuser` or `role == NETWORK_ADMIN`.
@@ -75,20 +81,31 @@ Server-rendered UI, all guarded by `advertiser_required`. Views degrade to a
 
 | Feature | Route | Who | Notes |
 |---|---|---|---|
-| **Dashboard** | `/advertiser/` | advertiser | Today / 7d / 30d stats |
+| Login | `/advertiser/login/` | public | `AdvertiserLoginView` (brand-aware; redirects to `/advertiser/`); has a register link |
+| **Self-registration** | `/advertiser/register/` | public | Creates `ADVERTISER` User + linked `Advertiser`, both stamped with `request.brand`; status `PENDING`, `email_verified=False`; sends verification email; auto-login → dashboard |
+| Email verification | `/advertiser/verify-email/<token>/` | public | Signed token (`advertiser-email-verify`), 24h; flips `Advertiser.email_verified=True` |
+| **Dashboard** | `/advertiser/` | advertiser | Today / 7d / 30d stats. Shows a **pending banner** for unapproved/unverified advertisers — reachable even when gated |
 | Offers (list) | `/advertiser/offers/` | advertiser | List with status filter + counts |
-| **Offer create** | `/advertiser/offers/new/` | advertiser | Self-service create — auto-stamped with the advertiser + `request.brand`. Fields: name, category, description, creative image/URL (with preview), revenue model + initial payout + currency, accepted traffic sources, country targeting (mode + list), tracking/preview URL, status |
-| Offer edit | `/advertiser/offers/<id>/edit/` | advertiser | Own offer only (scoped to advertiser + brand) |
-| Offer pause/activate | `/advertiser/offers/<id>/status/` (POST) | advertiser | Own offer only |
+| **Offer create** | `/advertiser/offers/new/` | **active advertiser** | Self-service create — auto-stamped with the advertiser + `request.brand`. Fields: name, category, description, creative image/URL (with preview), revenue model + initial payout + currency, accepted traffic sources, country targeting (mode + list), tracking/preview URL, status |
+| Offer edit | `/advertiser/offers/<id>/edit/` | **active advertiser** | Own offer only (scoped to advertiser + brand) |
+| Offer pause/activate | `/advertiser/offers/<id>/status/` (POST) | **active advertiser** | Own offer only |
 | **Conversions** | `/advertiser/conversions/` | advertiser | Paginated, filter by offer/status/date/sub1–5 |
 | Conversions bulk action | `/advertiser/conversions/bulk/` (POST) | advertiser | approve / reject / hold (own offers only) |
 | Conversions CSV export | `/advertiser/conversions/export/` | advertiser | |
 | **Postbacks** | `/advertiser/postbacks/` | advertiser | Shows canonical + HMAC-signed postback URL, inbound log, HMAC enforce flag |
 | Regenerate postback secret | `/advertiser/postbacks/regenerate/` (POST) | advertiser | Rotates HMAC key |
 | **MMP callbacks** | `/advertiser/mmp/` | advertiser | Last-24h MMP callback log + per-offer MMP config (read-only view) |
-| **Wallet** | `/advertiser/wallet/` | advertiser | Balance, transactions, top-ups, invoices (`billing` app) |
+| **Wallet** | `/advertiser/wallet/` | **active advertiser** | Balance, transactions, top-ups, invoices (`billing` app) |
 | Settings | `/advertiser/settings/` | advertiser | Edit country |
 | Logout | `/advertiser/logout/` | any | Redirects to affiliate login |
+
+**Gating states:** a PENDING / unverified advertiser can log in and view the
+dashboard (with a pending banner) but is **blocked** (403, `require_active_advertiser`)
+from offer create/edit/status and the wallet, and their offers are **hidden from
+affiliates** until status=`APPROVED` AND `email_verified=True`. REJECTED / SUSPENDED
+behave the same — only `APPROVED` + verified passes. The affiliate offer browse
+(§1) filters out any offer whose advertiser is not active (offers with no
+advertiser link stay visible).
 
 **Billing / wallet model** (`billing`): `AdvertiserWallet` → `WalletTopUp`, `WalletTransaction`,
 `Invoice`. Top-up webhooks: `/webhooks/stripe/` and `/webhooks/paystack/` (public, signature-verified;
@@ -111,6 +128,10 @@ Two layers: the custom operator tools (templated pages) and the Django **model a
 | Affiliate approve | `/admin/affiliates/<pk>/approve/` (POST) | same | Sets `APPROVED`, emails the affiliate |
 | Affiliate reject | `/admin/affiliates/<pk>/reject/` (POST) | same | Sets `REJECTED` |
 | Affiliate suspend | `/admin/affiliates/<pk>/suspend/` (POST) | same | Sets `SUSPENDED` |
+| **Advertiser mgmt — list** | `/admin/advertisers/` | brand-admin / superuser (`brand_admin_required`; affiliate managers blocked) | Brand-scoped advertiser list, status filter, `email_verified` shown |
+| Advertiser approve | `/admin/advertisers/<pk>/approve/` (POST) | same | Sets `APPROVED`, emails the advertiser |
+| Advertiser reject | `/admin/advertisers/<pk>/reject/` (POST) | same | Sets `REJECTED` |
+| Advertiser suspend | `/admin/advertisers/<pk>/suspend/` (POST) | same | Sets `SUSPENDED`. Object-level scoped: another brand's advertiser is a 404 by direct ID |
 | **Payouts — list** | `/admin/payouts/` | `staff_member_required` | Payout requests |
 | Payouts bulk approve | `/admin/payouts/approve/` (POST) | staff | |
 | Payouts mark paid | `/admin/payouts/mark-paid/` (POST) | staff | |
@@ -186,6 +207,9 @@ brand name and primary domain).
 
 **What is isolated per brand (brand-scoped data):**
 - `offer.Offer.brand`, `offer.Advertiser.brand`, `tracker.Conversion.brand` (via `BrandScopedManager`).
+  Advertisers self-register stamped with the brand whose domain they registered on; the
+  `/admin/advertisers/` approval console and its approve/reject/suspend actions are scoped to
+  `request.brand` (object-level — a cross-brand advertiser is a 404).
 - `user_profile.Profile.brand` — affiliates are stamped with the brand they registered under; the
   affiliate-management list and approve/reject/suspend actions are filtered to `request.brand`.
 - `public_api.WebhookEndpoint.brand` — webhook subscriptions are per brand.

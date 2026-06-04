@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Email Verification — {{ brand.name|default:"Nexora" }}</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% endif %}
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-full">
+<div class="min-h-full flex items-center justify-center py-12 px-4">
+  <div class="w-full max-w-md text-center">
+    {% if success %}
+    <div class="rounded-lg bg-green-50 border border-green-200 p-6">
+      <h2 class="text-lg font-bold text-green-800">Email verified!</h2>
+      <p class="mt-2 text-sm text-green-700">
+        Your email address has been confirmed. Your advertiser account is pending review by our
+        team — we'll notify you once approved. Once approved you can create offers.
+      </p>
+    </div>
+    <a href="/advertiser/" class="inline-block mt-4 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5">
+      Go to dashboard
+    </a>
+    {% else %}
+    <div class="rounded-lg bg-red-50 border border-red-200 p-6">
+      <h2 class="text-lg font-bold text-red-800">Verification link invalid or expired</h2>
+      <p class="mt-2 text-sm text-red-700">
+        This link may have expired (valid for 24 hours) or already been used.
+      </p>
+    </div>
+    {% if brand.support_email %}
+    <a href="mailto:{{ brand.support_email }}" class="inline-block mt-4 rounded-md border border-gray-300 text-gray-700 text-sm font-semibold px-5 py-2.5 hover:bg-gray-50">
+      Contact support
+    </a>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

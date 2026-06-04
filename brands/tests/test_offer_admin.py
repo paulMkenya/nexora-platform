@@ -39,10 +39,15 @@ def _user(username, role, brand=None, *, is_staff=False, is_superuser=False):
 
 
 def _advertiser(company, brand):
-    """An advertiser with its own ADVERTISER-role user, in ``brand``."""
+    """An advertiser with its own ADVERTISER-role user, in ``brand``.
+
+    Approved + verified so the self-service offer flow (gated by
+    require_active_advertiser) works for these fixtures.
+    """
     user = _user(f'adv_{company}', Profile.Role.ADVERTISER, brand)
     adv = Advertiser.objects.create(
-        user=user, company=company, email=f'{company}@example.com', brand=brand)
+        user=user, company=company, email=f'{company}@example.com', brand=brand,
+        advertiser_status=Advertiser.AdvertiserStatus.APPROVED, email_verified=True)
     return user, adv
 
 
