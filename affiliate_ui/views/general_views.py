@@ -9,7 +9,7 @@ from django.contrib.auth.views import LoginView
 from django.views.decorators.http import require_POST
 
 from affiliate_ui.gates import require_approved_affiliate
-from offer.models import Offer, Category, Payout, TrafficSource, ACTIVE_STATUS, revenue_models
+from offer.models import Advertiser, Offer, Category, Payout, TrafficSource, ACTIVE_STATUS, revenue_models
 from user_profile.geo import country_choices
 from tracker.models import Click, Conversion, APPROVED_STATUS
 from user_profile.models import Profile
@@ -51,12 +51,22 @@ def _eligible_offers(request):
 
     Unbranded (legacy / network-wide) offers stay visible to everyone; another
     brand's offers are never shown — preserving brand isolation.
+
+    Offers owned by an advertiser are only shown once that advertiser is
+    APPROVED **and** email-verified: a pending advertiser's offers (and a
+    suspended/rejected advertiser's offers) are hidden from affiliates. Offers
+    with no advertiser link (legacy / network-wide) stay visible.
     """
     brand = getattr(request, 'brand', None)
+    approved = Advertiser.AdvertiserStatus.APPROVED
     return (
         Offer.objects
         .filter(status=ACTIVE_STATUS)
         .filter(Q(brand=brand) | Q(brand__isnull=True))
+        .filter(
+            Q(advertiser__isnull=True)
+            | Q(advertiser__advertiser_status=approved, advertiser__email_verified=True)
+        )
     )
 
 

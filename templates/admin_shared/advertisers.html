@@ -1,0 +1,117 @@
+<!doctype html>
+{% load geo_extras %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advertisers — {{ brand.name|default:"Nexora" }} Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+{% include 'admin_shared/nav.html' with active='advertisers' %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Advertisers
+      <span class="text-muted fs-6">({{ advertisers|length }})</span>
+    </h1>
+  </div>
+
+  {% if messages %}
+  <div class="mb-3">
+    {% for m in messages %}
+    <div class="alert {% if m.tags == 'error' %}alert-danger{% elif m.tags == 'warning' %}alert-warning{% else %}alert-success{% endif %} py-2 mb-2">{{ m }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="get" class="row g-2 mb-3">
+    <div class="col-auto">
+      <select name="status" class="form-select" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        {% for val, label in status_choices %}
+        <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if status_filter %}
+    <div class="col-auto">
+      <a href="?" class="btn btn-outline-secondary">Clear</a>
+    </div>
+    {% endif %}
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle bg-white">
+      <thead class="table-light">
+        <tr>
+          <th>Advertiser</th>
+          <th>Contact</th>
+          <th>Country</th>
+          {% if sees_all_brands %}<th>Brand</th>{% endif %}
+          <th>Email verified</th>
+          <th>Status</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in advertisers %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ a.company }}</div>
+            <div class="text-muted small">#{{ a.id }} · {{ a.email|default:"—" }}</div>
+          </td>
+          <td>{{ a.contact_person|default:"—" }}</td>
+          <td>{% if a.country %}{{ a.country|country_display }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          {% if sees_all_brands %}<td>{{ a.brand.name|default:"—" }}</td>{% endif %}
+          <td>
+            {% if a.email_verified %}
+            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Verified</span>
+            {% else %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Unverified</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if a.advertiser_status == APPROVED %}
+            <span class="badge bg-success">Approved</span>
+            {% elif a.advertiser_status == PENDING %}
+            <span class="badge bg-secondary">Pending</span>
+            {% elif a.advertiser_status == SUSPENDED %}
+            <span class="badge bg-dark">Suspended</span>
+            {% else %}
+            <span class="badge bg-danger">Rejected</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              {% if a.advertiser_status != APPROVED %}
+              <form method="post" action="{% url 'advertisers_admin:approve' a.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-success btn-sm">Approve</button>
+              </form>
+              {% endif %}
+              {% if a.advertiser_status != SUSPENDED and a.advertiser_status != REJECTED %}
+              <form method="post" action="{% url 'advertisers_admin:suspend' a.id %}" class="d-inline ms-1">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-warning btn-sm">Suspend</button>
+              </form>
+              {% endif %}
+              {% if a.advertiser_status != REJECTED %}
+              <form method="post" action="{% url 'advertisers_admin:reject' a.id %}" class="d-inline ms-1">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger btn-sm">Reject</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="{% if sees_all_brands %}7{% else %}6{% endif %}" class="text-center text-muted py-4">No advertisers found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

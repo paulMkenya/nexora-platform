@@ -66,7 +66,14 @@ class SectionViewsTestCase(AdvertiserUiAccessMixin, TestCase):
     sections = ['offers', 'conversions', 'postbacks', 'wallet', 'settings']
 
     def setUp(self):
+        from offer.models import Advertiser
         self.user = self._advertiser()
+        # The wallet page is gated behind require_active_advertiser, so the user
+        # needs an APPROVED + verified advertiser record to view every section.
+        Advertiser.objects.create(
+            user=self.user, company='Sec Co', email='sec@example.com',
+            advertiser_status=Advertiser.AdvertiserStatus.APPROVED, email_verified=True,
+        )
         self.client.force_login(self.user)
 
     def test_all_sections_return_200(self):

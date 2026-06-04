@@ -1,0 +1,34 @@
+{% extends 'advertiser_ui/base.html' %}
+
+{% block title %}Account pending — {{ brand.name|default:"Nexora" }} Advertiser{% endblock %}
+{% block page_title %}Account pending approval{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl">
+  <div class="rounded-lg border border-yellow-300 bg-yellow-50 p-6">
+    <h2 class="text-base font-semibold text-yellow-800">Your advertiser account is not active yet</h2>
+    <p class="mt-2 text-sm text-yellow-700">
+      Creating offers and funding a wallet are available to <strong>approved</strong> advertisers only.
+      {% with adv=request.user.advertiser_profile %}
+      {% if not adv.email_verified %}
+      Please check your inbox and verify your email address first.
+      {% endif %}
+      {% if adv.advertiser_status == 'PENDING' %}
+      Your account is currently <strong>pending review</strong> by our team.
+      {% elif adv.advertiser_status == 'REJECTED' %}
+      Your application was <strong>not approved</strong>. Please contact support for more information.
+      {% elif adv.advertiser_status == 'SUSPENDED' %}
+      Your account has been <strong>suspended</strong>. Please contact support.
+      {% endif %}
+      {% endwith %}
+    </p>
+    <div class="mt-4 text-sm">
+      <a href="/advertiser/" class="text-indigo-600 hover:underline">← Back to dashboard</a>
+      {% if brand.support_email %}
+      <span class="text-gray-400">·</span>
+      <a href="mailto:{{ brand.support_email }}" class="text-indigo-600 hover:underline">Contact support</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

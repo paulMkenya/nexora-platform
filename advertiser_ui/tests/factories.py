@@ -6,7 +6,13 @@ from tracker.models import APPROVED_STATUS, Click, Conversion
 from user_profile.models import Profile, User
 
 
-def make_advertiser_user(username):
+def make_advertiser_user(username, *, status=None, email_verified=True):
+    """Create an ADVERTISER-role user + linked Advertiser record.
+
+    Defaults to an APPROVED + email-verified advertiser so the self-service
+    offer flow (gated by ``require_active_advertiser``) works out of the box.
+    Pass ``status='PENDING'`` / ``email_verified=False`` to exercise gating.
+    """
     user = User.objects.create_user(username=username, password='pass')
     user.profile.role = Profile.Role.ADVERTISER
     user.profile.save()
@@ -14,6 +20,8 @@ def make_advertiser_user(username):
         user=user,
         company=f'{username} Co',
         email=f'{username}@example.com',
+        advertiser_status=status or Advertiser.AdvertiserStatus.APPROVED,
+        email_verified=email_verified,
     )
     return user, advertiser
 
