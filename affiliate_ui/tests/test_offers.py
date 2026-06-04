@@ -178,14 +178,31 @@ class OfferDetailViewTest(TestCase):
         self.assertContains(response, '<p>Test Description</p>')
         self.assertContains(response, '7.5') # Payout
 
-    def test_tracking_link_generation(self):
+    def test_tracking_link_uses_offer_brand_domain(self):
+        # An offer on the CCS brand, viewed on the CCS domain, must show a click
+        # link on CCS's own tracking domain — never the platform domain.
+        ccs = Brand.objects.create(
+            slug='ccs-detail', name='CCS',
+            primary_domain='cpa.cloudtradesystems.test',
+            tracking_domain='t.cloudtradesystems.com',
+        )
+        self.offer.brand = ccs
+        self.offer.save(update_fields=['brand'])
+
         self.client.login(username=self.username, password=self.password)
-        response = self.client.get(self.offer_detail_url)
-        expected_link = f"{settings.TRACKER_URL}/click?offer_id={self.offer.id}&amp;pid={self.user.id}"
+        response = self.client.get(
+            self.offer_detail_url, HTTP_HOST='cpa.cloudtradesystems.test'
+        )
+        expected_link = (
+            f"https://t.cloudtradesystems.com/click"
+            f"?offer_id={self.offer.id}&amp;pid={self.user.id}"
+        )
         self.assertContains(response, expected_link)
+        # The platform fallback domain must not leak onto a brand page.
+        self.assertNotContains(response, settings.TRACKER_URL)
 
     def test_generate_tracking_link_function(self):
-        offer_id = 1
-        pid = 100
-        expected_link = f"{settings.TRACKER_URL}/click?offer_id={offer_id}&pid={pid}"
-        self.assertEqual(generate_tracking_link(offer_id, pid), expected_link)
+        # No request and no brand on the offer → falls back to global TRACKER_URL.
+        offer = Offer.objects.create(id=4321, title='x', status=ACTIVE_STATUS)
+        expected_link = f"{settings.TRACKER_URL}/click?offer_id={offer.id}&pid=100"
+        self.assertEqual(generate_tracking_link(offer, 100), expected_link)

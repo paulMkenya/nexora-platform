@@ -1,6 +1,5 @@
 from decimal import Decimal, InvalidOperation
 
-from django.conf import settings
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, Sum, Prefetch
@@ -9,6 +8,7 @@ from django.contrib.auth.views import LoginView
 from django.views.decorators.http import require_POST
 
 from affiliate_ui.gates import require_approved_affiliate
+from brands.links import affiliate_click_link
 from offer.models import Advertiser, Offer, Category, Payout, TrafficSource, ACTIVE_STATUS, revenue_models
 from user_profile.geo import country_choices
 from tracker.models import Click, Conversion, APPROVED_STATUS
@@ -134,10 +134,9 @@ def offer_list(request):
     return render(request, 'affiliate_ui/offers.html', context)
 
 
-def generate_tracking_link(offer_id: int, pid: int) -> str:
-    base_url = settings.TRACKER_URL
-    url = f"{base_url}/click?offer_id={offer_id}&pid={pid}"
-    return url
+def generate_tracking_link(offer, pid: int, request=None) -> str:
+    """Brand-aware click link for *offer* (built from the offer's brand domain)."""
+    return affiliate_click_link(offer, pid, request=request)
 
 
 @require_POST
@@ -150,7 +149,7 @@ def affiliate_logout(request):
 @require_approved_affiliate
 def offer_detail(request, offer_id):
     offer = get_object_or_404(_eligible_offers(request), pk=offer_id)
-    tracking_link = generate_tracking_link(offer_id, request.user.id)
+    tracking_link = generate_tracking_link(offer, request.user.id, request=request)
     context = {
         'offer': offer,
         'tracking_link': tracking_link,
