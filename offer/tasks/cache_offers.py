@@ -11,6 +11,7 @@ def cache_offers():
     for offer in Offer.objects.select_related('mmp').all():
         record = {
             'tracking_link': offer.tracking_link,
+            'brand_id': offer.brand_id,
             'mmp_vendor': offer.mmp.vendor if offer.mmp else None,
             'mmp_click_template': offer.mmp.click_template if offer.mmp else None,
             'mmp_app_id': offer.mmp_app_id,

@@ -115,6 +115,34 @@ class PostbackManagerTestCase(TestCase):
                              fetch_redirect_response=False)
 
 
+@override_settings(
+    CACHES=CACHES_DUMMY,
+    TRACKER_URL='https://t.cloudtrade.pro',
+    ENFORCE_POSTBACK_HMAC=False,
+)
+class PostbackBrandDomainTestCase(TestCase):
+    """FIX 3: the postback URL shown to a brand's advertiser uses that brand's
+    own tracking domain, never the underlying platform domain."""
+
+    def setUp(self):
+        from brands.models import Brand
+        self.ccs = Brand.objects.create(
+            slug='ccs-pb', name='CloudTrade Systems',
+            primary_domain='cpa.ccs-pb.test',
+            tracking_domain='t.cloudtradesystems.com',
+        )
+        self.user, self.adv = make_advertiser_user('ccspb')
+        self.adv.brand = self.ccs
+        self.adv.save(update_fields=['brand'])
+        self.client.force_login(self.user)
+
+    def test_postback_url_uses_brand_tracking_domain(self):
+        r = self.client.get('/advertiser/postbacks/', HTTP_HOST='cpa.ccs-pb.test')
+        self.assertIn('t.cloudtradesystems.com/postback', r.context['canonical_url'])
+        # The platform domain must not leak onto a CCS advertiser's page.
+        self.assertNotIn('t.cloudtrade.pro', r.context['canonical_url'])
+
+
 # ── HMAC verification in tracker/views.postback() ─────────────────────────
 
 @override_settings(CACHES=CACHES_DUMMY)

@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from countries_plus.models import Country
-from django.conf import settings
+from brands.links import affiliate_click_link
 from offer.models import (
     Offer,
     Category,
@@ -141,21 +141,18 @@ class OfferRetrieveView(generics.RetrieveAPIView):
     queryset = Offer.objects
 
 
-def generate_tracking_link(offer_id: int, pid: int) -> str:
-    base_url = settings.TRACKER_URL
-    url = f"{base_url}/click?offer_id={offer_id}&pid={pid}"
-    return url
-
-
 class TrackingLinkView(APIView):
     permission_classes = (IsAuthenticated,)
 
     def get(self, request, pk):
-        offer_id = pk
         user_id = request.user.id
-        # offer = Offer.objects.get(pk=offer_id)
+        # Resolve the offer so the link is built from the OFFER's brand tracking
+        # domain (white-label isolation), not the global platform domain.
+        offer = Offer.objects.filter(pk=pk).first()
+        if offer is None:
+            return Response({'detail': 'Not found.'}, status=404)
 
-        url = generate_tracking_link(offer_id, user_id)
+        url = affiliate_click_link(offer, user_id, request=request)
         return Response({'url': url})
 
         # if offer.access == ACCESS_TYPE_PUBLIC:

@@ -116,10 +116,16 @@ def click(request):
 
     click_id = uuid.uuid4().hex
 
+    # Brand of the tracking domain this click arrived on (resolved by
+    # BrandMiddleware: HTTP_HOST → tracking_domain → Brand). Used for attribution
+    # and to detect a domain/offer brand mismatch in the task.
+    request_brand = getattr(request, 'brand', None)
+
     data = {
         'click_id': click_id,
         'offer_id': offer_id,
         'pid': pid,
+        'request_brand_id': getattr(request_brand, 'id', None),
         'ip': get_client_ip(request),
         'ua': request.META.get('HTTP_USER_AGENT', ''),
         'sub1': request.GET.get('sub1', ''),

@@ -21,6 +21,7 @@ from offer.offer_form import (
 )
 
 from advertiser.decorators import advertiser_required
+from brands.links import tracking_base_url
 from advertiser_ui.gates import is_active_advertiser, require_active_advertiser
 from advertiser_ui.services import (
     CONVERSION_STATUSES,
@@ -202,8 +203,11 @@ def postbacks(request):
     key, _ = get_or_create_postback_key(advertiser)
     log    = get_inbound_postback_log(advertiser)
 
+    # Show the postback URL on the advertiser's OWN brand tracking domain, never
+    # the underlying platform domain (white-label isolation).
+    base = tracking_base_url(brand=advertiser.brand, request=request)
     canonical_url = (
-        f"{settings.TRACKER_URL}/postback"
+        f"{base}/postback"
         f"?click_id={{click_id}}&status={{status}}&sum={{sum}}"
     )
     signed_url = canonical_url + '&sig={sig}'
