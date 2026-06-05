@@ -108,6 +108,11 @@
                 <button type="submit" class="btn btn-warning btn-sm">Suspend</button>
               </form>
               {% endif %}
+              <form method="post" action="{% url 'archived_admin:affiliate_archive' profile.pk %}" class="d-inline ms-1"
+                    onsubmit="return confirm('Archive {{ profile.user.username }}? They drop off the active console (reversible from Archived).')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Archive</button>
+              </form>
             </div>
           </td>
           {% endif %}

@@ -34,7 +34,8 @@ User = get_user_model()
 def _scoped_affiliates(request):
     """Affiliate-profile queryset visible to the current operator's role."""
     qs = Profile.objects.select_related('user', 'manager', 'brand').filter(
-        role=Profile.Role.AFFILIATE
+        role=Profile.Role.AFFILIATE,
+        is_archived=False,
     )
     if sees_all_brands(request.user):
         return qs
@@ -62,6 +63,7 @@ def _brand_managers(brand):
     return User.objects.filter(
         profile__role=Profile.Role.AFFILIATE_MANAGER,
         profile__brand=brand,
+        profile__is_archived=False,
     ).select_related('profile').order_by('username')
 
 

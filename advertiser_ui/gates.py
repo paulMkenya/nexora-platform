@@ -33,6 +33,7 @@ def is_active_advertiser(user):
     return (
         adv.advertiser_status == Advertiser.AdvertiserStatus.APPROVED
         and adv.email_verified
+        and not adv.is_archived
     )
 
 

@@ -30,6 +30,7 @@ def _is_approved(user):
             p.role == Profile.Role.AFFILIATE
             and p.affiliate_status == Profile.AffiliateStatus.APPROVED
             and p.email_verified
+            and not p.is_archived
         )
     except Exception:
         return False

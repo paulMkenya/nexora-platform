@@ -61,10 +61,10 @@
             <a href="{% url 'brands_admin:brand_setup' brand.pk %}" class="text-indigo-600 hover:text-indigo-900">Setup</a>
             <a href="{% url 'brands_admin:brand_edit' brand.pk %}" class="text-indigo-600 hover:text-indigo-900">Edit</a>
             {% if not brand.is_default %}
-            <form method="post" action="{% url 'brands_admin:brand_delete' brand.pk %}" class="inline"
-                  onsubmit="return confirm('Delete brand {{ brand.name }}?')">
+            <form method="post" action="{% url 'archived_admin:brand_archive' brand.pk %}" class="inline"
+                  onsubmit="return confirm('Archive brand {{ brand.name }}? Its domains fall back to the default brand (reversible from Archived).')">
               {% csrf_token %}
-              <button type="submit" class="text-red-600 hover:text-red-900">Delete</button>
+              <button type="submit" class="text-amber-600 hover:text-amber-900">Archive</button>
             </form>
             {% endif %}
           </td>

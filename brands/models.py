@@ -5,6 +5,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.db import models
 
+from brands.archival import Archivable
+
 
 def _fernet():
     """Symmetric cipher for brand secrets, keyed off the Django SECRET_KEY.
@@ -16,7 +18,7 @@ def _fernet():
     return Fernet(key)
 
 
-class Brand(models.Model):
+class Brand(Archivable):
     slug = models.SlugField(max_length=60, unique=True)
     name = models.CharField(max_length=128)
     primary_domain = models.CharField(max_length=253, unique=True)
@@ -55,9 +57,20 @@ class Brand(models.Model):
             Brand.objects.exclude(pk=self.pk).filter(is_default=True).update(is_default=False)
         super().save(*args, **kwargs)
 
+    @property
+    def is_active(self):
+        """An archived brand is disabled — its domains stop serving it."""
+        return not self.is_archived
+
     @classmethod
     def get_default(cls):
-        return cls.objects.filter(is_default=True).first() or cls.objects.order_by('id').first()
+        """The fallback brand. Never an archived brand (the default is protected
+        from archiving), so active resolution never lands on a disabled brand."""
+        return (
+            cls.objects.filter(is_default=True, is_archived=False).first()
+            or cls.objects.filter(is_archived=False).order_by('id').first()
+            or cls.objects.order_by('id').first()
+        )
 
     # --- per-brand SMTP helpers ---
 

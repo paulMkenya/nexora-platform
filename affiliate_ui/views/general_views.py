@@ -55,7 +55,8 @@ def _eligible_offers(request):
     Offers owned by an advertiser are only shown once that advertiser is
     APPROVED **and** email-verified: a pending advertiser's offers (and a
     suspended/rejected advertiser's offers) are hidden from affiliates. Offers
-    with no advertiser link (legacy / network-wide) stay visible.
+    with no advertiser link (legacy / network-wide) stay visible. An *archived*
+    advertiser's offers are likewise hidden.
     """
     brand = getattr(request, 'brand', None)
     approved = Advertiser.AdvertiserStatus.APPROVED
@@ -65,7 +66,11 @@ def _eligible_offers(request):
         .filter(Q(brand=brand) | Q(brand__isnull=True))
         .filter(
             Q(advertiser__isnull=True)
-            | Q(advertiser__advertiser_status=approved, advertiser__email_verified=True)
+            | Q(
+                advertiser__advertiser_status=approved,
+                advertiser__email_verified=True,
+                advertiser__is_archived=False,
+            )
         )
     )
 

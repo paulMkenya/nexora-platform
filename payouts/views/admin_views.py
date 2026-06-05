@@ -27,7 +27,13 @@ def _scope_payouts(request, qs):
     host, so the console can't be widened by visiting another brand's domain.
     Orphaned requests (affiliate without a brand) are excluded here and remain
     visible to superusers only.
+
+    Archived affiliates are removed from the active payout surface entirely (for
+    every operator, superuser included): their requests are hidden and cannot be
+    acted on. The rows are retained in the database — archiving never destroys
+    financial history — they simply drop off the active console.
     """
+    qs = qs.exclude(affiliate__profile__is_archived=True)
     if sees_all_brands(request.user):
         return qs
     return qs.filter(affiliate__profile__brand=scope_brand(request))

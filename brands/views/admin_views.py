@@ -60,7 +60,8 @@ def dashboard(request):
     show_all_brands = sees_all_brands(request.user)
     brand = scope_brand(request)
 
-    affiliate_qs = Profile.objects.filter(role=Profile.Role.AFFILIATE)
+    affiliate_qs = Profile.objects.filter(
+        role=Profile.Role.AFFILIATE, is_archived=False)
     payout_qs = PayoutRequest.objects.filter(status=STATUS_PENDING)
     since = timezone.now() - datetime.timedelta(hours=24)
     conv_qs = Conversion.objects.filter(created_at__gte=since, fraud_score__gt=0)
@@ -88,7 +89,8 @@ def dashboard(request):
 
 @platform_owner_required
 def brand_list(request):
-    brands = Brand.objects.all()
+    # Active brands only; archived brands live in the Archived home.
+    brands = Brand.objects.filter(is_archived=False)
     return render(request, 'brands/admin/brand_list.html', {'brands': brands})
 
 
@@ -176,13 +178,32 @@ def brand_edit(request, pk):
 @platform_owner_required
 @require_http_methods(['POST'])
 def brand_delete(request, pk):
+    """Permanently delete a brand — guarded by financial emptiness.
+
+    Allowed only when nothing under the brand carries financial data (no
+    conversions, affiliate payout requests, or advertiser wallet activity) and
+    it is not the default brand — both decided by ``brands.lifecycle``. The DB
+    delete SET_NULLs the brand FK on its offers/advertisers/affiliates (orphaning
+    them, never destroying them); the external NPM proxy-host and DNS cleanup is
+    surfaced as instructions for the operator to perform by hand — we never call
+    NPM or touch DNS automatically.
+    """
+    from brands.lifecycle import brand_delete_cleanup, brand_financials
+
     brand = get_object_or_404(Brand, pk=pk)
-    if brand.is_default:
-        messages.error(request, 'Cannot delete the default brand.')
+    fin = brand_financials(brand)
+    if not fin['can_hard_delete']:
+        messages.error(
+            request,
+            f'Cannot delete "{brand.name}": {fin["block_reason"] or "not eligible"}.')
         return redirect('brands_admin:brand_list')
+
+    cleanup = brand_delete_cleanup(brand)
     name = brand.name
     brand.delete()
-    messages.success(request, f'Brand "{name}" deleted.')
+    messages.success(request, f'Brand "{name}" permanently deleted.')
+    for line in cleanup['instructions']:
+        messages.warning(request, line)
     return redirect('brands_admin:brand_list')
 
 
