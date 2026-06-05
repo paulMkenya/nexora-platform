@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 
 def _scoped_advertisers(request):
     """Advertiser queryset visible to the current operator's role."""
-    qs = Advertiser.objects.select_related('user', 'brand').order_by('-id')
+    qs = Advertiser.objects.select_related('user', 'brand').filter(
+        is_archived=False).order_by('-id')
     if sees_all_brands(request.user):
         return qs
     return qs.filter(brand=scope_brand(request))

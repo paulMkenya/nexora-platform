@@ -11,8 +11,13 @@ class BrandMiddleware:
         raw_host = request.META.get('HTTP_HOST', '')
         host = raw_host.split(':')[0].lower()
         from brands.models import Brand
+        # An archived brand is disabled: its domains stop resolving to it. We
+        # exclude archived brands from the host match so the request falls back
+        # to the (never-archived) default brand instead of serving the disabled
+        # brand's offers/theme.
         brand = Brand.objects.filter(
-            Q(primary_domain__iexact=host) | Q(tracking_domain__iexact=host)
+            Q(primary_domain__iexact=host) | Q(tracking_domain__iexact=host),
+            is_archived=False,
         ).first()
         if brand is None:
             brand = Brand.get_default()

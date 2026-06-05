@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from countries_plus.models import Country
 from tinymce import models as tinymce_models
+from brands.archival import Archivable
 from brands.managers import BrandScopedManager
 
 
@@ -222,7 +223,7 @@ class Payout(models.Model):
     )
 
 
-class Advertiser(models.Model):
+class Advertiser(Archivable):
     objects = BrandScopedManager()
 
     class AdvertiserStatus(models.TextChoices):
@@ -271,10 +272,11 @@ class Advertiser(models.Model):
 
     @property
     def is_active_advertiser(self):
-        """True once the advertiser is approved AND has verified their email."""
+        """True once the advertiser is approved, email-verified and not archived."""
         return (
             self.advertiser_status == self.AdvertiserStatus.APPROVED
             and self.email_verified
+            and not self.is_archived
         )
 
 

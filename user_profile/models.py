@@ -1,10 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
+from brands.archival import Archivable
+
 User = get_user_model()
 
 
-class Profile(models.Model):
+class Profile(Archivable):
     class Role(models.TextChoices):
         AFFILIATE = 'AFFILIATE', 'Affiliate'
         ADVERTISER = 'ADVERTISER', 'Advertiser'
@@ -55,4 +57,5 @@ class Profile(models.Model):
             self.role == self.Role.AFFILIATE
             and self.affiliate_status == self.AffiliateStatus.APPROVED
             and self.email_verified
+            and not self.is_archived
         )
