@@ -64,7 +64,12 @@ INSTALLED_APPS = [
     'public_api',
     'website',
     'impersonation',
+    'leads',
 ]
+
+# CRM lead pipeline: ACTIVATED leads idle beyond this many days are flagged
+# DORMANT by the `mark-dormant-leads` Celery beat task.
+LEADS_DORMANT_DAYS = int(os.environ.get('LEADS_DORMANT_DAYS', '30'))
 
 
 MIDDLEWARE = [

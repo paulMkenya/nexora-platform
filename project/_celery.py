@@ -49,4 +49,8 @@ _celery.conf.beat_schedule = {
         'task': 'reporting.tasks.refresh_reporting_views',
         'schedule': 300,  # every 5 minutes
     },
+    'mark-dormant-leads': {
+        'task': 'leads.tasks.mark_dormant_leads',
+        'schedule': crontab(minute=0, hour=3),  # daily at 03:00
+    },
 }

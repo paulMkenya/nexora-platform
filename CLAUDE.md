@@ -64,6 +64,7 @@ These containers are shared across the cloudtrade stack. Never add postgres or r
 | `/admin/` | Django admin | Staff admin panel (model admin) |
 | `/admin/dashboard/` | `brands.views.admin_views.dashboard` | Operator home — nav cards + at-a-glance stats |
 | `/admin/affiliates/` | `affiliate_ui` | Affiliate management (approve/reject/suspend) |
+| `/admin/leads/` | `leads` | Brand-scoped CRM lead pipeline (affiliates + advertisers) |
 | `/admin/payouts/` | `payouts` | Payout requests (approve, dispatch, CSV, batches) |
 | `/admin/fraud/` | `fraud` | Fraud review (flagged clicks/conversions, whitelist) |
 | `/admin/brands/` | `brands` | Brand CRUD + setup |

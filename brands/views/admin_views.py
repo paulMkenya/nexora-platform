@@ -248,6 +248,7 @@ def brand_email_settings(request):
         brand.smtp_username = request.POST.get('smtp_username', '').strip()
         brand.smtp_use_tls = request.POST.get('smtp_use_tls') == 'on'
         brand.smtp_from_email = request.POST.get('smtp_from_email', '').strip()
+        brand.notification_email = request.POST.get('notification_email', '').strip()
         new_password = request.POST.get('smtp_password', '')
         if new_password:
             brand.set_smtp_password(new_password)

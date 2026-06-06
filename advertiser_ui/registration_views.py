@@ -14,6 +14,7 @@ from django.shortcuts import redirect, render
 
 from advertiser_ui.forms import AdvertiserRegistrationForm
 from brands.email import send_brand_mail
+from leads.tasks import enqueue_advertiser_registration_alert
 from offer.models import Advertiser
 from user_profile.models import Profile
 
@@ -83,7 +84,7 @@ def register(request):
             profile.save(update_fields=['role', 'brand', 'country'])
 
             # The advertiser record carries the onboarding state.
-            Advertiser.objects.create(
+            advertiser = Advertiser.objects.create(
                 user=user,
                 brand=brand,
                 company=d['company'],
@@ -98,6 +99,10 @@ def register(request):
 
             token = _make_token(user.pk)
             _send_verification_email(request, user, token)
+            # Advertisers are commercially significant: notify the brand's
+            # notification email (async, fail-safe — never blocks/500s the
+            # registration). Affiliates are intentionally NOT notified here.
+            enqueue_advertiser_registration_alert(advertiser.id)
             login(request, user)
             return redirect('/advertiser/')
     else:

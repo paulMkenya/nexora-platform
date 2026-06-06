@@ -43,6 +43,12 @@ class Brand(Archivable):
     smtp_use_tls = models.BooleanField(default=True)
     smtp_from_email = models.CharField(max_length=254, blank=True, default='')
 
+    # Where operator notifications for this brand are sent (e.g. a new advertiser
+    # registration alert). Configured next to the SMTP settings on the
+    # /admin/brands/email-settings/ page. Blank → falls back to a brand admin's
+    # own email; if there is none either, the notification is skipped + logged.
+    notification_email = models.EmailField(max_length=254, blank=True, default='')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -91,3 +97,22 @@ class Brand(Archivable):
     def smtp_configured(self):
         """True when this brand has enough to send its own mail."""
         return bool(self.smtp_host and self.smtp_from_email)
+
+    def notification_recipient(self):
+        """Where this brand's operator notifications go.
+
+        The configured ``notification_email`` if set; otherwise the email of a
+        brand admin (a NETWORK_ADMIN assigned to this brand). Returns '' when
+        neither exists — callers skip + log gracefully (never an error).
+        """
+        if self.notification_email.strip():
+            return self.notification_email.strip()
+        from user_profile.models import Profile
+        admin = (
+            Profile.objects.filter(role=Profile.Role.NETWORK_ADMIN, brand=self)
+            .exclude(user__email='')
+            .select_related('user')
+            .order_by('user_id')
+            .first()
+        )
+        return admin.user.email if admin and admin.user else ''

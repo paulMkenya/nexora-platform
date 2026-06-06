@@ -31,6 +31,7 @@ urlpatterns = [
     path('admin/roles/', include('brands.role_urls', namespace='roles_admin')),
     path('admin/brands/', include('brands.urls', namespace='brands_admin')),
     path('admin/affiliates/', include('affiliate_ui.admin_urls', namespace='affiliate_admin')),
+    path('admin/leads/', include('leads.urls', namespace='leads_admin')),
     path('admin/archived/', include('brands.archived_urls', namespace='archived_admin')),
     path('admin/impersonate/', include('impersonation.urls', namespace='impersonation')),
     path('admin/fraud/', include('fraud.urls', namespace='fraud')),
