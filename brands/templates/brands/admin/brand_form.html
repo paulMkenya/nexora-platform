@@ -21,8 +21,17 @@
     {% endfor %}
   {% endif %}
 
+  {% if convert_lead %}
+    <div class="mb-4 px-4 py-3 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-sm">
+      Converting sales lead <strong>{{ convert_lead.name|default:convert_lead.email }}</strong> into a brand.
+      Name and emails are pre-filled — enter the real <strong>primary &amp; tracking domains</strong>
+      (they can't be derived and must be DNS-routable).
+    </div>
+  {% endif %}
+
   <form method="post" class="bg-white shadow rounded-lg p-6 space-y-5">
     {% csrf_token %}
+    {% if convert_lead %}<input type="hidden" name="from_lead" value="{{ convert_lead.id }}">{% endif %}
 
     <div class="grid grid-cols-2 gap-4">
       <div>

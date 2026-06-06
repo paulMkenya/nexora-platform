@@ -29,6 +29,19 @@
   <div class="alert {% if m.tags == 'error' %}alert-danger{% else %}alert-success{% endif %} py-2">{{ m }}</div>
   {% endfor %}{% endif %}
 
+  {% if lead.converted_brand_id %}
+  <div class="alert alert-success d-flex justify-content-between align-items-center">
+    <span>Converted &rarr; <strong>{{ lead.converted_brand.name }}</strong>
+      {% if lead.converted_at %}on {{ lead.converted_at|date:"Y-m-d H:i" }}{% endif %}</span>
+    <a href="{% url 'brands_admin:brand_setup' lead.converted_brand_id %}" class="btn btn-outline-success btn-sm">Open brand setup ↗</a>
+  </div>
+  {% elif lead.sales_stage == 'WON' %}
+  <div class="alert alert-light border d-flex justify-content-between align-items-center">
+    <span>This lead is <strong>Won</strong> — convert it into a white-label brand (pre-filled from the lead).</span>
+    <a href="{% url 'brands_admin:brand_create' %}?from_lead={{ lead.id }}" class="btn btn-success btn-sm">Convert to brand</a>
+  </div>
+  {% endif %}
+
   <div class="row g-3">
     <div class="col-md-7">
       <div class="card mb-3"><div class="card-body">

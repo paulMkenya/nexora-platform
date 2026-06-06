@@ -153,7 +153,9 @@ def _create_lead(post):
 @platform_owner_required
 def pipeline(request):
     """Owner-only sales funnel: list + per-stage summary + stage filter."""
-    qs = PlatformLead.objects.prefetch_related('verticals', 'traffic_sources')
+    qs = (PlatformLead.objects
+          .select_related('converted_brand')
+          .prefetch_related('verticals', 'traffic_sources'))
 
     stage_filter = request.GET.get('stage', '').strip()
     if stage_filter:
@@ -185,7 +187,8 @@ def pipeline(request):
 def lead_detail(request, pk):
     """Full detail of one platform lead (all captured fields)."""
     lead = get_object_or_404(
-        PlatformLead.objects.prefetch_related('verticals', 'traffic_sources'), pk=pk)
+        PlatformLead.objects.select_related('converted_brand')
+        .prefetch_related('verticals', 'traffic_sources'), pk=pk)
     return render(request, 'platform_leads/admin/lead_detail.html', {
         'active': 'platform_leads',
         'lead': lead,
