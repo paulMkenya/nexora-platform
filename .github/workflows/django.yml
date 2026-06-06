@@ -15,6 +15,13 @@ jobs:
         db: [postgres]
         python-version: [3.11]
 
+    env:
+      DJ_SECRET_KEY: xxx
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1/postgres
+      REDIS_URL: redis://127.0.0.1
+      TRACKER_URL: https://example.com
+      IPSTACK_TOKEN: xxx
+
     services:
       postgres:
         image: postgres:16
@@ -50,13 +57,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install Poetry
         uses: snok/install-poetry@v1
+      # The whole suite runs on pytest (pytest.ini / pytest-django) and we lint
+      # every build with ruff. Both live in the "dev" Poetry group, so install
+      # it explicitly rather than relying on default group resolution.
       - name: Install Dependencies
-        run: poetry install
-      - name: Run Tests
-        run: poetry run python manage.py test
-        env:
-          DJ_SECRET_KEY: xxx
-          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1/postgres
-          REDIS_URL: redis://127.0.0.1
-          TRACKER_URL: https://example.com
-          IPSTACK_TOKEN: xxx
+        run: poetry install --with dev --no-interaction
+      - name: Lint (ruff)
+        run: poetry run ruff check .
+      - name: Run tests (pytest)
+        run: poetry run pytest
