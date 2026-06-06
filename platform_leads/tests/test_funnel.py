@@ -121,10 +121,44 @@ class PublicFormTest(FunnelBase):
 
     def test_honeypot_drops_spam_silently(self):
         resp = self.client.post('/get-started/',
-                                _min_post(company_url='http://spam.test'),
+                                _min_post(hp_check='http://spam.test'),
                                 HTTP_HOST='a.test')
         self.assertEqual(resp.status_code, 200)          # looks fine to the bot
         self.assertEqual(PlatformLead.objects.count(), 0)  # but nothing stored
+
+    def test_submit_saves_record_and_increments_count(self):
+        # Explicit: a valid submit hits the REAL save path — count grows by 1
+        # and every field round-trips. (Guards against the handler ever rendering
+        # the thank-you without persisting.)
+        before = PlatformLead.objects.count()
+        resp = self.client.post('/get-started/', _min_post(
+            'ADVERTISER', email='saved@x.test', phone='+254711111111',
+            company='SaveCo', website='https://saveco.test',
+        ), HTTP_HOST='a.test')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "we'll be in touch")
+        self.assertEqual(PlatformLead.objects.count(), before + 1)
+        lead = PlatformLead.objects.get(email='saved@x.test')
+        self.assertEqual(lead.lead_type, 'ADVERTISER')
+        self.assertEqual(lead.name, 'Pat Prospect')
+        self.assertEqual(lead.company, 'SaveCo')
+        self.assertEqual(lead.website, 'https://saveco.test')
+
+    def test_browser_autofill_does_not_drop_real_lead(self):
+        # Regression: prod silently dropped real leads because the honeypot field
+        # was named 'company_url' — browser autofill populated that hidden field,
+        # tripping the honeypot. A submission carrying autofill-style values
+        # (including the legacy 'company_url') must STILL create the lead.
+        before = PlatformLead.objects.count()
+        resp = self.client.post('/get-started/', _min_post(
+            email='autofill@x.test', company='RealCo',
+            website='https://realco.test', company_url='https://realco.test',
+        ), HTTP_HOST='a.test')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "we'll be in touch")
+        self.assertEqual(PlatformLead.objects.count(), before + 1)
+        self.assertEqual(
+            PlatformLead.objects.get(email='autofill@x.test').company, 'RealCo')
 
     def test_rate_limit_blocks_after_budget(self):
         # RATE_LIMIT_MAX submissions allowed, the next is 429.

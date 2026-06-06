@@ -84,10 +84,13 @@
 
     <form method="post" action="/get-started/" class="card" id="gsForm">
       {% csrf_token %}
-      {# Honeypot — hidden from humans; bots that fill it are silently dropped. #}
+      {# Honeypot — hidden from humans; bots that fill it are silently dropped.
+         The name is a neutral, non-autofill token on purpose: a real-looking
+         name (company/url/email…) gets populated by browser autofill, which
+         silently dropped genuine leads. Must match views.get_started. #}
       <div class="hp" aria-hidden="true">
-        <label for="company_url">Company URL</label>
-        <input type="text" name="company_url" id="company_url" tabindex="-1" autocomplete="off">
+        <label for="hp_check">Leave this field blank</label>
+        <input type="text" name="hp_check" id="hp_check" tabindex="-1" autocomplete="off">
       </div>
 
       <fieldset>

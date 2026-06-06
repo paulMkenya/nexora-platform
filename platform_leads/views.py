@@ -77,7 +77,10 @@ def get_started(request):
 
     # Honeypot: a hidden field no human fills. If present, silently accept
     # (return the same thank-you) without creating a record — don't tip off bots.
-    if request.POST.get('company_url', '').strip():
+    # The field name must NOT resemble a real contact field (name/email/company/
+    # url/phone…): browser autofill populates such hidden fields by name and would
+    # silently drop genuine leads. Keep it a neutral, non-autofill token.
+    if request.POST.get('hp_check', '').strip():
         logger.info('Honeypot tripped on /get-started/ from ip=%s', _client_ip(request))
         return render(request, 'platform_leads/get_started.html',
                       _form_context({'submitted': True}))
