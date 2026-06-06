@@ -6,21 +6,23 @@ that already 404 out-of-scope rows in the operator consoles:
 
   * affiliates  → ``affiliate_ui.views.admin_views._scoped_affiliates``
   * advertisers → ``brands.views.advertiser_views._scoped_advertisers``
+  * managers    → ``brands.views.role_views._scoped_managers``
 
-Both of those already exclude archived rows (``is_archived=False``) and confine a
+All three already exclude archived rows (``is_archived=False``) and confine a
 brand admin to their own brand (a superuser sees all). So "strictly downward,
 within scope, never archived" is enforced by reusing them rather than re-deriving
 the rule:
 
-  * PLATFORM OWNER (superuser) → any affiliate/advertiser in any brand.
-  * BRAND ADMIN (NETWORK_ADMIN) → only affiliates/advertisers in their own brand.
+  * PLATFORM OWNER (superuser) → any affiliate/advertiser/manager in any brand.
+  * BRAND ADMIN (NETWORK_ADMIN) → only affiliates/advertisers/managers in their
+    own brand.
   * AFFILIATE MANAGER / everyone else → nobody (``actor_may_impersonate`` is False).
 
-Because the only impersonable rows are non-staff affiliates/advertisers, brand
-admins, the platform owner and (currently) affiliate managers are never
-impersonable — a fail-closed superset of "no sideways / no upward". A superuser
-target is rejected explicitly as a second guard. Re-run :func:`scoped_target` on
-every request to re-validate live (see the middleware).
+Because the only impersonable rows are non-staff affiliates, advertisers and
+brand-scoped managers, brand admins and the platform owner are never impersonable
+(no sideways / no upward). A superuser target is rejected explicitly as a second
+guard. Re-run :func:`scoped_target` on every request to re-validate live (see the
+middleware).
 """
 from types import SimpleNamespace
 
@@ -62,6 +64,7 @@ def scoped_target(actor, target):
     # brand-confined). Imported lazily to avoid import cycles at app load.
     from affiliate_ui.views.admin_views import _scoped_affiliates
     from brands.views.advertiser_views import _scoped_advertisers
+    from brands.views.role_views import _scoped_managers
 
     prof = _scoped_affiliates(req).filter(user=target).first()
     if prof is not None:
@@ -70,5 +73,9 @@ def scoped_target(actor, target):
     adv = _scoped_advertisers(req).filter(user=target).first()
     if adv is not None:
         return ('advertiser', adv, adv.brand)
+
+    mgr = _scoped_managers(req).filter(user=target).first()
+    if mgr is not None:
+        return ('manager', mgr, mgr.brand)
 
     return None

@@ -21,7 +21,11 @@ from impersonation.service import (
 
 User = get_user_model()
 
-_PORTAL = {'affiliate': '/partner/dashboard/', 'advertiser': '/advertiser/'}
+_PORTAL = {
+    'affiliate': '/partner/dashboard/',
+    'advertiser': '/advertiser/',
+    'manager': '/admin/affiliates/',
+}
 
 
 @brand_admin_required
