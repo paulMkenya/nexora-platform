@@ -1,0 +1,103 @@
+<!doctype html>
+{% load geo_extras %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ lead.name }} — Sales funnel</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+{% include 'admin_shared/nav.html' with active='platform_leads' %}
+<div class="container py-4" style="max-width:900px;">
+
+  <a href="{% url 'platform_leads_admin:pipeline' %}" class="text-decoration-none">&larr; Back to funnel</a>
+
+  <div class="d-flex justify-content-between align-items-start mt-2 mb-3">
+    <div>
+      <h1 class="h3 mb-1">{{ lead.name|default:"—" }}</h1>
+      <div class="text-muted">{{ lead.get_lead_type_display }} · submitted {{ lead.created_at|date:"Y-m-d H:i" }}</div>
+    </div>
+    <div>
+      {% if lead.sales_stage == 'WON' %}<span class="badge bg-success fs-6">Won</span>
+      {% elif lead.sales_stage == 'LOST' %}<span class="badge bg-dark fs-6">Lost</span>
+      {% else %}<span class="badge bg-primary fs-6">{{ lead.get_sales_stage_display }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if messages %}{% for m in messages %}
+  <div class="alert {% if m.tags == 'error' %}alert-danger{% else %}alert-success{% endif %} py-2">{{ m }}</div>
+  {% endfor %}{% endif %}
+
+  {% if lead.converted_brand_id %}
+  <div class="alert alert-success d-flex justify-content-between align-items-center">
+    <span>Converted &rarr; <strong>{{ lead.converted_brand.name }}</strong>
+      {% if lead.converted_at %}on {{ lead.converted_at|date:"Y-m-d H:i" }}{% endif %}</span>
+    <a href="{% url 'brands_admin:brand_setup' lead.converted_brand_id %}" class="btn btn-outline-success btn-sm">Open brand setup ↗</a>
+  </div>
+  {% elif lead.sales_stage == 'WON' %}
+  <div class="alert alert-light border d-flex justify-content-between align-items-center">
+    <span>This lead is <strong>Won</strong> — convert it into a white-label brand (pre-filled from the lead).</span>
+    <a href="{% url 'brands_admin:brand_create' %}?from_lead={{ lead.id }}" class="btn btn-success btn-sm">Convert to brand</a>
+  </div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-md-7">
+      <div class="card mb-3"><div class="card-body">
+        <h2 class="h6 text-uppercase text-muted">Captured details</h2>
+        <dl class="row mb-0">
+          <dt class="col-sm-4">Email</dt><dd class="col-sm-8"><a href="mailto:{{ lead.email }}">{{ lead.email }}</a></dd>
+          <dt class="col-sm-4">Phone</dt><dd class="col-sm-8">{{ lead.phone|default:"—" }}</dd>
+          <dt class="col-sm-4">Company</dt><dd class="col-sm-8">{{ lead.company|default:"—" }}</dd>
+          <dt class="col-sm-4">Country</dt><dd class="col-sm-8">{% if lead.country %}{{ lead.country|country_display }}{% else %}—{% endif %}</dd>
+          <dt class="col-sm-4">Website</dt><dd class="col-sm-8">{% if lead.website %}<a href="{{ lead.website }}" rel="noopener noreferrer nofollow" target="_blank">{{ lead.website }}</a>{% else %}—{% endif %}</dd>
+          <dt class="col-sm-4">Scale</dt><dd class="col-sm-8">{{ lead.scale|default:"—" }}</dd>
+          <dt class="col-sm-4">Verticals</dt><dd class="col-sm-8">{% for c in lead.verticals.all %}<span class="badge bg-light text-dark border me-1">{{ c.name }}</span>{% empty %}—{% endfor %}</dd>
+          <dt class="col-sm-4">Traffic sources</dt><dd class="col-sm-8">{% for t in lead.traffic_sources.all %}<span class="badge bg-light text-dark border me-1">{{ t.name }}</span>{% empty %}—{% endfor %}</dd>
+          <dt class="col-sm-4">Timeline</dt><dd class="col-sm-8">{{ lead.get_timeline_display|default:"—" }}</dd>
+          <dt class="col-sm-4">Budget</dt><dd class="col-sm-8">{{ lead.budget|default:"—" }}</dd>
+          <dt class="col-sm-4">Heard via</dt><dd class="col-sm-8">{{ lead.source|default:"—" }}</dd>
+        </dl>
+        {% if lead.pain %}
+        <hr><h3 class="h6 text-uppercase text-muted">Current pain / why looking</h3>
+        <p class="mb-0" style="white-space:pre-line;">{{ lead.pain }}</p>
+        {% endif %}
+      </div></div>
+    </div>
+
+    <div class="col-md-5">
+      <div class="card mb-3"><div class="card-body">
+        <h2 class="h6 text-uppercase text-muted">Stage</h2>
+        <form method="post" action="{% url 'platform_leads_admin:update_stage' lead.id %}" class="d-flex gap-2">
+          {% csrf_token %}
+          <select name="sales_stage" class="form-select form-select-sm">
+            {% for val, label in stage_choices %}
+            <option value="{{ val }}" {% if lead.sales_stage == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-primary btn-sm">Update</button>
+        </form>
+        <hr>
+        <h2 class="h6 text-uppercase text-muted">Last contact</h2>
+        <p class="mb-2">{{ lead.last_contact_at|date:"Y-m-d H:i"|default:"Never contacted" }}</p>
+        <form method="post" action="{% url 'platform_leads_admin:mark_contacted' lead.id %}">
+          {% csrf_token %}
+          <button class="btn btn-outline-secondary btn-sm">Mark contacted now</button>
+        </form>
+      </div></div>
+
+      <div class="card"><div class="card-body">
+        <h2 class="h6 text-uppercase text-muted">Notes</h2>
+        {% if lead.notes %}<pre class="small bg-light p-2 rounded" style="white-space:pre-wrap;">{{ lead.notes }}</pre>{% else %}<p class="text-muted small">No notes yet.</p>{% endif %}
+        <form method="post" action="{% url 'platform_leads_admin:add_note' lead.id %}">
+          {% csrf_token %}
+          <textarea name="note" class="form-control form-control-sm mb-2" rows="2" placeholder="Add a note…"></textarea>
+          <button class="btn btn-outline-secondary btn-sm">Add note</button>
+        </form>
+      </div></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -9,6 +9,7 @@ from rest_framework_simplejwt.views import (
 )
 from project.views import healthz
 from affiliate_ui.views.general_views import AffiliateLoginView
+from platform_leads.views import get_started
 from brands.views.admin_views import dashboard as admin_dashboard
 
 # Rebrand the Django model-admin chrome so it never reads "Django administration"
@@ -20,6 +21,7 @@ admin.site.index_title = settings.ADMIN_SITE_HEADER
 
 urlpatterns = [
     path('', include('website.urls', namespace='website')),
+    path('get-started/', get_started, name='get_started'),
     path('healthz', healthz, name='healthz'),
 
     # Standalone /login/ kept for backward-compat (middleware tests, direct links)
@@ -32,6 +34,7 @@ urlpatterns = [
     path('admin/brands/', include('brands.urls', namespace='brands_admin')),
     path('admin/affiliates/', include('affiliate_ui.admin_urls', namespace='affiliate_admin')),
     path('admin/leads/', include('leads.urls', namespace='leads_admin')),
+    path('admin/platform-leads/', include('platform_leads.urls', namespace='platform_leads_admin')),
     path('admin/archived/', include('brands.archived_urls', namespace='archived_admin')),
     path('admin/impersonate/', include('impersonation.urls', namespace='impersonation')),
     path('admin/fraud/', include('fraud.urls', namespace='fraud')),

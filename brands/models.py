@@ -49,6 +49,15 @@ class Brand(Archivable):
     # own email; if there is none either, the notification is skipped + logged.
     notification_email = models.EmailField(max_length=254, blank=True, default='')
 
+    # Where the PLATFORM OWNER's sales-funnel alerts go (a new public
+    # /get-started/ lead). This is the platform's own business data, not a
+    # brand's — only the value on the *default* brand is used, and only the
+    # superuser edits it (owner-only settings page). UI-configurable so the
+    # owner can change where sales alerts land without a redeploy; blank falls
+    # back to a sensible default (see ``owner_sales_recipient``).
+    owner_sales_notification_email = models.EmailField(
+        max_length=254, blank=True, default='')
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -116,3 +125,28 @@ class Brand(Archivable):
             .first()
         )
         return admin.user.email if admin and admin.user else ''
+
+    @classmethod
+    def owner_sales_recipient(cls):
+        """Where platform-owner sales-funnel alerts are sent.
+
+        The ``owner_sales_notification_email`` configured on the default brand if
+        set; otherwise a sensible default — the platform ``ADMIN_EMAIL`` setting,
+        else the first superuser's email. Returns '' when nothing is resolvable
+        (callers skip + log gracefully, never error).
+        """
+        from django.conf import settings
+
+        default = cls.get_default()
+        if default and default.owner_sales_notification_email.strip():
+            return default.owner_sales_notification_email.strip()
+
+        admin_email = getattr(settings, 'ADMIN_EMAIL', '') or ''
+        if admin_email.strip():
+            return admin_email.strip()
+
+        from django.contrib.auth import get_user_model
+        owner = (get_user_model().objects
+                 .filter(is_superuser=True).exclude(email='')
+                 .order_by('id').first())
+        return owner.email if owner else ''

@@ -19,7 +19,7 @@ _BRAND_FORM_FIELDS = (
 )
 
 
-def _form_data(request, brand=None):
+def _form_data(request, brand=None, seed=None):
     """Return the ``post`` mapping that brand_form.html prefills inputs from.
 
     The template reads every field via ``post.<field>``. Two hazards are handled
@@ -34,11 +34,16 @@ def _form_data(request, brand=None):
        would leak the current brand's data onto the create form. Prefill is
        driven solely by this dict: seeded from the edited ``brand`` on GET, and
        overridden by the submitted values on a POST re-render.
+
+    ``seed`` lets the create form be pre-filled from another source (e.g. a
+    converted sales lead) on GET; submitted POST values always win over it.
     """
     data = defaultdict(str)
     if brand is not None:
         for field in _BRAND_FORM_FIELDS:
             data[field] = getattr(brand, field)
+    if seed:
+        data.update(seed)
     if request.method == 'POST':
         data.update(request.POST.dict())
     return data
@@ -113,9 +118,78 @@ def _validate_new_brand(slug, name, primary_domain, tracking_domain):
     return errors
 
 
+def _convert_lead(request):
+    """Resolve the PlatformLead being converted, from ?from_lead= (GET link) or
+    the hidden from_lead field (POST), or None for an ordinary brand create.
+
+    A bogus/missing id returns None so the view simply behaves as a normal
+    create — the convert path is purely additive and never breaks plain creation.
+    """
+    from platform_leads.models import PlatformLead
+
+    raw = (request.POST.get('from_lead') if request.method == 'POST'
+           else request.GET.get('from_lead')) or ''
+    if not raw.isdigit():
+        return None
+    return (PlatformLead.objects
+            .select_related('converted_brand')
+            .filter(pk=int(raw)).first())
+
+
+def _lead_brand_prefill(lead):
+    """Map a sales lead onto brand-create form fields. Domains are deliberately
+    NOT derived — they must be real/DNS-routable and are left for the owner."""
+    return {
+        'name': lead.company or lead.name,
+        'support_email': lead.email,
+    }
+
+
+def _link_converted_lead(request, lead, brand):
+    """Link a freshly-created brand back to the lead it was converted from.
+
+    Sets converted_brand/converted_at, forces sales_stage=WON, maps the lead
+    email onto the brand's notification address, and surfaces a non-blocking
+    note if a user with that email already exists (we never auto-create users).
+    """
+    from django.contrib.auth import get_user_model
+    from platform_leads.models import PlatformLead
+
+    if lead.email and not brand.notification_email:
+        brand.notification_email = lead.email
+        brand.save(update_fields=['notification_email'])
+
+    if lead.email and get_user_model().objects.filter(email__iexact=lead.email).exists():
+        messages.warning(
+            request,
+            f'Note: a user with email {lead.email} already exists — no account '
+            'was created. Link or invite them manually if needed.')
+
+    lead.converted_brand = brand
+    lead.converted_at = timezone.now()
+    fields = ['converted_brand', 'converted_at']
+    if lead.sales_stage != PlatformLead.Stage.WON:
+        lead.sales_stage = PlatformLead.Stage.WON
+        fields.append('sales_stage')
+    lead.save(update_fields=fields)
+    messages.success(
+        request,
+        f'Lead "{lead.name or lead.email}" converted and linked to this brand.')
+
+
 @platform_owner_required
 @require_http_methods(['GET', 'POST'])
 def brand_create(request):
+    # Optional sales-lead conversion context. Reuses this single creator — there
+    # is no parallel brand maker. See _convert_lead / _link_converted_lead.
+    lead = _convert_lead(request)
+    if lead is not None and lead.is_converted:
+        # Already converted: never create a second brand — go to the linked one.
+        messages.info(
+            request,
+            f'Lead already converted to "{lead.converted_brand.name}".')
+        return redirect('brands_admin:brand_setup', pk=lead.converted_brand_id)
+
     if request.method == 'POST':
         slug = request.POST.get('slug', '').strip()
         name = request.POST.get('name', '').strip()
@@ -127,6 +201,7 @@ def brand_create(request):
                 messages.error(request, err)
             return render(request, 'brands/admin/brand_form.html', {
                 'action': 'Create', 'post': _form_data(request),
+                'convert_lead': lead,
             })
         brand = Brand.objects.create(
             slug=slug,
@@ -142,11 +217,15 @@ def brand_create(request):
             privacy_url=request.POST.get('privacy_url', '').strip(),
             is_default=request.POST.get('is_default') == 'on',
         )
+        if lead is not None:
+            _link_converted_lead(request, lead, brand)
         messages.success(request, f'Brand "{brand.name}" created successfully.')
         return redirect('brands_admin:brand_setup', pk=brand.pk)
 
+    seed = _lead_brand_prefill(lead) if lead is not None else None
     return render(request, 'brands/admin/brand_form.html', {
-        'action': 'Create', 'post': _form_data(request),
+        'action': 'Create', 'post': _form_data(request, seed=seed),
+        'convert_lead': lead,
     })
 
 

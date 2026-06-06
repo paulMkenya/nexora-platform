@@ -38,6 +38,7 @@ Pass `active` in context to highlight the current tool:
     <a class="nx-anav-link {% if active == 'impersonation' %}active{% endif %}" href="/admin/impersonate/log/">Impersonation</a>
     {% if is_platform_owner %}
     <a class="nx-anav-link {% if active == 'brands' %}active{% endif %}" href="/admin/brands/">Brands</a>
+    <a class="nx-anav-link {% if active == 'platform_leads' %}active{% endif %}" href="/admin/platform-leads/">Sales Funnel</a>
     {% endif %}
     <a class="nx-anav-link" href="/api/schema/swagger-ui/">API Docs</a>
     {% if is_platform_owner %}

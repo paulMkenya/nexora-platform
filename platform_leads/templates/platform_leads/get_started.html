@@ -1,0 +1,224 @@
+<!doctype html>
+{% load geo_extras %}
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get started — {{ brand.name|default:"Nexora" }}</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% endif %}
+  <style>
+    :root{
+      --brand:{{ brand.primary_color|default:"#6366f1" }};
+      --brand2:{{ brand.secondary_color|default:"#4f46e5" }};
+      --bg:#0b1020;--panel:#121a30;--line:#26314f;--ink:#e8edf7;--ink-dim:#9fb0d0;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(ellipse at top,rgba(99,102,241,.18),transparent 60%),var(--bg);
+      color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+    .wrap{max-width:760px;margin:0 auto;padding:48px 20px 80px}
+    .top{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+    .top a{color:var(--ink);text-decoration:none;font-weight:700;font-size:1.05rem}
+    h1{font-size:2rem;margin:0 0 8px}
+    .lede{color:var(--ink-dim);margin:0 0 28px;max-width:56ch}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px}
+    label{display:block;font-weight:600;font-size:.92rem;margin:0 0 6px}
+    .hint{font-weight:400;color:var(--ink-dim);font-size:.82rem}
+    input[type=text],input[type=email],input[type=tel],input[type=url],select,textarea{
+      width:100%;padding:11px 13px;border-radius:10px;border:1px solid var(--line);
+      background:#0d1426;color:var(--ink);font-size:.95rem;font-family:inherit}
+    textarea{min-height:90px;resize:vertical}
+    .field{margin-bottom:18px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @media(max-width:560px){.grid2{grid-template-columns:1fr}}
+    .types{display:grid;gap:10px;margin-bottom:6px}
+    .type-opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;
+      padding:13px 15px;cursor:pointer;transition:.15s}
+    .type-opt:hover{border-color:var(--brand)}
+    .type-opt input{margin-top:3px}
+    .type-opt.sel{border-color:var(--brand);background:rgba(99,102,241,.1)}
+    .checks{display:flex;flex-wrap:wrap;gap:8px}
+    .chk{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;
+      padding:7px 13px;font-size:.86rem;cursor:pointer}
+    .chk input{margin:0}
+    .btn{display:inline-block;border:none;cursor:pointer;font-weight:700;font-size:1rem;
+      padding:14px 26px;border-radius:12px;color:#fff;
+      background:linear-gradient(135deg,var(--brand),var(--brand2))}
+    .btn:hover{filter:brightness(1.08)}
+    .errors{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#fecaca;
+      border-radius:12px;padding:14px 16px;margin-bottom:22px}
+    .errors ul{margin:6px 0 0;padding-left:20px}
+    .ok{text-align:center;padding:30px 10px}
+    .ok .big{font-size:3rem}
+    .ok h1{margin-top:14px}
+    .hp{position:absolute;left:-9999px;top:-9999px;height:0;width:0;overflow:hidden}
+    fieldset{border:0;padding:0;margin:0}
+    legend{font-weight:700;font-size:1.05rem;margin:8px 0 14px;color:var(--ink)}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="/">{{ brand.name|default:"Nexora" }}</a></div>
+
+  {% if submitted %}
+    <div class="card ok">
+      <div class="big">✅</div>
+      <h1>Thanks — we'll be in touch.</h1>
+      <p class="lede" style="margin:10px auto 0">Your request reached our team. We'll review the details
+        and reach out shortly to talk about your network.</p>
+      <p style="margin-top:24px"><a class="btn" href="/">Back to home</a></p>
+    </div>
+  {% else %}
+    <h1>Request your network</h1>
+    <p class="lede">Tell us what you're building and we'll set you up with your own white-label platform.
+      Only your name and email are required — everything else helps us tailor the conversation.</p>
+
+    {% if rate_limited %}
+      <div class="errors">You've sent a few requests already — please give us a little time to respond,
+        then try again later.</div>
+    {% endif %}
+    {% if errors %}
+      <div class="errors"><strong>Please fix the following:</strong>
+        <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+
+    <form method="post" action="/get-started/" class="card" id="gsForm">
+      {% csrf_token %}
+      {# Honeypot — hidden from humans; bots that fill it are silently dropped.
+         The name is a neutral, non-autofill token on purpose: a real-looking
+         name (company/url/email…) gets populated by browser autofill, which
+         silently dropped genuine leads. Must match views.get_started. #}
+      <div class="hp" aria-hidden="true">
+        <label for="hp_check">Leave this field blank</label>
+        <input type="text" name="hp_check" id="hp_check" tabindex="-1" autocomplete="off">
+      </div>
+
+      <fieldset>
+        <legend>What are you looking for?</legend>
+        <div class="types">
+          {% for val, label in lead_types %}
+          <label class="type-opt" data-type="{{ val }}">
+            <input type="radio" name="lead_type" value="{{ val }}"
+              {% if post.lead_type == val %}checked{% endif %} required>
+            <span>{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <hr style="border:0;border-top:1px solid var(--line);margin:24px 0">
+
+      <div class="grid2">
+        <div class="field">
+          <label for="name">Name <span class="hint">(required)</span></label>
+          <input type="text" name="name" id="name" value="{{ post.name }}" required>
+        </div>
+        <div class="field">
+          <label for="email">Email <span class="hint">(required)</span></label>
+          <input type="email" name="email" id="email" value="{{ post.email }}" required>
+        </div>
+        <div class="field">
+          <label for="phone">Phone</label>
+          <input type="tel" name="phone" id="phone" value="{{ post.phone }}">
+        </div>
+        <div class="field" data-show="ADVERTISER NETWORK OTHER">
+          <label for="company">Company / brand name</label>
+          <input type="text" name="company" id="company" value="{{ post.company }}">
+        </div>
+        <div class="field">
+          <label for="country">Country / region</label>
+          <select name="country" id="country">
+            {% for code, label in countries %}
+            <option value="{{ code }}" {% if post.country == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="website">Website or current platform</label>
+          <input type="url" name="website" id="website" value="{{ post.website }}" placeholder="https://">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="scale">Monthly volume / scale
+          <span class="hint" data-show="NETWORK">e.g. number of affiliates</span>
+          <span class="hint" data-show="SOLO ADVERTISER OTHER">clicks or conversions per month</span>
+        </label>
+        <input type="text" name="scale" id="scale" value="{{ post.scale }}">
+      </div>
+
+      <div class="field" data-show="ADVERTISER NETWORK OTHER">
+        <label>Verticals <span class="hint">(select any that apply)</span></label>
+        <div class="checks">
+          {% for c in categories %}
+          <label class="chk"><input type="checkbox" name="verticals" value="{{ c.id }}"> {{ c.name }}</label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field" data-show="SOLO NETWORK OTHER">
+        <label>Traffic sources <span class="hint">(select any that apply)</span></label>
+        <div class="checks">
+          {% for t in traffic_sources %}
+          <label class="chk"><input type="checkbox" name="traffic_sources" value="{{ t.id }}"> {{ t.name }}</label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="pain">What's prompting the move? <span class="hint">(current pain / why looking)</span></label>
+        <textarea name="pain" id="pain">{{ post.pain }}</textarea>
+      </div>
+
+      <div class="grid2">
+        <div class="field">
+          <label for="timeline">Timeline</label>
+          <select name="timeline" id="timeline">
+            <option value="">—</option>
+            {% for val, label in timelines %}
+            <option value="{{ val }}" {% if post.timeline == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="budget">Budget range <span class="hint">(optional)</span></label>
+          <input type="text" name="budget" id="budget" value="{{ post.budget }}">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="source">How did you hear about us?</label>
+        <input type="text" name="source" id="source" value="{{ post.source }}">
+      </div>
+
+      <button type="submit" class="btn">Request your network →</button>
+    </form>
+  {% endif %}
+</div>
+
+<script>
+  // Adaptive form: show only the qualifying fields relevant to the chosen type.
+  // Purely cosmetic — every field is optional server-side regardless.
+  (function () {
+    var form = document.getElementById('gsForm');
+    if (!form) return;
+    var radios = form.querySelectorAll('input[name="lead_type"]');
+    var conditional = form.querySelectorAll('[data-show]');
+
+    function apply() {
+      var sel = form.querySelector('input[name="lead_type"]:checked');
+      var type = sel ? sel.value : null;
+      form.querySelectorAll('.type-opt').forEach(function (o) {
+        o.classList.toggle('sel', o.getAttribute('data-type') === type);
+      });
+      conditional.forEach(function (el) {
+        var types = el.getAttribute('data-show').split(' ');
+        el.style.display = (type && types.indexOf(type) !== -1) ? '' : 'none';
+      });
+    }
+    radios.forEach(function (r) { r.addEventListener('change', apply); });
+    apply();
+  })();
+</script>
+</body>
+</html>
