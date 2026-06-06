@@ -34,6 +34,7 @@ Pass `active` in context to highlight the current tool:
     <a class="nx-anav-link {% if active == 'roles' %}active{% endif %}" href="/admin/roles/">{% if is_platform_owner %}Roles &amp; Admins{% else %}Managers{% endif %}</a>
     <a class="nx-anav-link {% if active == 'email_settings' %}active{% endif %}" href="/admin/brands/email-settings/">Email</a>
     <a class="nx-anav-link {% if active == 'archived' %}active{% endif %}" href="/admin/archived/">Archived</a>
+    <a class="nx-anav-link {% if active == 'impersonation' %}active{% endif %}" href="/admin/impersonate/log/">Impersonation</a>
     {% if is_platform_owner %}
     <a class="nx-anav-link {% if active == 'brands' %}active{% endif %}" href="/admin/brands/">Brands</a>
     {% endif %}

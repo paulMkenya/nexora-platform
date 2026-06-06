@@ -107,7 +107,13 @@
                 {% csrf_token %}
                 <button type="submit" class="btn btn-outline-secondary btn-sm">Archive</button>
               </form>
-            </div>
+              {% if a.user_id and not request.is_impersonating %}
+              <form method="post" action="{% url 'impersonation:start' a.user_id %}" class="d-inline ms-1"
+                    onsubmit="return confirm('Log in as {{ a.company }}? Money actions stay disabled and the session is audit-logged.')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-dark btn-sm">Log in as</button>
+              </form>
+              {% endif %}
           </td>
         </tr>
         {% empty %}

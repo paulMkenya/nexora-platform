@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from brands.scoping import scope_brand, sees_all_brands
+from impersonation.decorators import block_when_impersonating
 from payouts.models import (
     METHOD_CHOICES, PayoutBatch, PayoutRequest,
     STATUS_APPROVED, STATUS_PAID,
@@ -71,6 +72,7 @@ def payout_list(request):
     return render(request, 'payouts/admin_payout_list.html', ctx)
 
 
+@block_when_impersonating
 @staff_member_required
 @require_POST
 def bulk_approve(request):
@@ -82,6 +84,7 @@ def bulk_approve(request):
     return redirect('payouts_admin:payout_list')
 
 
+@block_when_impersonating
 @staff_member_required
 @require_POST
 def mark_paid(request):
@@ -100,6 +103,7 @@ def mark_paid(request):
     return redirect('payouts_admin:payout_list')
 
 
+@block_when_impersonating
 @staff_member_required
 @require_POST
 def dispatch_approved(request):

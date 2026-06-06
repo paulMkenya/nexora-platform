@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from affiliate_ui.gates import require_approved_affiliate
+from impersonation.decorators import block_when_impersonating
 from payouts.crypto.validators import SUPPORTED_NETWORKS, validate_address
 from payouts.models import (
     METHOD_CHOICES, METHOD_CRYPTO, PayoutMethod, PayoutRequest,
@@ -38,6 +39,7 @@ def payouts_home(request):
     return render(request, 'payouts/affiliate_payouts.html', ctx)
 
 
+@block_when_impersonating
 @require_approved_affiliate
 @require_POST
 def add_payout_method(request):
@@ -83,6 +85,7 @@ def add_payout_method(request):
     return redirect('affiliate_ui:payouts')
 
 
+@block_when_impersonating
 @require_approved_affiliate
 @require_POST
 def delete_payout_method(request, pk):
@@ -92,6 +95,7 @@ def delete_payout_method(request, pk):
     return redirect('affiliate_ui:payouts')
 
 
+@block_when_impersonating
 @require_approved_affiliate
 @require_POST
 def set_default_method(request, pk):
@@ -101,6 +105,7 @@ def set_default_method(request, pk):
     return redirect('affiliate_ui:payouts')
 
 
+@block_when_impersonating
 @require_approved_affiliate
 @require_POST
 def request_early_payout(request):
@@ -145,6 +150,7 @@ def request_early_payout(request):
     return redirect('affiliate_ui:payouts')
 
 
+@block_when_impersonating
 @require_approved_affiliate
 @require_POST
 def update_payout_settings(request):

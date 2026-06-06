@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'reporting',
     'public_api',
     'website',
+    'impersonation',
 ]
 
 
@@ -74,6 +75,9 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # Swaps request.user to the impersonated target (re-validated every request)
+    # BEFORE brand/role routing runs, so the request is handled as the target.
+    'impersonation.middleware.ImpersonationMiddleware',
     'brands.middleware.BrandMiddleware',
     'user_profile.middleware.RolePortalMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
