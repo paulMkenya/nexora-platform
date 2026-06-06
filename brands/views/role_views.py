@@ -19,11 +19,30 @@ from django.shortcuts import redirect, render
 
 from brands.models import Brand
 from brands.permissions import brand_admin_required, platform_owner_required
-from brands.scoping import is_platform_owner, operator_brand
+from brands.scoping import is_platform_owner, operator_brand, scope_brand, sees_all_brands
 from user_profile.models import Profile
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+
+def _scoped_managers(request):
+    """Affiliate-manager profiles visible to the current operator — archived
+    excluded, brand-confined (a superuser sees all).
+
+    The single source of truth for "which managers this operator may see/act on",
+    mirroring ``_scoped_affiliates`` / ``_scoped_advertisers``. Reused by the
+    impersonation scope check so managers are impersonable strictly downward and
+    within scope, with no parallel permission path.
+    """
+    qs = (
+        Profile.objects
+        .filter(role=Profile.Role.AFFILIATE_MANAGER, is_archived=False)
+        .select_related('user', 'brand')
+    )
+    if sees_all_brands(request.user):
+        return qs
+    return qs.filter(brand=scope_brand(request))
 
 
 def _find_user(identifier):
@@ -51,19 +70,11 @@ def roles_home(request):
             .select_related('user', 'brand')
             .order_by('brand__name', 'user__username')
         )
-        ctx['managers'] = (
-            Profile.objects.filter(role=Profile.Role.AFFILIATE_MANAGER)
-            .select_related('user', 'brand')
-            .order_by('brand__name', 'user__username')
-        )
+        ctx['managers'] = _scoped_managers(request).order_by('brand__name', 'user__username')
     else:
         brand = operator_brand(request.user)
         ctx['brand'] = brand
-        ctx['managers'] = (
-            Profile.objects.filter(role=Profile.Role.AFFILIATE_MANAGER, brand=brand)
-            .select_related('user', 'brand')
-            .order_by('user__username')
-        )
+        ctx['managers'] = _scoped_managers(request).order_by('user__username')
 
     return render(request, 'brands/admin/roles.html', ctx)
 

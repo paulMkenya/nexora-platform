@@ -313,3 +313,49 @@ class RevalidationTest(ImpersonationBase):
         self.aff_a.save(update_fields=['is_active'])
         self.assertFalse(self._banner_present())
         self.assertNotIn('impersonate_target_id', self.client.session)
+
+
+# ─────────────────────────── managers (downward, in scope) ──────────────────
+
+class ManagerImpersonationTest(ImpersonationBase):
+    def setUp(self):
+        super().setUp()
+        self.mgr_b = _user('mgr_b', Profile.Role.AFFILIATE_MANAGER, self.brand_b)
+
+    def test_brand_admin_impersonates_own_brand_manager(self):
+        self.client.force_login(self.admin_a)
+        r = self._start(self.mgr_a)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self.client.session['impersonate_target_id'], self.mgr_a.pk)
+        self.assertTrue(self._banner_present())
+
+    def test_owner_impersonates_manager_any_brand(self):
+        self.client.force_login(self.owner)
+        r = self._start(self.mgr_b)
+        self.assertEqual(r.status_code, 302)
+
+    def test_brand_admin_cannot_impersonate_other_brand_manager(self):
+        self.client.force_login(self.admin_a)
+        r = self._start(self.mgr_b)
+        self.assertEqual(r.status_code, 404)
+        self.assertNotIn('impersonate_target_id', self.client.session)
+
+    def test_archived_manager_not_impersonable(self):
+        p = self.mgr_a.profile
+        p.is_archived = True
+        p.save(update_fields=['is_archived'])
+        self.client.force_login(self.admin_a)
+        r = self._start(self.mgr_a)
+        self.assertEqual(r.status_code, 404)
+
+    def test_manager_login_as_button_in_roles_console(self):
+        self.client.force_login(self.admin_a)
+        r = self.client.get('/admin/roles/')
+        self.assertContains(r, f'/admin/impersonate/start/{self.mgr_a.pk}/')
+
+    def test_audit_brand_recorded_for_manager(self):
+        self.client.force_login(self.admin_a)
+        self._start(self.mgr_a)
+        log = ImpersonationLog.objects.get()
+        self.assertEqual(log.target, self.mgr_a)
+        self.assertEqual(log.brand, self.brand_a)
