@@ -72,6 +72,17 @@ class PlatformLead(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_contact_at = models.DateTimeField(null=True, blank=True)
 
+    # Conversion link — set when a WON lead is converted into a Brand via the
+    # owner-only convert flow (brands.views.admin_views.brand_create). SET_NULL
+    # so deleting a brand never destroys the lead's sales history; the link just
+    # clears. A non-null converted_brand means the lead is already converted and
+    # cannot be converted again (server-side guard + UI both honour this).
+    converted_brand = models.ForeignKey(
+        'brands.Brand', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='converted_from_leads',
+        help_text='The Brand this WON lead was converted into, if any.')
+    converted_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ('-created_at',)
         indexes = [
@@ -81,3 +92,8 @@ class PlatformLead(models.Model):
 
     def __str__(self):
         return f'{self.get_lead_type_display()}: {self.name or self.email or self.pk}'
+
+    @property
+    def is_converted(self):
+        """True once this lead has been converted into a Brand."""
+        return self.converted_brand_id is not None

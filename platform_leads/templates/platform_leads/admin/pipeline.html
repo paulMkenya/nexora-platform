@@ -105,6 +105,11 @@
               <button type="submit" class="btn btn-outline-primary btn-sm">Set</button>
             </form>
             <a href="{% url 'platform_leads_admin:lead_detail' lead.id %}" class="btn btn-outline-secondary btn-sm">Open</a>
+            {% if lead.converted_brand_id %}
+            <a href="{% url 'brands_admin:brand_setup' lead.converted_brand_id %}" class="btn btn-success btn-sm" title="Converted to {{ lead.converted_brand.name }}">Converted ↗</a>
+            {% elif lead.sales_stage == 'WON' %}
+            <a href="{% url 'brands_admin:brand_create' %}?from_lead={{ lead.id }}" class="btn btn-success btn-sm">Convert to brand</a>
+            {% endif %}
           </td>
         </tr>
         {% empty %}
