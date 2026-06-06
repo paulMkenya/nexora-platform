@@ -326,3 +326,46 @@ GEOIP_CITY_DB = os.environ.get(
     'GEOIP_CITY_DB',
     '/opt/nexora-platform/data/geoip/GeoLite2-City.mmdb',
 )
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+# Emit INFO+ to stdout/stderr so app-level INFO logs are visible in
+# `docker compose logs`. With no LOGGING config Django leaves the root logger at
+# WARNING, so INFO messages (e.g. honeypot trips on the public funnel) never
+# surface — which once hid a real bug. Level is overridable via LOG_LEVEL.
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '%(asctime)s %(levelname)s %(name)s: %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': LOG_LEVEL,
+    },
+    'loggers': {
+        # Django's own logs at the configured level; SQL stays quiet (it only
+        # logs at DEBUG via django.db.backends, which we never enable here).
+        'django': {
+            'handlers': ['console'],
+            'level': LOG_LEVEL,
+            'propagate': False,
+        },
+        # Request errors (4xx/5xx) — keep at WARNING so we don't duplicate the
+        # access lines gunicorn already emits.
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
