@@ -32,6 +32,7 @@ urlpatterns = [
     path('admin/brands/', include('brands.urls', namespace='brands_admin')),
     path('admin/affiliates/', include('affiliate_ui.admin_urls', namespace='affiliate_admin')),
     path('admin/archived/', include('brands.archived_urls', namespace='archived_admin')),
+    path('admin/impersonate/', include('impersonation.urls', namespace='impersonation')),
     path('admin/fraud/', include('fraud.urls', namespace='fraud')),
     path('admin/payouts/', include('payouts.urls', namespace='payouts_admin')),
     path('mmp/', include('mmp.urls', namespace='mmp')),
