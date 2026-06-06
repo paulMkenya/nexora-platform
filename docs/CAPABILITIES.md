@@ -132,6 +132,9 @@ Two layers: the custom operator tools (templated pages) and the Django **model a
 | Advertiser approve | `/admin/advertisers/<pk>/approve/` (POST) | same | Sets `APPROVED`, emails the advertiser |
 | Advertiser reject | `/admin/advertisers/<pk>/reject/` (POST) | same | Sets `REJECTED` |
 | Advertiser suspend | `/admin/advertisers/<pk>/suspend/` (POST) | same | Sets `SUSPENDED`. Object-level scoped: another brand's advertiser is a 404 by direct ID |
+| **Lead pipeline — list** | `/admin/leads/` | brand-admin / superuser (`brand_admin_required`; affiliate managers blocked) | Brand-scoped CRM pipeline of affiliate + advertiser leads. Per-stage count summary, filter by stage/type (owner also by brand). Owner sees all brands |
+| Lead stage change | `/admin/leads/<pk>/stage/` (POST) | same | Manual stage override (any stage). Object-level scoped: a cross-brand lead is a 404 by direct ID |
+| Lead add note | `/admin/leads/<pk>/note/` (POST) | same | Appends a note |
 | **Payouts — list** | `/admin/payouts/` | `staff_member_required` | Payout requests |
 | Payouts bulk approve | `/admin/payouts/approve/` (POST) | staff | |
 | Payouts mark paid | `/admin/payouts/mark-paid/` (POST) | staff | |
@@ -150,6 +153,38 @@ Two layers: the custom operator tools (templated pages) and the Django **model a
 Payout provider webhooks (public, signature-verified, `payouts.webhook_urls`):
 `/webhooks/mpesa/b2c/`, `/webhooks/nowpayments/`.
 
+**CRM lead pipeline (`leads`).** Every self-registered affiliate and advertiser is
+tracked as a brand-scoped `leads.Lead` (one per entity, idempotent) — tracking is
+independent of notification. Stages auto-advance forward-only off existing platform
+events (single path, `leads.signals` → `leads.services`):
+
+| Stage | Trigger |
+|---|---|
+| `NEW` | registration (entity created) |
+| `VERIFIED` | `email_verified` flips true |
+| `APPROVED` | brand-admin approval |
+| `ACTIVATED` | first activity — affiliate click/conversion, advertiser created offer (also reactivates a dormant lead) |
+| `DORMANT` | `mark-dormant-leads` Celery beat task: ACTIVATED + idle > `LEADS_DORMANT_DAYS` (default 30) |
+
+Operators may also set any stage manually and add notes in `/admin/leads/`. The
+`leads/0002` data migration backfills existing affiliates/advertisers to a stage
+derived from their current state.
+
+**Registration notifications** (`leads.tasks`, dispatched async via Celery, sent
+through `send_brand_mail` so a failure logs and never 500s/blocks registration):
+
+- **Affiliate registration** → the registrant gets their existing verification
+  email only. **No operator notification** to anyone (not the brand admin, not the
+  platform owner).
+- **Advertiser registration** → the registrant gets their existing emails **and**
+  the brand's notification email gets a "New advertiser registration" alert with a
+  link to `/admin/advertisers/`. The platform owner is never special-cased — they
+  are notified only if they are that brand's notification recipient.
+
+The recipient is `Brand.notification_email` (editable on `/admin/brands/email-settings/`,
+next to SMTP); blank falls back to a brand admin's own email, and if that is empty
+too the alert is skipped + logged.
+
 ### 3b. Django model admin — `/admin/` (`staff_member_required`)
 
 Registered models available in the stock Django admin:
@@ -164,6 +199,7 @@ Registered models available in the stock Django admin:
 | `billing` | AdvertiserWallet, WalletTopUp, WalletTransaction, Invoice |
 | `fraud` | FraudWhitelist |
 | `user_profile` | Profile |
+| `leads` | Lead |
 
 The Django admin header is overridden (`templates/admin/base_site.html`) to add a
 "→ Operator Dashboard" button.
