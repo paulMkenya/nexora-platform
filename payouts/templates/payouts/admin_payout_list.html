@@ -16,7 +16,13 @@
       <span class="badge bg-secondary align-middle">{{ brand.name }}</span>
     {% endif %}
   </h2>
-  <p><a href="{% url 'payouts_admin:batch_list' %}">Batch History</a></p>
+  <p>
+    <a href="{% url 'payouts_admin:batch_list' %}">Batch History</a>
+    &nbsp;·&nbsp;
+    <a href="{% url 'payouts_admin:holds_list' %}">Held / Pending Approval</a>
+    &nbsp;·&nbsp;
+    <a href="{% url 'payouts_admin:control_settings' %}">Withdrawal Controls</a>
+  </p>
 
   {# Filters #}
   <form method="get" class="row g-2 mb-3">

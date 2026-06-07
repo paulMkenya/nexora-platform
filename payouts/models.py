@@ -26,14 +26,29 @@ STATUS_APPROVED = 'approved'
 STATUS_PROCESSING = 'processing'
 STATUS_PAID = 'paid'
 STATUS_FAILED = 'failed'
+# Withdrawal-control-layer states (see payouts/control.py):
+#   pending_approval — parked by the control layer (threshold / anomaly / cool-down),
+#                      awaiting an authorized operator's approve/deny.
+#   blocked          — refused by a velocity limit; NOT dispatched, NOT silently
+#                      capped. Stays blocked until limits change or the day rolls.
+#   denied           — an operator explicitly refused a pending_approval payout.
+STATUS_PENDING_APPROVAL = 'pending_approval'
+STATUS_BLOCKED = 'blocked'
+STATUS_DENIED = 'denied'
 
 REQUEST_STATUS_CHOICES = [
     (STATUS_PENDING, 'Pending'),
     (STATUS_APPROVED, 'Approved'),
+    (STATUS_PENDING_APPROVAL, 'Pending Approval'),
+    (STATUS_BLOCKED, 'Blocked'),
+    (STATUS_DENIED, 'Denied'),
     (STATUS_PROCESSING, 'Processing'),
     (STATUS_PAID, 'Paid'),
     (STATUS_FAILED, 'Failed'),
 ]
+
+# States the control layer parks a payout in for human/time review.
+HELD_STATUSES = [STATUS_PENDING_APPROVAL, STATUS_BLOCKED]
 
 SCHEDULE_WEEKLY = 'weekly'
 SCHEDULE_BIWEEKLY = 'biweekly'
@@ -105,9 +120,16 @@ class PayoutRequest(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.CharField(max_length=10, default='USD')
     method = models.CharField(max_length=10, choices=METHOD_CHOICES, default=METHOD_PAYPAL)
-    status = models.CharField(max_length=12, choices=REQUEST_STATUS_CHOICES, default=STATUS_PENDING)
+    status = models.CharField(max_length=20, choices=REQUEST_STATUS_CHOICES, default=STATUS_PENDING)
     scheduled_for = models.DateField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    # Stamped by the withdrawal control layer the moment a payout is actually
+    # released to a provider. The single source of truth for the per-day velocity
+    # aggregates (count/amount per affiliate, per brand, platform-wide).
+    dispatched_at = models.DateTimeField(null=True, blank=True)
+    # When a time-based hold (new-address cool-down) expires. While set in the
+    # future the payout cannot dispatch without an explicit operator override.
+    control_hold_until = models.DateTimeField(null=True, blank=True)
     tx_ref = models.CharField(max_length=255, default='', blank=True, db_index=True)
     period_start = models.DateField(null=True, blank=True)
     period_end = models.DateField(null=True, blank=True)
@@ -160,3 +182,155 @@ class PayoutSettings(models.Model):
 
     def __str__(self):
         return f'PayoutSettings({self.affiliate_id})'
+
+
+# ---------------------------------------------------------------------------
+# Withdrawal control layer (provider-agnostic safety net — see payouts/control.py)
+# ---------------------------------------------------------------------------
+
+
+class WithdrawalControlConfig(models.Model):
+    """Platform-wide, owner-editable configuration for the withdrawal controls.
+
+    A single row (``pk=1``, accessed via :meth:`load`). These are the *defaults*;
+    a brand may override the per-brand-sensible ones via
+    :class:`BrandWithdrawalControl`. Nothing here is env-hardcoded — the values
+    live in the database and are edited in the operator UI.
+
+    Semantics: a max amount / count of ``0`` (or ``NULL`` on an override) means
+    "no limit / disabled" for that rule; the same applies to the threshold,
+    cool-down and anomaly knobs.
+    """
+
+    class Meta:
+        verbose_name = 'Withdrawal control configuration'
+        verbose_name_plural = 'Withdrawal control configuration'
+
+    # Master switch — when off, the layer waves every payout through (audited).
+    enabled = models.BooleanField(default=True)
+
+    # Part A — velocity limits
+    per_tx_max = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('5000.00'))
+    per_affiliate_day_count = models.PositiveIntegerField(default=3)
+    per_affiliate_day_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('10000.00'))
+    per_brand_day_count = models.PositiveIntegerField(default=50)
+    per_brand_day_amount = models.DecimalField(max_digits=16, decimal_places=2, default=Decimal('100000.00'))
+    platform_day_count = models.PositiveIntegerField(default=500)
+    platform_day_amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('1000000.00'))
+
+    # Part B — threshold approval
+    approval_threshold = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('2000.00'))
+
+    # Part C — new/changed-address cool-down
+    new_address_cooldown_hours = models.PositiveIntegerField(default=24)
+
+    # Part D — rule-based anomaly holds (deterministic, no ML)
+    anomaly_multiple = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('5.00'),
+        help_text='Hold a payout larger than this multiple of the affiliate historical average.')
+    anomaly_min_history = models.PositiveIntegerField(
+        default=3, help_text='Minimum past payouts before the multiple rule applies.')
+    anomaly_burst_count = models.PositiveIntegerField(
+        default=5, help_text='Hold when this many payout requests appear within the burst window.')
+    anomaly_burst_window_minutes = models.PositiveIntegerField(default=60)
+
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+',
+    )
+
+    def __str__(self):
+        return 'Withdrawal control configuration'
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+class BrandWithdrawalControl(models.Model):
+    """Per-brand overrides for the withdrawal controls.
+
+    Every field is nullable; ``NULL`` means "inherit the platform default". Only
+    the per-brand-sensible knobs are overridable here — the platform-wide daily
+    caps and the burst parameters stay global on
+    :class:`WithdrawalControlConfig`.
+    """
+
+    class Meta:
+        verbose_name = 'Brand withdrawal control'
+        verbose_name_plural = 'Brand withdrawal controls'
+
+    brand = models.OneToOneField(
+        'brands.Brand', on_delete=models.CASCADE, related_name='withdrawal_control')
+
+    per_tx_max = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    per_affiliate_day_count = models.PositiveIntegerField(null=True, blank=True)
+    per_affiliate_day_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    per_brand_day_count = models.PositiveIntegerField(null=True, blank=True)
+    per_brand_day_amount = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    approval_threshold = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    new_address_cooldown_hours = models.PositiveIntegerField(null=True, blank=True)
+    anomaly_multiple = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'WithdrawalControl({self.brand_id})'
+
+
+# Decision outcomes recorded for EVERY payout the control layer evaluates.
+DECISION_ALLOWED = 'allowed'
+DECISION_BLOCKED_LIMIT = 'blocked_limit'
+DECISION_HELD_THRESHOLD = 'held_threshold'
+DECISION_HELD_COOLDOWN = 'held_cooldown'
+DECISION_HELD_ANOMALY = 'held_anomaly'
+DECISION_APPROVED = 'approved'
+DECISION_DENIED = 'denied'
+DECISION_DISPATCH_FAILED = 'dispatch_failed'
+
+DECISION_CHOICES = [
+    (DECISION_ALLOWED, 'Allowed'),
+    (DECISION_BLOCKED_LIMIT, 'Blocked by velocity limit'),
+    (DECISION_HELD_THRESHOLD, 'Held for threshold approval'),
+    (DECISION_HELD_COOLDOWN, 'Held for new-address cool-down'),
+    (DECISION_HELD_ANOMALY, 'Held by anomaly rule'),
+    (DECISION_APPROVED, 'Approved by operator'),
+    (DECISION_DENIED, 'Denied by operator'),
+    (DECISION_DISPATCH_FAILED, 'Dispatch failed'),
+]
+
+
+class PayoutDecision(models.Model):
+    """Append-only audit row for every withdrawal-control decision.
+
+    One row per decision point: the automated evaluation at dispatch (allowed /
+    blocked / held) and the human action that follows (approved / denied). Never
+    mutated, never deleted by the feature — the financial decision trail, mirrored
+    on the impersonation audit-log discipline.
+    """
+
+    class Meta:
+        ordering = ('-created_at',)
+        indexes = [
+            models.Index(fields=['payout_request', 'created_at']),
+            models.Index(fields=['decision', 'created_at']),
+        ]
+
+    payout_request = models.ForeignKey(
+        PayoutRequest, on_delete=models.CASCADE, related_name='decisions')
+    decision = models.CharField(max_length=20, choices=DECISION_CHOICES)
+    reason = models.TextField(default='', blank=True)
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'))
+    brand = models.ForeignKey(
+        'brands.Brand', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payout_decisions')
+    # The operator for a manual approve/deny; NULL for automated decisions.
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payout_decisions')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    def __str__(self):
+        return f'PayoutDecision#{self.pk} req={self.payout_request_id} {self.decision}'

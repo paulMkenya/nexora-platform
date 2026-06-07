@@ -9,11 +9,11 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from brands.scoping import scope_brand, sees_all_brands
+from brands.scoping import is_platform_owner, scope_brand, sees_all_brands
 from impersonation.decorators import block_when_impersonating
 from payouts.models import (
     METHOD_CHOICES, PayoutBatch, PayoutRequest,
-    STATUS_APPROVED, STATUS_PAID,
+    STATUS_APPROVED, STATUS_BLOCKED, STATUS_PAID, STATUS_PENDING_APPROVAL,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,17 +107,20 @@ def mark_paid(request):
 @staff_member_required
 @require_POST
 def dispatch_approved(request):
-    """Dispatch all approved payout requests through their provider."""
-    from payouts.providers.dispatch import dispatch_payout
+    """Dispatch approved payout requests through the withdrawal control layer.
+
+    Every request passes through ``enforce_and_dispatch`` — the provider-agnostic
+    safety net — at this single boundary: a payout is dispatched, blocked by a
+    velocity limit, or parked in ``pending_approval`` (threshold / cool-down /
+    anomaly). Nothing reaches a provider without being evaluated and audited.
+    """
+    from payouts.control import enforce_and_dispatch
     ids = request.POST.getlist('ids')
     qs = _scope_payouts(request, PayoutRequest.objects.filter(status=STATUS_APPROVED))
     if ids:
         qs = qs.filter(pk__in=ids)
-    dispatched = 0
-    for req in qs.select_related('payout_method'):
-        dispatch_payout(req)
-        req.save(update_fields=['status', 'tx_ref', 'notes', 'updated_at'])
-        dispatched += 1
+    for req in qs.select_related('payout_method', 'affiliate__profile'):
+        enforce_and_dispatch(req, actor=request.user)
     return redirect('payouts_admin:payout_list')
 
 
@@ -168,3 +171,116 @@ def download_batch_csv(request):
 def batch_list(request):
     batches = PayoutBatch.objects.prefetch_related('requests').order_by('-created_at')[:50]
     return render(request, 'payouts/admin_batch_list.html', {'batches': batches})
+
+
+# --- Withdrawal control layer: held-payouts review + config ----------------
+
+
+@staff_member_required
+def holds_list(request):
+    """Operator view of payouts parked by the withdrawal control layer.
+
+    Brand-scoped exactly like the main payout console (a brand operator only ever
+    sees/acts on their own brand's held payouts; the platform owner sees all).
+    Shows the latest control decision per request so the operator knows *why* it
+    is held before acting.
+    """
+    qs = _scope_payouts(
+        request,
+        PayoutRequest.objects
+        .filter(status__in=[STATUS_PENDING_APPROVAL, STATUS_BLOCKED])
+        .select_related('affiliate', 'payout_method')
+        .prefetch_related('decisions')
+        .order_by('-updated_at'),
+    )
+    ctx = {
+        'requests': qs[:200],
+        'show_all_brands': sees_all_brands(request.user),
+    }
+    return render(request, 'payouts/admin_holds_list.html', ctx)
+
+
+@block_when_impersonating
+@staff_member_required
+@require_POST
+def approve_hold(request, pk):
+    """Approve a parked payout and dispatch it (audited)."""
+    from payouts.control import approve
+    req = _scope_payouts(
+        request, PayoutRequest.objects.filter(pk=pk, status=STATUS_PENDING_APPROVAL)
+    ).select_related('payout_method', 'affiliate__profile').first()
+    if req is None:
+        return redirect('payouts_admin:holds_list')
+    reason = request.POST.get('reason', '')
+    approve(req, request.user, reason=reason)
+    return redirect('payouts_admin:holds_list')
+
+
+@block_when_impersonating
+@staff_member_required
+@require_POST
+def deny_hold(request, pk):
+    """Deny a parked payout (audited; never dispatched)."""
+    from payouts.control import deny
+    req = _scope_payouts(
+        request, PayoutRequest.objects.filter(pk=pk, status=STATUS_PENDING_APPROVAL)
+    ).select_related('affiliate__profile').first()
+    if req is None:
+        return redirect('payouts_admin:holds_list')
+    reason = request.POST.get('reason', '')
+    deny(req, request.user, reason=reason)
+    return redirect('payouts_admin:holds_list')
+
+
+# Fields the owner edits on the global config and (nullable) per-brand override.
+_GLOBAL_FIELDS = [
+    'per_tx_max', 'per_affiliate_day_count', 'per_affiliate_day_amount',
+    'per_brand_day_count', 'per_brand_day_amount',
+    'platform_day_count', 'platform_day_amount', 'approval_threshold',
+    'new_address_cooldown_hours', 'anomaly_multiple', 'anomaly_min_history',
+    'anomaly_burst_count', 'anomaly_burst_window_minutes',
+]
+_DECIMAL_FIELDS = {
+    'per_tx_max', 'per_affiliate_day_amount', 'per_brand_day_amount',
+    'platform_day_amount', 'approval_threshold', 'anomaly_multiple',
+}
+
+
+@block_when_impersonating
+@staff_member_required
+def control_settings(request):
+    """Owner-editable withdrawal-control configuration (NOT env-hardcoded).
+
+    The platform-wide config is editable by the platform owner (superuser). The
+    per-brand override is shown for the operator's own brand. Everything is stored
+    in the database and read live by the control layer.
+    """
+    from decimal import Decimal, InvalidOperation
+    from payouts.models import WithdrawalControlConfig
+
+    cfg = WithdrawalControlConfig.load()
+    is_owner = is_platform_owner(request.user)
+
+    if request.method == 'POST' and is_owner:
+        cfg.enabled = request.POST.get('enabled') == '1'
+        for field in _GLOBAL_FIELDS:
+            raw = request.POST.get(field, '').strip()
+            if raw == '':
+                continue
+            try:
+                value = Decimal(raw) if field in _DECIMAL_FIELDS else int(raw)
+            except (InvalidOperation, ValueError):
+                continue
+            if value < 0:
+                continue
+            setattr(cfg, field, value)
+        cfg.updated_by = request.user
+        cfg.save()
+        return redirect('payouts_admin:control_settings')
+
+    ctx = {
+        'cfg': cfg,
+        'is_owner': is_owner,
+        'fields': [(f, getattr(cfg, f)) for f in _GLOBAL_FIELDS],
+    }
+    return render(request, 'payouts/admin_control_settings.html', ctx)
