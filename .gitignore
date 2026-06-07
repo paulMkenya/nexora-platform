@@ -114,3 +114,13 @@ sandbox
 
 # GeoIP databases (large binary files, managed outside git)
 data/geoip/*.mmdb
+
+# Secrets / DB dumps / local data — never commit
+.env.prod.bak.*
+*.dump
+data/
+
+# Secrets / DB dumps / local data — never commit
+.env.prod.bak.*
+*.dump
+data/
