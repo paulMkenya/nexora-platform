@@ -11,4 +11,9 @@ urlpatterns = [
     path('dispatch/', admin_views.dispatch_approved, name='dispatch_approved'),
     path('csv/', admin_views.download_batch_csv, name='download_batch_csv'),
     path('batches/', admin_views.batch_list, name='batch_list'),
+    # Withdrawal control layer
+    path('holds/', admin_views.holds_list, name='holds_list'),
+    path('holds/<int:pk>/approve/', admin_views.approve_hold, name='approve_hold'),
+    path('holds/<int:pk>/deny/', admin_views.deny_hold, name='deny_hold'),
+    path('controls/', admin_views.control_settings, name='control_settings'),
 ]
