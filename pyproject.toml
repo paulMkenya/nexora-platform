@@ -31,6 +31,9 @@ user-agents = ">=2.2"
 weasyprint = ">=61"
 web3 = ">=6.0"
 tronpy = ">=0.4"
+# TOTP generation for the NOWPayments Mass Payouts sandbox client's automated
+# 2FA verify step (payouts/providers/nowpayments). Pure-python, no native deps.
+pyotp = ">=2.9"
 # Used directly by brands.models (Fernet SMTP-password encryption). Previously
 # present only by accident via Poetry's own deps under virtualenvs.create=false;
 # declared explicitly so it installs in every environment (incl. CI).

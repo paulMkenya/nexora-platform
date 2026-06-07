@@ -315,6 +315,37 @@ CRYPTO_HOT_WALLET_KEY = os.environ.get('CRYPTO_HOT_WALLET_KEY', '')
 # 'nowpayments' (default) or 'self_custodial'
 CRYPTO_PAYOUT_PROVIDER = os.environ.get('CRYPTO_PAYOUT_PROVIDER', 'nowpayments')
 
+# ── NOWPayments Mass Payouts — SANDBOX client (payouts/providers/nowpayments) ──
+# This is the new, sandbox-guarded Mass Payouts client (JWT auth + custody +
+# 2FA-verified batches). It is DELIBERATELY isolated from the legacy provider in
+# payouts/crypto/nowpayments.py:
+#   * It reads its OWN credentials (NOWPAYMENTS_SANDBOX_*), so configuring sandbox
+#     creds here can NEVER flip the legacy provider's is_enabled() (which keys off
+#     the separate NOWPAYMENTS_API_KEY) and re-arm the hardcoded production path.
+#   * NOWPAYMENTS_BASE_URL defaults to the sandbox host. The client refuses to run
+#     against a production-looking base URL unless NOWPAYMENTS_ALLOW_MAINNET=true
+#     (money-safety guard enforced at client init, not here).
+# As of PR #10 nothing dispatches through this client — it is exercised only by the
+# `nowpayments_preflight` management command. Validation happens at client
+# instantiation / preflight, never at import time, so unset values don't break boot.
+NOWPAYMENTS_SANDBOX_API_KEY = os.environ.get('NOWPAYMENTS_SANDBOX_API_KEY', '')
+NOWPAYMENTS_SANDBOX_EMAIL = os.environ.get('NOWPAYMENTS_SANDBOX_EMAIL', '')
+NOWPAYMENTS_SANDBOX_PASSWORD = os.environ.get('NOWPAYMENTS_SANDBOX_PASSWORD', '')
+NOWPAYMENTS_SANDBOX_TOTP_SECRET = os.environ.get('NOWPAYMENTS_SANDBOX_TOTP_SECRET', '')
+# Defined now, first used in PR #11 (IPN webhook).
+NOWPAYMENTS_SANDBOX_IPN_SECRET = os.environ.get('NOWPAYMENTS_SANDBOX_IPN_SECRET', '')
+NOWPAYMENTS_SANDBOX_IPN_CALLBACK_URL = os.environ.get('NOWPAYMENTS_SANDBOX_IPN_CALLBACK_URL', '')
+# Sandbox host by default. The mainnet guard (NOWPAYMENTS_ALLOW_MAINNET) is what
+# actually permits a production URL; preflight confirms reachability.
+NOWPAYMENTS_BASE_URL = os.environ.get('NOWPAYMENTS_BASE_URL', 'https://api-sandbox.nowpayments.io/v1')
+NOWPAYMENTS_ALLOW_MAINNET = os.environ.get('NOWPAYMENTS_ALLOW_MAINNET', 'false').lower() in ('1', 'true', 'yes')
+NOWPAYMENTS_DEFAULT_CURRENCY = os.environ.get('NOWPAYMENTS_DEFAULT_CURRENCY', 'usdttrc20')
+
+# Key-independent kill-switch for crypto dispatch. Default False. Defined now but
+# NOT yet consulted by the dispatch path — wiring _dispatch_crypto to honour this
+# flag is the FIRST task of PR #11 (this PR does not touch payouts/providers/dispatch.py).
+CRYPTO_DISPATCH_ENABLED = os.environ.get('CRYPTO_DISPATCH_ENABLED', 'false').lower() in ('1', 'true', 'yes')
+
 # Reporting aggregation backend.  'postgres' = materialized views (default).
 # Switch to 'clickhouse' when any brand exceeds ~10M clicks/month.
 REPORTING_BACKEND = os.environ.get('REPORTING_BACKEND', 'postgres')
