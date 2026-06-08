@@ -1,4 +1,4 @@
-"""Unit tests for the NOWPayments Mass Payouts sandbox client.
+"""Unit tests for the NOWPayments Mass Payouts client.
 
 Every HTTP call is mocked — CI must never touch the network. Covers: the mainnet
 guard, JWT caching, the single 401-refresh-retry, amount formatting to 6 dp, the
@@ -260,8 +260,8 @@ class SecretsNotLeakedTest(SimpleTestCase):
 
 
 @override_settings(
-    NOWPAYMENTS_SANDBOX_API_KEY='k', NOWPAYMENTS_SANDBOX_EMAIL='e@x.com',
-    NOWPAYMENTS_SANDBOX_PASSWORD='p', NOWPAYMENTS_SANDBOX_TOTP_SECRET='JBSWY3DPEHPK3PXP',
+    NOWPAYMENTS_API_KEY='k', NOWPAYMENTS_EMAIL='e@x.com',
+    NOWPAYMENTS_PASSWORD='p', NOWPAYMENTS_TOTP_SECRET='JBSWY3DPEHPK3PXP',
     NOWPAYMENTS_BASE_URL=SANDBOX_URL, NOWPAYMENTS_ALLOW_MAINNET=False,
     NOWPAYMENTS_DEFAULT_CURRENCY='usdttrc20',
 )
@@ -295,7 +295,7 @@ class PreflightCommandTest(SimpleTestCase):
         output = self._run()
         self.assertIn('PREFLIGHT FAILED', output)
 
-    @override_settings(NOWPAYMENTS_SANDBOX_API_KEY='')
+    @override_settings(NOWPAYMENTS_API_KEY='')
     @mock.patch('payouts.management.commands.nowpayments_preflight.NowPaymentsPayoutClient')
     def test_missing_required_setting_reports_name_only(self, client_cls):
         client = client_cls.return_value
@@ -304,5 +304,5 @@ class PreflightCommandTest(SimpleTestCase):
         client.get_balance.return_value = {}
         client.validate_address.return_value = True
         output = self._run()
-        self.assertIn('NOWPAYMENTS_SANDBOX_API_KEY', output)
+        self.assertIn('NOWPAYMENTS_API_KEY', output)
         self.assertIn('FAIL', output)

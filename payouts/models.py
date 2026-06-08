@@ -226,6 +226,41 @@ class CryptoPayoutBatch(models.Model):
         return f'CryptoPayoutBatch#{self.pk} {self.provider}:{self.provider_batch_id} {self.status}'
 
 
+class NowPaymentsIPNEvent(models.Model):
+    """Append-only dedupe/audit log of processed NOWPayments IPN callbacks.
+
+    Inbound idempotency anchor: every IPN is keyed by
+    ``(provider, withdrawal_id, status)``. The unique constraint makes a replayed
+    IPN a no-op — the processor uses ``get_or_create`` and skips when the row
+    already existed. The raw payload is retained verbatim for audit/debugging.
+
+    Append-only by convention (mirrors :class:`PayoutDecision`): rows are created,
+    never mutated or deleted.
+    """
+
+    class Meta:
+        ordering = ('-created_at',)
+        constraints = [
+            models.UniqueConstraint(
+                fields=['provider', 'withdrawal_id', 'status'],
+                name='payouts_nowpayments_ipn_unique_event',
+            ),
+        ]
+
+    provider = models.CharField(max_length=32, default='nowpayments')
+    # The NOWPayments per-withdrawal id (or batch id when no withdrawal id is
+    # present). Correlates the event back to a CryptoPayoutBatch / PayoutRequest.
+    withdrawal_id = models.CharField(max_length=64)
+    # The provider status carried by this IPN (e.g. 'finished', 'failed').
+    status = models.CharField(max_length=32)
+    # Verbatim IPN payload (already signature-verified before this row is written).
+    raw = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'NowPaymentsIPNEvent#{self.pk} {self.withdrawal_id}:{self.status}'
+
+
 class PayoutSettings(models.Model):
     class Meta:
         verbose_name_plural = 'Payout settings'

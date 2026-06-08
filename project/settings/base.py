@@ -309,41 +309,42 @@ MPESA_B2C_SHORTCODE = os.environ.get('MPESA_B2C_SHORTCODE', '')
 PAYPAL_CLIENT_ID = os.environ.get('PAYPAL_CLIENT_ID', '')
 PAYPAL_CLIENT_SECRET = os.environ.get('PAYPAL_CLIENT_SECRET', '')
 PAXUM_ACCOUNT_EMAIL = os.environ.get('PAXUM_ACCOUNT_EMAIL', '')
-NOWPAYMENTS_API_KEY = os.environ.get('NOWPAYMENTS_API_KEY', '')
-NOWPAYMENTS_IPN_SECRET = os.environ.get('NOWPAYMENTS_IPN_SECRET', '')
-CRYPTO_HOT_WALLET_KEY = os.environ.get('CRYPTO_HOT_WALLET_KEY', '')
-# 'nowpayments' (default) or 'self_custodial'
+# Only 'nowpayments' is supported. get_crypto_provider() validates this against an
+# allowlist and raises ImproperlyConfigured on any other value (fail loud, never
+# silently route on a money path).
 CRYPTO_PAYOUT_PROVIDER = os.environ.get('CRYPTO_PAYOUT_PROVIDER', 'nowpayments')
 
-# ── NOWPayments Mass Payouts — SANDBOX client (payouts/providers/nowpayments) ──
-# This is the new, sandbox-guarded Mass Payouts client (JWT auth + custody +
-# 2FA-verified batches). It is DELIBERATELY isolated from the legacy provider in
-# payouts/crypto/nowpayments.py:
-#   * It reads its OWN credentials (NOWPAYMENTS_SANDBOX_*), so configuring sandbox
-#     creds here can NEVER flip the legacy provider's is_enabled() (which keys off
-#     the separate NOWPAYMENTS_API_KEY) and re-arm the hardcoded production path.
-#   * NOWPAYMENTS_BASE_URL defaults to the sandbox host. The client refuses to run
-#     against a production-looking base URL unless NOWPAYMENTS_ALLOW_MAINNET=true
+# ── NOWPayments Mass Payouts client (payouts/providers/nowpayments) ──
+# The Mass Payouts client (JWT auth + custody + 2FA-verified batches), wired
+# beneath the withdrawal control layer in PR #11. Two independent gates keep it
+# INERT until an operator deliberately goes live — both default to the safe state:
+#   * CRYPTO_DISPATCH_ENABLED (default False) — the kill-switch, checked FIRST in
+#     payouts.providers.dispatch._dispatch_crypto. While off, nothing reaches the
+#     provider (the dispatch no-ops; the payout keeps its current state).
+#   * NOWPAYMENTS_ALLOW_MAINNET (default False) — the client refuses to initialise
+#     against a production-looking base URL unless this is explicitly set
 #     (money-safety guard enforced at client init, not here).
-# As of PR #10 nothing dispatches through this client — it is exercised only by the
-# `nowpayments_preflight` management command. Validation happens at client
-# instantiation / preflight, never at import time, so unset values don't break boot.
-NOWPAYMENTS_SANDBOX_API_KEY = os.environ.get('NOWPAYMENTS_SANDBOX_API_KEY', '')
-NOWPAYMENTS_SANDBOX_EMAIL = os.environ.get('NOWPAYMENTS_SANDBOX_EMAIL', '')
-NOWPAYMENTS_SANDBOX_PASSWORD = os.environ.get('NOWPAYMENTS_SANDBOX_PASSWORD', '')
-NOWPAYMENTS_SANDBOX_TOTP_SECRET = os.environ.get('NOWPAYMENTS_SANDBOX_TOTP_SECRET', '')
-# Defined now, first used in PR #11 (IPN webhook).
-NOWPAYMENTS_SANDBOX_IPN_SECRET = os.environ.get('NOWPAYMENTS_SANDBOX_IPN_SECRET', '')
-NOWPAYMENTS_SANDBOX_IPN_CALLBACK_URL = os.environ.get('NOWPAYMENTS_SANDBOX_IPN_CALLBACK_URL', '')
-# Sandbox host by default. The mainnet guard (NOWPAYMENTS_ALLOW_MAINNET) is what
-# actually permits a production URL; preflight confirms reachability.
+# PR #11 DELETED the legacy hardcoded-production provider (payouts/crypto/
+# nowpayments.py), so NOWPAYMENTS_API_KEY / NOWPAYMENTS_IPN_SECRET now feed THIS
+# guarded client instead of that old path. Operators must therefore only set these
+# vars AFTER PR #11 is deployed. Validation happens at client instantiation, never
+# at import time, so unset values don't break boot.
+NOWPAYMENTS_API_KEY = os.environ.get('NOWPAYMENTS_API_KEY', '')
+NOWPAYMENTS_EMAIL = os.environ.get('NOWPAYMENTS_EMAIL', '')
+NOWPAYMENTS_PASSWORD = os.environ.get('NOWPAYMENTS_PASSWORD', '')
+NOWPAYMENTS_TOTP_SECRET = os.environ.get('NOWPAYMENTS_TOTP_SECRET', '')
+NOWPAYMENTS_IPN_SECRET = os.environ.get('NOWPAYMENTS_IPN_SECRET', '')
+NOWPAYMENTS_IPN_CALLBACK_URL = os.environ.get('NOWPAYMENTS_IPN_CALLBACK_URL', '')
+# Sandbox host by default. The NOWPayments sandbox is dead, but defaulting here
+# keeps the mainnet guard armed: going live requires BOTH an explicit production
+# NOWPAYMENTS_BASE_URL *and* NOWPAYMENTS_ALLOW_MAINNET=true.
 NOWPAYMENTS_BASE_URL = os.environ.get('NOWPAYMENTS_BASE_URL', 'https://api-sandbox.nowpayments.io/v1')
 NOWPAYMENTS_ALLOW_MAINNET = os.environ.get('NOWPAYMENTS_ALLOW_MAINNET', 'false').lower() in ('1', 'true', 'yes')
 NOWPAYMENTS_DEFAULT_CURRENCY = os.environ.get('NOWPAYMENTS_DEFAULT_CURRENCY', 'usdttrc20')
 
-# Key-independent kill-switch for crypto dispatch. Default False. Defined now but
-# NOT yet consulted by the dispatch path — wiring _dispatch_crypto to honour this
-# flag is the FIRST task of PR #11 (this PR does not touch payouts/providers/dispatch.py).
+# Key-independent kill-switch for crypto dispatch. Default False. Checked FIRST in
+# payouts.providers.dispatch._dispatch_crypto — while False, crypto dispatch no-ops
+# (the payout keeps its current state and never reaches the provider).
 CRYPTO_DISPATCH_ENABLED = os.environ.get('CRYPTO_DISPATCH_ENABLED', 'false').lower() in ('1', 'true', 'yes')
 
 # Reporting aggregation backend.  'postgres' = materialized views (default).
