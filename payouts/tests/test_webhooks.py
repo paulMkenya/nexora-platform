@@ -3,9 +3,10 @@ import hashlib
 import hmac as _hmac
 import json
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 
 from payouts.models import PayoutRequest, STATUS_PAID, STATUS_FAILED, STATUS_PENDING, METHOD_PAYPAL
 
@@ -62,63 +63,51 @@ class MpesaB2CCallbackTest(TestCase):
         self.assertEqual(r.status_code, 400)
 
 
+@override_settings(NOWPAYMENTS_IPN_SECRET='ipnsecret123')
 class NowPaymentsIPNTest(TestCase):
+    """The webhook is a thin, fail-closed, signature-gated enqueuer. Signature
+    canonicalization and async processing/idempotency are covered in
+    ``test_nowpayments_ipn.py``; here we cover the HTTP gate + enqueue contract."""
+
     def setUp(self):
         self.client = Client()
         self.secret = 'ipnsecret123'
 
-    def _sign(self, payload: bytes) -> str:
-        return _hmac.new(self.secret.encode(), payload, hashlib.sha512).hexdigest()
+    def _sign(self, payload_dict) -> str:
+        from payouts.providers.nowpayments.ipn import canonical_json
+        return _hmac.new(
+            self.secret.encode(), canonical_json(payload_dict).encode(),
+            hashlib.sha512).hexdigest()
 
-    def test_rejects_invalid_signature(self):
-        import unittest.mock as mock
-        payload = json.dumps({'payment_id': '1', 'payment_status': 'finished', 'extra_id': '999'}).encode()
-        with mock.patch.dict('os.environ', {'NOWPAYMENTS_IPN_SECRET': self.secret}):
-            r = self.client.post(
-                '/webhooks/nowpayments/',
-                data=payload,
-                content_type='application/json',
-                HTTP_X_NOWPAYMENTS_SIG='badsig',
-            )
+    def _post(self, payload_dict, sig):
+        return self.client.post(
+            '/webhooks/nowpayments/',
+            data=json.dumps(payload_dict),
+            content_type='application/json',
+            HTTP_X_NOWPAYMENTS_SIG=sig,
+        )
+
+    def test_rejects_missing_signature(self):
+        payload = {'id': 'w-1', 'status': 'finished', 'extra_id': '999'}
+        r = self.client.post(
+            '/webhooks/nowpayments/', data=json.dumps(payload),
+            content_type='application/json')
         self.assertEqual(r.status_code, 401)
 
-    def test_marks_paid_on_finished_status(self):
-        user = User.objects.create_user(username='npwh1', password='pass')
-        req = PayoutRequest.objects.create(
-            affiliate=user, amount=Decimal('50.00'), method=METHOD_PAYPAL, status=STATUS_PENDING,
-        )
-        import unittest.mock as mock
-        payload = json.dumps({
-            'payment_id': 'NP_TXN_456', 'payment_status': 'finished', 'extra_id': str(req.pk)
-        }).encode()
-        sig = self._sign(payload)
-        with mock.patch.dict('os.environ', {'NOWPAYMENTS_IPN_SECRET': self.secret}):
-            r = self.client.post(
-                '/webhooks/nowpayments/',
-                data=payload,
-                content_type='application/json',
-                HTTP_X_NOWPAYMENTS_SIG=sig,
-            )
-        self.assertEqual(r.status_code, 200)
-        req.refresh_from_db()
-        self.assertEqual(req.status, STATUS_PAID)
+    def test_rejects_invalid_signature(self):
+        payload = {'id': 'w-1', 'status': 'finished', 'extra_id': '999'}
+        r = self._post(payload, 'badsig')
+        self.assertEqual(r.status_code, 401)
 
-    def test_marks_failed_on_failed_status(self):
-        user = User.objects.create_user(username='npwh2', password='pass')
-        req = PayoutRequest.objects.create(
-            affiliate=user, amount=Decimal('50.00'), method=METHOD_PAYPAL, status=STATUS_PENDING,
-        )
-        import unittest.mock as mock
-        payload = json.dumps({
-            'payment_id': 'NP_TXN_FAIL', 'payment_status': 'failed', 'extra_id': str(req.pk)
-        }).encode()
-        sig = self._sign(payload)
-        with mock.patch.dict('os.environ', {'NOWPAYMENTS_IPN_SECRET': self.secret}):
-            self.client.post(
-                '/webhooks/nowpayments/',
-                data=payload,
-                content_type='application/json',
-                HTTP_X_NOWPAYMENTS_SIG=sig,
-            )
-        req.refresh_from_db()
-        self.assertEqual(req.status, STATUS_FAILED)
+    @patch('payouts.tasks.ipn.process_nowpayments_ipn.delay')
+    def test_valid_signature_enqueues_and_returns_200(self, delay):
+        payload = {'id': 'w-1', 'status': 'finished', 'extra_id': '999'}
+        r = self._post(payload, self._sign(payload))
+        self.assertEqual(r.status_code, 200)
+        delay.assert_called_once_with(payload)
+
+    @patch('payouts.tasks.ipn.process_nowpayments_ipn.delay')
+    def test_invalid_signature_does_not_enqueue(self, delay):
+        payload = {'id': 'w-1', 'status': 'finished', 'extra_id': '999'}
+        self._post(payload, 'badsig')
+        delay.assert_not_called()

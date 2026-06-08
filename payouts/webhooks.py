@@ -54,54 +54,29 @@ def _update_request_from_mpesa(conversation_id: str, result_code: int):
 @csrf_exempt
 @require_http_methods(['POST'])
 def nowpayments_ipn(request):
+    """NOWPayments IPN webhook (server-to-server; CSRF-exempt, signature-gated).
+
+    FAIL-CLOSED: the HMAC-SHA512 signature over the raw body is verified FIRST and
+    nothing is trusted until it passes. On success the (now-trusted) payload is
+    handed to a Celery task and we return 200 immediately — no heavy work in the
+    request. Processing is idempotent, so a replayed IPN is a no-op.
     """
-    NOWPayments IPN webhook.
-    Verifies HMAC-SHA512 signature, updates PayoutRequest status.
-    """
-    from payouts.crypto.nowpayments import NowPaymentsProvider
+    from django.conf import settings
+    from payouts.providers.nowpayments.ipn import verify_ipn_signature
 
     sig = request.headers.get('x-nowpayments-sig', '')
-    payload = request.body
-    provider = NowPaymentsProvider()
+    raw = request.body
+    secret = getattr(settings, 'NOWPAYMENTS_IPN_SECRET', '')
 
-    if not provider.verify_ipn(payload, sig):
-        logger.warning('NOWPayments IPN signature mismatch')
+    if not verify_ipn_signature(raw, sig, secret):
+        logger.warning('NOWPayments IPN rejected: missing/invalid signature.')
         return HttpResponse('Invalid signature', status=401)
 
     try:
-        data = json.loads(payload)
+        data = json.loads(raw)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return HttpResponse('Bad JSON', status=400)
 
-    payment_id = str(data.get('payment_id', ''))
-    payment_status = data.get('payment_status', '')
-    extra_id = str(data.get('extra_id', ''))
-
-    _update_request_from_nowpayments(extra_id, payment_id, payment_status)
+    from payouts.tasks.ipn import process_nowpayments_ipn
+    process_nowpayments_ipn.delay(data)
     return JsonResponse({'status': 'ok'})
-
-
-def _update_request_from_nowpayments(extra_id: str, payment_id: str, payment_status: str):
-    from payouts.models import PayoutRequest, STATUS_PAID, STATUS_FAILED, STATUS_PROCESSING
-    from django.utils import timezone
-
-    if not extra_id:
-        return
-
-    try:
-        req = PayoutRequest.objects.get(pk=int(extra_id))
-    except (PayoutRequest.DoesNotExist, ValueError):
-        logger.warning('NOWPayments IPN: no PayoutRequest pk=%s', extra_id)
-        return
-
-    if payment_status in ('finished', 'confirmed'):
-        req.status = STATUS_PAID
-        req.paid_at = timezone.now()
-        if payment_id:
-            req.tx_ref = payment_id
-    elif payment_status in ('failed', 'refunded', 'expired'):
-        req.status = STATUS_FAILED
-        req.notes = f'NOWPayments status={payment_status}'
-    else:
-        req.status = STATUS_PROCESSING
-    req.save(update_fields=['status', 'paid_at', 'tx_ref', 'notes', 'updated_at'])

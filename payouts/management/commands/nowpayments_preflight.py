@@ -19,17 +19,17 @@ from django.core.management.base import BaseCommand
 from payouts.providers.nowpayments import NowPaymentsError, NowPaymentsPayoutClient
 from payouts.providers.nowpayments.base import SANDBOX_HOST, _looks_like_production
 
-# Settings the live preflight needs. (IPN_SECRET / IPN_CALLBACK_URL are PR #11 and
-# are reported as informational, not required for preflight.)
+# Settings the live preflight needs. (IPN_SECRET / IPN_CALLBACK_URL drive the
+# webhook, not the endpoint probes, so they are reported as informational.)
 REQUIRED_SETTINGS = [
-    'NOWPAYMENTS_SANDBOX_API_KEY',
-    'NOWPAYMENTS_SANDBOX_EMAIL',
-    'NOWPAYMENTS_SANDBOX_PASSWORD',
-    'NOWPAYMENTS_SANDBOX_TOTP_SECRET',
+    'NOWPAYMENTS_API_KEY',
+    'NOWPAYMENTS_EMAIL',
+    'NOWPAYMENTS_PASSWORD',
+    'NOWPAYMENTS_TOTP_SECRET',
 ]
 INFO_SETTINGS = [
-    'NOWPAYMENTS_SANDBOX_IPN_SECRET',
-    'NOWPAYMENTS_SANDBOX_IPN_CALLBACK_URL',
+    'NOWPAYMENTS_IPN_SECRET',
+    'NOWPAYMENTS_IPN_CALLBACK_URL',
 ]
 
 # An obviously-invalid test address used only to probe that the validate-address
@@ -75,7 +75,7 @@ class Command(BaseCommand):
         # Informational (PR #11) — never fails preflight.
         info_missing = [name for name in INFO_SETTINGS if not getattr(settings, name, '')]
         if info_missing:
-            self._info(f'PR #11 settings not yet set (ok for now): {", ".join(info_missing)}')
+            self._info(f'IPN webhook settings not yet set (ok for endpoint probes): {", ".join(info_missing)}')
         return ok
 
     def _check_mainnet_guard(self) -> bool:

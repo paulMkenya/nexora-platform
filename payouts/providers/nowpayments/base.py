@@ -80,23 +80,22 @@ class NowPaymentsBaseClient:
     ):
         """Resolve config (args override settings) and enforce the mainnet guard.
 
-        Credentials default to the sandbox-specific settings so this client can
-        never read — or re-arm — the legacy provider's ``NOWPAYMENTS_API_KEY``.
-        Tests inject dummy values directly. Raises
+        Credentials default to the ``NOWPAYMENTS_*`` settings. Tests inject dummy
+        values directly. Raises
         :class:`~django.core.exceptions.ImproperlyConfigured` on a mainnet URL
         without the explicit opt-in.
         """
         self._api_key = (
             api_key if api_key is not None
-            else getattr(settings, 'NOWPAYMENTS_SANDBOX_API_KEY', '')
+            else getattr(settings, 'NOWPAYMENTS_API_KEY', '')
         )
         self._email = (
             email if email is not None
-            else getattr(settings, 'NOWPAYMENTS_SANDBOX_EMAIL', '')
+            else getattr(settings, 'NOWPAYMENTS_EMAIL', '')
         )
         self._password = (
             password if password is not None
-            else getattr(settings, 'NOWPAYMENTS_SANDBOX_PASSWORD', '')
+            else getattr(settings, 'NOWPAYMENTS_PASSWORD', '')
         )
         base_url = (
             base_url if base_url is not None
@@ -137,8 +136,8 @@ class NowPaymentsBaseClient:
 
         if not self._email or not self._password:
             raise NowPaymentsError(
-                'Cannot authenticate: NOWPAYMENTS_SANDBOX_EMAIL / '
-                'NOWPAYMENTS_SANDBOX_PASSWORD are not configured.'
+                'Cannot authenticate: NOWPAYMENTS_EMAIL / '
+                'NOWPAYMENTS_PASSWORD are not configured.'
             )
 
         try:
