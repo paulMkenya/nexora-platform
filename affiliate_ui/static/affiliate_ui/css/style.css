@@ -1,0 +1,347 @@
+/* Nexora redesign — design tokens (minimal set used by the offers page) */
+:root {
+  /* Brand colors */
+  --color-brand-primary: #4F46E5;
+  --color-brand-secondary: #7C3AED;
+  --color-brand-primary-hover: #4338CA;
+
+  /* Semantic colors */
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-danger: #DC2626;
+  --color-info: #2563EB;
+  --color-neutral: #6B7280;
+
+  /* Text */
+  --color-text-primary: #111827;
+  --color-text-secondary: #6B7280;
+  --color-text-muted: #9CA3AF;
+
+  /* Surfaces */
+  --color-surface-page: #F9FAFB;
+  --color-surface-card: #FFFFFF;
+  --color-surface-sidebar: #1E1B4B;
+
+  /* Borders */
+  --color-border: #E5E7EB;
+  --color-border-strong: #D1D5DB;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 18px;
+  --font-size-xl: 24px;
+  --font-size-2xl: 32px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-card-hover: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* Nexora redesign — base typography (scoped lightly so other pages are unaffected) */
+body {
+  font-family: var(--font-sans);
+  background: var(--color-surface-page);
+  color: var(--color-text-primary);
+}
+
+.nx-page-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-5);
+}
+
+/* Nexora redesign — generic card */
+.nx-card {
+  background: var(--color-surface-card);
+  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+
+/* Nexora redesign — offers filter bar / toolbar */
+.nx-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.nx-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.nx-field label {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.nx-input, .nx-select {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+}
+.nx-input { width: 280px; max-width: 100%; }
+.nx-input:focus, .nx-select:focus {
+  outline: none;
+  border-color: var(--color-brand-primary);
+  box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+}
+.nx-toolbar__spacer { flex: 1 1 auto; }
+
+/* View toggle (table / card) */
+.nx-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.nx-view-toggle button {
+  background: #fff;
+  border: none;
+  padding: 8px 14px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+.nx-view-toggle button + button { border-left: 1px solid var(--color-border); }
+.nx-view-toggle button.is-active {
+  background: var(--color-brand-primary);
+  color: #fff;
+}
+
+/* Nexora redesign — offer card grid */
+.nx-offer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-5);
+}
+.nx-offer-card {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.nx-offer-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+.nx-offer-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  position: relative;
+}
+.nx-offer-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.nx-offer-thumb--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  font-size: var(--font-size-lg);
+}
+.nx-offer-id { font-size: var(--font-size-xs); color: var(--color-text-muted); }
+.nx-offer-name {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+.nx-offer-advertiser { font-size: var(--font-size-sm); color: var(--color-text-secondary); }
+.nx-offer-badges { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.nx-divider { height: 1px; background: var(--color-border); border: none; margin: var(--space-1) 0; }
+
+.nx-offer-payout-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.nx-offer-payout-label {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin: 0 0 2px;
+}
+.nx-offer-payout-amount {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-brand-primary);
+}
+
+.nx-btn-primary {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: var(--color-brand-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 10px var(--space-4);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.nx-btn-primary:hover { background: var(--color-brand-primary-hover); color: #fff; }
+
+/* Category placeholder colours (by data-vertical) */
+.nx-thumb-gambling { background: var(--color-brand-primary); }
+.nx-thumb-crypto   { background: var(--color-brand-secondary); }
+.nx-thumb-finance  { background: var(--color-info); }
+.nx-thumb-dating   { background: #DB2777; }
+.nx-thumb-default  { background: var(--color-neutral); }
+
+/* Actions (⋮) menu */
+.nx-actions { margin-left: auto; position: relative; }
+.nx-actions__btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 var(--space-2);
+}
+.nx-actions__btn:hover { color: var(--color-text-primary); }
+.nx-actions__menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 200px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card-hover);
+  z-index: 1030;
+  padding: var(--space-1) 0;
+}
+.nx-actions__menu.is-open { display: block; }
+.nx-actions__menu a, .nx-actions__menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 8px var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+.nx-actions__menu a:hover, .nx-actions__menu button:hover { background: #F9FAFB; }
+
+/* Nexora redesign — status / category pill badges */
+.nx-badge {
+  display: inline-block;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+.nx-badge--neutral  { background: #F3F4F6; color: var(--color-text-secondary); }
+.nx-badge--category { background: #EEF2FF; color: var(--color-brand-primary); }
+
+/* Nexora redesign — empty state */
+.nx-empty {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--color-text-secondary);
+}
+.nx-empty svg { color: var(--color-text-muted); margin-bottom: var(--space-3); }
+.nx-empty__title { font-size: var(--font-size-md); font-weight: 500; color: var(--color-text-primary); margin: 0 0 var(--space-1); }
+.nx-empty__hint { font-size: var(--font-size-sm); color: var(--color-text-muted); margin: 0 0 var(--space-4); }
+
+/* Nexora redesign — table (table view + payouts modal) */
+.nx-table-wrap { overflow-x: auto; }
+.nx-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface-card);
+}
+.nx-table thead th {
+  background: #F3F4F6;
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 10px var(--space-4);
+  white-space: nowrap;
+}
+.nx-table tbody td {
+  background: var(--color-surface-card);
+  border-bottom: 1px solid var(--color-border);
+  padding: 12px var(--space-4);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}
+.nx-table tbody tr:hover td { background: #F9FAFB; }
+
+/* Nexora redesign — payouts modal */
+.nx-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 1070;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-8) var(--space-4);
+  overflow-y: auto;
+}
+.nx-modal.is-open { display: flex; }
+.nx-modal__dialog {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card-hover);
+  width: 100%;
+  max-width: 720px;
+  padding: var(--space-6);
+}
+.nx-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.nx-modal__title { font-size: var(--font-size-lg); font-weight: 600; margin: 0; }
+.nx-modal__close {
+  background: none; border: none; font-size: 24px; line-height: 1;
+  color: var(--color-text-muted); cursor: pointer;
+}
