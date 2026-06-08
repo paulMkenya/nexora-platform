@@ -102,7 +102,14 @@ class PayoutRequest(models.Model):
                 fields=['tx_ref'],
                 name='payouts_request_unique_tx_ref',
                 condition=models.Q(tx_ref__gt=''),
-            )
+            ),
+            # Unique only where a provider withdrawal id exists — legacy/fiat rows
+            # leave it NULL and are exempt.
+            models.UniqueConstraint(
+                fields=['provider_withdrawal_id'],
+                name='payouts_request_unique_provider_withdrawal_id',
+                condition=models.Q(provider_withdrawal_id__isnull=False),
+            ),
         ]
 
     affiliate = models.ForeignKey(
@@ -137,6 +144,25 @@ class PayoutRequest(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # --- crypto provider linkage (NOWPayments Mass Payouts; see PR #10) ---------
+    # All additive + nullable — existing rows keep NULLs, no data rewrite. Populated
+    # by the dispatch wiring in PR #11; nothing writes these in PR #10.
+    provider_batch = models.ForeignKey(
+        'CryptoPayoutBatch',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='payout_requests',
+    )
+    # NOWPayments' per-withdrawal id within the batch. Unique only where present
+    # (partial constraint) so the many legacy NULL rows don't collide.
+    provider_withdrawal_id = models.CharField(max_length=64, null=True, blank=True)
+    # On-chain transaction hash once the provider settles the withdrawal.
+    tx_hash = models.CharField(max_length=128, null=True, blank=True)
+    # The provider's own status string for this withdrawal (distinct from our
+    # internal ``status`` workflow above).
+    provider_status = models.CharField(max_length=32, null=True, blank=True)
+
     def mark_paid(self, tx_ref: str = ''):
         self.status = STATUS_PAID
         self.paid_at = timezone.now()
@@ -161,6 +187,43 @@ class PayoutBatch(models.Model):
 
     def __str__(self):
         return f'Batch#{self.pk} {self.get_provider_display()} ${self.total}'
+
+
+class CryptoPayoutBatch(models.Model):
+    """A provider-side crypto payout batch (NOWPayments Mass Payouts).
+
+    Distinct from :class:`PayoutBatch`, which is the operator's CSV-export grouping
+    of fiat payout requests. This model mirrors a NOWPayments batch: under the
+    single-withdrawal-per-batch model each row corresponds to one affiliate payout.
+
+    Nothing writes this in PR #10 — the dispatch wiring that creates/verifies these
+    rows lands in PR #11. The raw_* JSON fields preserve the exact provider
+    responses for audit/debugging.
+    """
+
+    class Meta:
+        ordering = ('-created_at',)
+        verbose_name_plural = 'Crypto payout batches'
+
+    # Free-text provider name (e.g. 'nowpayments'); kept loose so a future rail can
+    # reuse this model without a choices migration.
+    provider = models.CharField(max_length=32, default='nowpayments')
+    # The provider's batch id. Unique so a batch is recorded exactly once.
+    provider_batch_id = models.CharField(max_length=64, unique=True)
+    status = models.CharField(max_length=32, default='', blank=True)
+    currency = models.CharField(max_length=20, default='')
+    total_amount = models.DecimalField(max_digits=18, decimal_places=8, default=Decimal('0'))
+    created_at = models.DateTimeField(auto_now_add=True)
+    # Stamped when the batch's 2FA verification succeeds (PR #11).
+    verified_at = models.DateTimeField(null=True, blank=True)
+    # Stamped when the provider reports the batch as terminally finished.
+    finished_at = models.DateTimeField(null=True, blank=True)
+    # Verbatim provider payloads, retained for audit/debugging.
+    raw_create_response = models.JSONField(default=dict, blank=True)
+    raw_last_status = models.JSONField(default=dict, blank=True)
+
+    def __str__(self):
+        return f'CryptoPayoutBatch#{self.pk} {self.provider}:{self.provider_batch_id} {self.status}'
 
 
 class PayoutSettings(models.Model):
