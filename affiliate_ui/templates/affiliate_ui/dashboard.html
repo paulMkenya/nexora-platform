@@ -23,164 +23,33 @@
 </div>
 {% endif %}
 
-<h1 class="nx-page-title">Dashboard</h1>
+<h1 class="mb-4">Dashboard</h1>
 
-{# Nexora redesign — stat cards row #}
-<div class="nx-stat-grid">
-    <div class="nx-stat-card nx-stat-card--info">
-        <p class="nx-stat-label">Total Clicks</p>
-        <div class="nx-stat-value">{{ clicks_count }}</div>
-    </div>
-    <div class="nx-stat-card nx-stat-card--success">
-        <p class="nx-stat-label">Total Conversions</p>
-        <div class="nx-stat-value">{{ conversions_count }}</div>
-    </div>
-    <div class="nx-stat-card nx-stat-card--primary">
-        <p class="nx-stat-label">Total Earnings</p>
-        {# TODO: confirm earnings currency is KES before relying on the KSh prefix #}
-        <div class="nx-stat-value">KSh {{ total_earnings }}</div>
-    </div>
-    <div class="nx-stat-card nx-stat-card--warning">
-        <p class="nx-stat-label">Pending Payout</p>
-        {# TODO: `pending_payout` is not yet provided by the view — falls back to 0.00 #}
-        <div class="nx-stat-value">KSh {{ pending_payout|default:"0.00" }}</div>
-    </div>
-</div>
-
-{# Nexora redesign — chart + M-Pesa wallet #}
-<div class="nx-dashboard-grid">
-    <div class="nx-card">
-        <p class="nx-chart-title">Performance — last 7 days</p>
-        {#
-          TODO: real 7-day series not yet provided by the view. The canvas below is
-          seeded with placeholder data via data-* attributes; replace the JSON in
-          data-labels / data-clicks / data-conversions with context variables
-          (e.g. {{ chart_labels|json_script }}) once the view supplies them.
-        #}
-        <canvas id="nx-perf-chart" height="120"
-                data-labels='["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]'
-                data-clicks='[120, 145, 132, 168, 190, 175, 210]'
-                data-conversions='[8, 11, 9, 14, 16, 13, 19]'></canvas>
-    </div>
-
-    <div class="nx-wallet">
-        <span class="nx-wallet__badge">M-PESA</span>
-        <div>
-            <p class="nx-wallet__label">Available balance</p>
-            {# TODO: `available_balance` not yet provided by the view — falls back to 0.00 #}
-            <div class="nx-wallet__balance">KSh {{ available_balance|default:"0.00" }}</div>
+<div class="row">
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Total Clicks</h5>
+                <p class="card-text fs-2">{{ clicks_count }}</p>
+            </div>
         </div>
-        <p class="nx-wallet__sub">
-            Paid out to M-Pesa &middot; <strong>KSh {{ total_paid_out|default:"0.00" }}</strong>
-        </p>
-        {# request_early_payout is a confirmed URL name in affiliate_ui #}
-        <a class="nx-wallet__btn" href="{% url 'affiliate_ui:request_early_payout' %}">Request payout via M-Pesa</a>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Total Conversions</h5>
+                <p class="card-text fs-2">{{ conversions_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title">Total Earnings</h5>
+                <p class="card-text fs-2">${{ total_earnings }}</p>
+            </div>
+        </div>
     </div>
 </div>
 
-{# Nexora redesign — recent activity table #}
-<div class="nx-card" style="padding: 0;">
-    <div style="padding: var(--space-5) var(--space-6) 0;">
-        <p class="nx-chart-title" style="margin-bottom: var(--space-4);">Recent conversions</p>
-    </div>
-    <div class="nx-table-wrap">
-        <table class="nx-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Offer</th>
-                    <th>Payout</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {# TODO: `recent_conversions` not yet provided by the view; renders the empty state until wired. #}
-                {% for c in recent_conversions %}
-                <tr>
-                    <td>{{ c.created_at|date:"d M Y, H:i" }}</td>
-                    <td>{{ c.offer.title|default:"—" }}</td>
-                    <td>KSh {{ c.payout }}</td>
-                    <td>
-                        {% if c.status == 'approved' %}
-                            <span class="nx-badge nx-badge--approved">Approved</span>
-                        {% elif c.status == 'pending' %}
-                            <span class="nx-badge nx-badge--pending">Pending</span>
-                        {% else %}
-                            <span class="nx-badge nx-badge--rejected">Rejected</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="4" style="text-align:center; color: var(--color-text-muted); padding: var(--space-6);">
-                        No conversions yet — your recent activity will appear here.
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_js %}
-<!-- Nexora redesign — Chart.js (CDN) -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script>
-  // Nexora redesign — performance line chart
-  (function () {
-    var el = document.getElementById('nx-perf-chart');
-    if (!el || typeof Chart === 'undefined') return;
-
-    var labels = JSON.parse(el.dataset.labels || '[]');
-    var clicks = JSON.parse(el.dataset.clicks || '[]');
-    var conversions = JSON.parse(el.dataset.conversions || '[]');
-
-    new Chart(el, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: 'Clicks',
-            data: clicks,
-            borderColor: '#4F46E5',
-            backgroundColor: 'rgba(79, 70, 229, 0.10)',
-            fill: true,
-            tension: 0.4,
-            pointRadius: 3,
-            borderWidth: 2
-          },
-          {
-            label: 'Conversions',
-            data: conversions,
-            borderColor: '#16A34A',
-            backgroundColor: 'rgba(22, 163, 74, 0.10)',
-            fill: true,
-            tension: 0.4,
-            pointRadius: 3,
-            borderWidth: 2
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
-          tooltip: { enabled: true }
-        },
-        scales: {
-          x: { grid: { display: false }, border: { display: false } },
-          y: {
-            beginAtZero: true,
-            grid: { color: 'rgba(0,0,0,0.05)', drawTicks: false },
-            border: { display: false }
-          }
-        }
-      }
-    });
-  })();
-</script>
 {% endblock %}
