@@ -104,12 +104,7 @@ body {
   cursor: default;
   pointer-events: none;
 }
-.nx-nav__icon {
-  width: 18px; height: 18px; flex: 0 0 auto;
-  border-radius: 5px;
-  border: 1.5px solid currentColor;
-  opacity: .55;
-}
+.nx-nav__icon { width: 18px; height: 18px; flex: 0 0 auto; }
 .nx-nav__text { flex: 1 1 auto; }
 .nx-soon {
   font-size: 10px;

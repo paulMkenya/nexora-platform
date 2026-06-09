@@ -73,7 +73,7 @@
       <a href="{{ url_dashboard }}"
          class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
                 {% if request.path == url_dashboard %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        Dashboard
+        {% include 'partials/icon.html' with name='dashboard' cls='w-5 h-5 flex-shrink-0' %}<span>Dashboard</span>
       </a>
 
       <p class="px-3 pt-4 pb-1 text-[11px] uppercase tracking-widest" style="color:var(--side-label)">Manage</p>
@@ -81,17 +81,17 @@
       <a href="{{ url_offers }}"
          class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
                 {% if request.path == url_offers %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        Offers
+        {% include 'partials/icon.html' with name='offers' cls='w-5 h-5 flex-shrink-0' %}<span>Offers</span>
       </a>
       <a href="{{ url_postbacks }}"
          class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
                 {% if request.path == url_postbacks %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        Postbacks
+        {% include 'partials/icon.html' with name='postbacks' cls='w-5 h-5 flex-shrink-0' %}<span>Postbacks</span>
       </a>
       <a href="{{ url_mmp_callbacks }}"
          class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
                 {% if request.path == url_mmp_callbacks %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        MMP Callbacks
+        {% include 'partials/icon.html' with name='mmp' cls='w-5 h-5 flex-shrink-0' %}<span>MMP Callbacks</span>
       </a>
 
       <p class="px-3 pt-4 pb-1 text-[11px] uppercase tracking-widest" style="color:var(--side-label)">Analyze</p>
@@ -99,7 +99,7 @@
       <a href="{{ url_conversions }}"
          class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
                 {% if request.path == url_conversions %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        Conversions
+        {% include 'partials/icon.html' with name='conversions' cls='w-5 h-5 flex-shrink-0' %}<span>Conversions</span>
       </a>
 
       <p class="px-3 pt-4 pb-1 text-[11px] uppercase tracking-widest" style="color:var(--side-label)">Finance</p>
@@ -107,7 +107,7 @@
       <a href="{{ url_wallet }}"
          class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
                 {% if request.path == url_wallet %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        Wallet
+        {% include 'partials/icon.html' with name='wallet' cls='w-5 h-5 flex-shrink-0' %}<span>Wallet</span>
       </a>
 
       <p class="px-3 pt-4 pb-1 text-[11px] uppercase tracking-widest" style="color:var(--side-label)">More</p>
@@ -115,7 +115,7 @@
       <a href="{{ url_settings }}"
          class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
                 {% if request.path == url_settings %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        Settings
+        {% include 'partials/icon.html' with name='settings' cls='w-5 h-5 flex-shrink-0' %}<span>Settings</span>
       </a>
 
     </nav>
@@ -126,7 +126,7 @@
         {% csrf_token %}
         <button type="submit"
                 class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white transition-colors">
-          Log out
+          {% include 'partials/icon.html' with name='logout' cls='w-5 h-5 flex-shrink-0' %}<span>Log out</span>
         </button>
       </form>
     </div>
