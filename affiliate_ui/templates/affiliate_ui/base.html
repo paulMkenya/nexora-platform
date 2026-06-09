@@ -1,136 +1,164 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{% if user.is_authenticated %}{{ request.user.profile.theme_preference|default:'dark' }}{% else %}dark{% endif %}">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{% block title %}{{ brand.name|default:"Nexora" }}{% endblock %}</title>
         {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% endif %}
         {% load static %}
+        <!-- Nexora theme — no-flash: apply the stored theme before first paint -->
+        <script>
+          (function () {
+            try {
+              var t = localStorage.getItem('nx-theme');
+              if (t === 'light' || t === 'dark') {
+                document.documentElement.setAttribute('data-theme', t);
+              }
+            } catch (e) {}
+          })();
+        </script>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
         <link
             href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
             rel="stylesheet"
             integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
             crossorigin="anonymous"
         />
-        <link
-            rel="stylesheet"
-            href="{% static 'affiliate_ui/css/style.css' %}"
-        />
-        <style>
-          :root {
-            --brand-primary: {{ brand.primary_color|default:"#6366f1" }};
-            --brand-secondary: {{ brand.secondary_color|default:"#4f46e5" }};
-          }
-          .navbar-brand { color: var(--brand-primary) !important; font-weight: 700; }
-          .btn-primary { background-color: var(--brand-primary); border-color: var(--brand-primary); }
-          .btn-primary:hover { background-color: var(--brand-secondary); border-color: var(--brand-secondary); }
-          a { color: var(--brand-primary); }
-          .nav-link:hover { color: var(--brand-secondary) !important; }
-        </style>
+        <link rel="stylesheet" href="{% static 'affiliate_ui/css/style.css' %}">
     </head>
     <body>
-        <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
-            <div class="container">
-                <a class="navbar-brand" href="{% if user.is_authenticated %}{% url 'affiliate_ui:dashboard' %}{% else %}{% url 'affiliate_ui:login' %}{% endif %}">
-                  {% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ brand.name }}" style="height:24px;margin-right:6px">{% endif %}{{ brand.name|default:"Nexora" }}</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                  <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse" id="navbarNav">
-                    {% if user.is_authenticated %}
-                    <ul class="navbar-nav me-auto">
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'affiliate_ui:dashboard' %}"
-                                >Dashboard</a
-                            >
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'affiliate_ui:offer_list' %}"
-                                >Offers</a
-                            >
-                        </li>
-                        <li class="nav-item dropdown">
-                            <a
-                                class="nav-link dropdown-toggle"
-                                href="#"
-                                id="navbarDropdownReports"
-                                role="button"
-                                data-bs-toggle="dropdown"
-                                aria-expanded="false"
-                            >
-                                Reports
-                            </a>
-                            <ul
-                                class="dropdown-menu"
-                                aria-labelledby="navbarDropdownReports"
-                            >
-                                <li>
-                                    <a
-                                        class="dropdown-item"
-                                        href="{% url 'affiliate_ui:daily_report' %}"
-                                        >Daily Report</a
-                                    >
-                                </li>
-                                <li>
-                                    <a
-                                        class="dropdown-item"
-                                        href="{% url 'affiliate_ui:offer_report' %}"
-                                        >Offer Report</a
-                                    >
-                                </li>
-                                <li>
-                                    <a
-                                        class="dropdown-item"
-                                        href="{% url 'affiliate_ui:goal_report' %}"
-                                        >Goal Report</a
-                                    >
-                                </li>
-                            </ul>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'affiliate_ui:payouts' %}">Payouts</a>
-                        </li>
-                    </ul>
-                    <ul class="navbar-nav ms-auto align-items-center">
-                        <li class="nav-item me-2">
-                            <span class="text-muted small">{{ request.user.get_full_name|default:request.user.username }}</span>
-                        </li>
-                        <li class="nav-item">
-                            <form method="post" action="{% url 'affiliate_ui:logout' %}" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-outline-secondary btn-sm">Log out</button>
-                            </form>
-                        </li>
-                    </ul>
-                    {% else %}
-                    {# Anonymous visitors (e.g. login/register) get a minimal header — no gated app links. #}
-                    <ul class="navbar-nav ms-auto align-items-center">
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'affiliate_ui:login' %}">Log in</a>
-                        </li>
-                        <li class="nav-item ms-2">
-                            <a class="btn btn-primary btn-sm" href="{% url 'affiliate_ui:register' %}">Register</a>
-                        </li>
-                    </ul>
-                    {% endif %}
+        {% if user.is_authenticated %}
+        {% with url_name=request.resolver_match.url_name %}
+        <div class="nx-shell">
+            <div class="nx-overlay" id="nx-overlay"></div>
+
+            <aside class="nx-sidebar" id="nx-sidebar">
+                <a class="nx-brand" href="{% url 'affiliate_ui:dashboard' %}">
+                    <span class="nx-logo-mark">{% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ brand.name|default:'Nexora' }}">{% endif %}</span>
+                    <span>{{ brand.name|default:"Nexora" }}</span>
+                </a>
+
+                <div class="nx-userchip">
+                    <p class="nx-userchip__role">{{ request.user.profile.get_role_display|default:"Affiliate" }}</p>
+                    <div class="nx-userchip__name">{{ request.user.get_full_name|default:request.user.username }}</div>
                 </div>
+
+                <nav class="nx-nav">
+                    <a class="nx-nav__item {% if url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'affiliate_ui:dashboard' %}">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Dashboard</span>
+                    </a>
+
+                    <div class="nx-nav__label">Manage</div>
+                    <a class="nx-nav__item {% if url_name == 'offer_list' or url_name == 'offer_detail' %}is-active{% endif %}" href="{% url 'affiliate_ui:offer_list' %}">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Offers</span>
+                    </a>
+                    <a class="nx-nav__item {% if url_name == 'payouts' %}is-active{% endif %}" href="{% url 'affiliate_ui:payouts' %}">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Payouts</span>
+                    </a>
+                    <span class="nx-nav__item is-disabled">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Postbacks</span><span class="nx-soon">Soon</span>
+                    </span>
+
+                    <div class="nx-nav__label">Analyze</div>
+                    <a class="nx-nav__item {% if url_name == 'daily_report' %}is-active{% endif %}" href="{% url 'affiliate_ui:daily_report' %}">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Daily Report</span>
+                    </a>
+                    <a class="nx-nav__item {% if url_name == 'offer_report' %}is-active{% endif %}" href="{% url 'affiliate_ui:offer_report' %}">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Offer Report</span>
+                    </a>
+                    <a class="nx-nav__item {% if url_name == 'goal_report' %}is-active{% endif %}" href="{% url 'affiliate_ui:goal_report' %}">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Goal Report</span>
+                    </a>
+                    <span class="nx-nav__item is-disabled">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Analytics</span><span class="nx-soon">Soon</span>
+                    </span>
+
+                    <div class="nx-nav__label">Tools</div>
+                    <span class="nx-nav__item is-disabled">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Tracking &amp; Asset Generator</span><span class="nx-soon">Soon</span>
+                    </span>
+
+                    <div class="nx-nav__label">More</div>
+                    <span class="nx-nav__item is-disabled">
+                        <span class="nx-nav__icon"></span><span class="nx-nav__text">Company Settings</span><span class="nx-soon">Soon</span>
+                    </span>
+                </nav>
+
+                <div class="nx-sidebar__footer">
+                    <form method="post" action="{% url 'affiliate_ui:logout' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="nx-logout">
+                            <span class="nx-nav__icon"></span><span>Log out</span>
+                        </button>
+                    </form>
+                </div>
+            </aside>
+
+            <div class="nx-main">
+                <header class="nx-topbar">
+                    <button class="nx-iconbtn nx-hamburger" id="nx-hamburger" type="button" aria-label="Open menu">&#9776;</button>
+                    <span class="nx-topbar__spacer"></span>
+                    <span class="nx-topbar__user">{{ request.user.get_full_name|default:request.user.username }}</span>
+                    <button class="nx-iconbtn" type="button" data-theme-toggle data-theme-url="{% url 'user_profile:set_theme' %}" aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>
+                </header>
+
+                <main class="nx-content">
+        {% endwith %}
+        {% else %}
+        <header class="nx-topbar">
+            <a class="nx-brand" href="{% url 'affiliate_ui:login' %}" style="color:var(--text)">
+                <span class="nx-logo-mark">{% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ brand.name|default:'Nexora' }}">{% endif %}</span>
+                <span>{{ brand.name|default:"Nexora" }}</span>
+            </a>
+            <span class="nx-topbar__spacer"></span>
+            <button class="nx-iconbtn" type="button" data-theme-toggle aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>
+            <a class="btn btn-outline-secondary btn-sm" href="{% url 'affiliate_ui:login' %}">Log in</a>
+            <a class="btn btn-primary btn-sm" href="{% url 'affiliate_ui:register' %}">Register</a>
+        </header>
+        <main class="container nx-content" style="margin-left:0">
+        {% endif %}
+
+                    {% block content %} {% endblock %}
+
+        {% if user.is_authenticated %}
+                </main>
+                <footer class="nx-content" style="padding-top:0;color:var(--text-faint);font-size:13px;text-align:center">
+                    <p>&copy; {% now "Y" %} {{ brand.name|default:"Nexora" }}
+                      {% if brand.support_email %} &middot; <a href="mailto:{{ brand.support_email }}">{{ brand.support_email }}</a>{% endif %}
+                      {% if brand.terms_url %} &middot; <a href="{{ brand.terms_url }}">Terms</a>{% endif %}
+                      {% if brand.privacy_url %} &middot; <a href="{{ brand.privacy_url }}">Privacy</a>{% endif %}
+                    </p>
+                </footer>
             </div>
-        </nav>
-
-        <main class="container">{% block content %} {% endblock %}</main>
-
-        <footer class="container mt-4 text-center text-muted small">
+        </div>
+        {% else %}
+        </main>
+        <footer class="container mt-4 text-center" style="color:var(--text-faint);font-size:13px">
             <p>&copy; {% now "Y" %} {{ brand.name|default:"Nexora" }}
               {% if brand.support_email %} &middot; <a href="mailto:{{ brand.support_email }}">{{ brand.support_email }}</a>{% endif %}
-              {% if brand.terms_url %} &middot; <a href="{{ brand.terms_url }}">Terms</a>{% endif %}
-              {% if brand.privacy_url %} &middot; <a href="{{ brand.privacy_url }}">Privacy</a>{% endif %}
             </p>
         </footer>
+        {% endif %}
 
         <script
             src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
             integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
             crossorigin="anonymous"
         ></script>
+        <script>
+          // Nexora — mobile off-canvas sidebar
+          (function () {
+            var sb = document.getElementById('nx-sidebar');
+            var ov = document.getElementById('nx-overlay');
+            var hb = document.getElementById('nx-hamburger');
+            if (hb) hb.addEventListener('click', function () { sb.classList.add('is-open'); ov.classList.add('is-open'); });
+            if (ov) ov.addEventListener('click', function () { sb.classList.remove('is-open'); ov.classList.remove('is-open'); });
+          })();
+        </script>
+        <script src="{% static 'js/theme.js' %}"></script>
+        {% block extra_js %}{% endblock %}
     </body>
 </html>

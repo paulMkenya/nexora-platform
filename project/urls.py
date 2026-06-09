@@ -23,6 +23,7 @@ urlpatterns = [
     path('', include('website.urls', namespace='website')),
     path('get-started/', get_started, name='get_started'),
     path('healthz', healthz, name='healthz'),
+    path('account/', include('user_profile.urls', namespace='user_profile')),
 
     # Standalone /login/ kept for backward-compat (middleware tests, direct links)
     path('login/', AffiliateLoginView.as_view(), name='login'),

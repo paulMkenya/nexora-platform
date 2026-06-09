@@ -1,0 +1,205 @@
+/* ============================================================================
+   Nexora affiliate shell — sidebar + top bar + mobile off-canvas.
+   Tokens come from the shared /static/css/tokens.css (loaded first). This file
+   references ONLY tokens — no hardcoded colors. PR-A = shell + tokens; the
+   affiliate page bodies keep their current Bootstrap content (transitional),
+   with a few token-based overrides below so they stay legible in both themes.
+   ============================================================================ */
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ---- Layout ---------------------------------------------------------------- */
+:root { --nx-side-w: 248px; }
+
+.nx-shell { min-height: 100vh; }
+
+.nx-sidebar {
+  position: fixed;
+  top: 0; left: 0;
+  width: var(--nx-side-w);
+  height: 100vh;
+  background: var(--side);
+  display: flex;
+  flex-direction: column;
+  z-index: 1040;
+  transition: transform .2s ease;
+}
+
+.nx-main {
+  margin-left: var(--nx-side-w);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Brand mark ------------------------------------------------------------ */
+.nx-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
+  text-decoration: none;
+  color: var(--side-text);
+  font-weight: 600;
+  font-size: 18px;
+}
+.nx-brand:hover { color: var(--side-text); }
+.nx-logo-mark {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: var(--grad);
+  flex: 0 0 auto;
+}
+.nx-logo-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
+
+/* ---- User chip ------------------------------------------------------------- */
+.nx-userchip {
+  padding: 0 var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-2);
+}
+.nx-userchip__role {
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--side-label);
+  margin: 0 0 2px;
+}
+.nx-userchip__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--side-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---- Nav groups ------------------------------------------------------------ */
+.nx-nav { flex: 1 1 auto; overflow-y: auto; padding: 0 var(--space-2); }
+.nx-nav__label {
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--side-label);
+  padding: var(--space-3) var(--space-2) var(--space-1);
+}
+.nx-nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 9px var(--space-2);
+  margin-bottom: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--side-text-dim);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+.nx-nav__item:hover { background: var(--side-hover); color: var(--side-text); }
+.nx-nav__item.is-active { background: var(--side-active); color: var(--side-text); }
+.nx-nav__item.is-disabled {
+  color: var(--side-label);
+  cursor: default;
+  pointer-events: none;
+}
+.nx-nav__icon {
+  width: 18px; height: 18px; flex: 0 0 auto;
+  border-radius: 5px;
+  border: 1.5px solid currentColor;
+  opacity: .55;
+}
+.nx-nav__text { flex: 1 1 auto; }
+.nx-soon {
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: var(--side-hover);
+  color: var(--side-label);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+}
+
+/* ---- Sidebar footer (logout) ---------------------------------------------- */
+.nx-sidebar__footer { padding: var(--space-2); border-top: 1px solid var(--line); }
+.nx-sidebar__footer form { margin: 0; }
+.nx-logout {
+  width: 100%;
+  display: flex; align-items: center; gap: var(--space-2);
+  background: none; border: none;
+  padding: 9px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--side-text-dim);
+  font-size: 14px; font-weight: 500;
+  text-align: left; cursor: pointer;
+}
+.nx-logout:hover { background: var(--side-hover); color: var(--side-text); }
+
+/* ---- Top bar --------------------------------------------------------------- */
+.nx-topbar {
+  position: sticky; top: 0;
+  display: flex; align-items: center; gap: var(--space-2);
+  height: 56px;
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  z-index: 1030;
+}
+.nx-topbar__spacer { flex: 1 1 auto; }
+.nx-topbar__user { color: var(--text-dim); font-size: 13px; }
+
+.nx-iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 16px; line-height: 1; cursor: pointer;
+}
+.nx-iconbtn:hover { border-color: var(--line-strong); }
+
+/* Hamburger — mobile only */
+.nx-hamburger { display: none; }
+
+/* ---- Content area ---------------------------------------------------------- */
+.nx-content { flex: 1 1 auto; padding: var(--space-4); }
+
+/* Off-canvas overlay */
+.nx-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 1035;
+}
+.nx-overlay.is-open { display: block; }
+
+@media (max-width: 860px) {
+  .nx-sidebar { transform: translateX(-100%); }
+  .nx-sidebar.is-open { transform: translateX(0); }
+  .nx-main { margin-left: 0; }
+  .nx-hamburger { display: inline-flex; }
+}
+
+/* ============================================================================
+   Transitional token overrides for existing Bootstrap content so affiliate
+   pages stay legible in both themes (full per-page repolish comes in later PRs).
+   ============================================================================ */
+.nx-content a { color: var(--brand-blue); }
+.nx-content .card {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+.nx-content .card-title { color: var(--text); }
+.nx-content .text-muted { color: var(--text-dim) !important; }
+.nx-content .table { color: var(--text); }
+.nx-content .table > :not(caption) > * > * { background: transparent; }
+.nx-content .btn-primary {
+  background: var(--brand-blue); border-color: var(--brand-blue); color: var(--on-accent);
+}
+.nx-content .btn-primary:hover { filter: brightness(1.06); }
+.nx-content hr { border-color: var(--line); }

@@ -175,6 +175,11 @@ STATIC_URL = '/static/'
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+# Project-level static dir — single source of truth for the shared UI shell
+# (design tokens, theme toggle JS, brand logo). All three role shells
+# (affiliate / advertiser / owner) load the SAME files from here.
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+
 STATICFILES_STORAGE = (
     'whitenoise.storage.CompressedManifestStaticFilesStorage'
 )
