@@ -16,6 +16,7 @@
     })();
   </script>
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+  <link rel="stylesheet" href="{% static 'css/shell.css' %}">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     // Per-brand ACCENT stays sourced from the brand record — the dark/light
@@ -35,120 +36,25 @@
   </script>
   <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
 </head>
-<body class="h-full" style="background:var(--bg);color:var(--text)">
+<body style="background:var(--bg);color:var(--text)">
 
-<div class="flex h-full">
+<div class="nx-shell">
 
-  {# ── Sidebar (dark in both themes via --side) ── #}
-  <aside class="flex flex-col w-64 flex-shrink-0" style="background:var(--side)">
+  {% include '_shell/sidebar.html' with role='advertiser' %}
 
-    {# Brand #}
-    {# Full lockup on the dark sidebar (--side is dark in both themes). The
-       separate name only shows for a white-label brand whose own logo may be a
-       symbol; the Nexora lockup already carries the wordmark. #}
-    <div class="flex items-center h-16 px-6" style="border-bottom:1px solid var(--line)">
-      {% include 'partials/brand_logo.html' with variant='lockup' cls='h-8 w-auto' %}
-      {% if brand.logo %}<span class="font-semibold text-lg tracking-tight ml-2" style="color:var(--side-text)">{{ brand.name|default:"Nexora" }}</span>{% endif %}
-    </div>
-
-    {# User chip #}
-    <div class="px-6 py-4" style="border-bottom:1px solid var(--line)">
-      <p class="text-xs uppercase tracking-wider mb-1" style="color:var(--side-label)">Advertiser</p>
-      <p class="text-sm font-medium truncate" style="color:var(--side-text)">{{ request.user.get_full_name|default:request.user.username }}</p>
-    </div>
-
-    {# Navigation #}
-    {% url 'advertiser_ui:dashboard'      as url_dashboard      %}
-    {% url 'advertiser_ui:offers'         as url_offers         %}
-    {% url 'advertiser_ui:conversions'    as url_conversions    %}
-    {% url 'advertiser_ui:postbacks'      as url_postbacks      %}
-    {% url 'advertiser_ui:mmp_callbacks'  as url_mmp_callbacks  %}
-    {% url 'advertiser_ui:wallet'         as url_wallet         %}
-    {% url 'advertiser_ui:settings'       as url_settings       %}
-
-    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-
-      {# Dashboard #}
-      <a href="{{ url_dashboard }}"
-         class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
-                {% if request.path == url_dashboard %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        {% include 'partials/icon.html' with name='dashboard' cls='w-5 h-5 flex-shrink-0' %}<span>Dashboard</span>
-      </a>
-
-      <p class="px-3 pt-4 pb-1 text-[11px] uppercase tracking-widest" style="color:var(--side-label)">Manage</p>
-
-      <a href="{{ url_offers }}"
-         class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
-                {% if request.path == url_offers %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        {% include 'partials/icon.html' with name='offers' cls='w-5 h-5 flex-shrink-0' %}<span>Offers</span>
-      </a>
-      <a href="{{ url_postbacks }}"
-         class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
-                {% if request.path == url_postbacks %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        {% include 'partials/icon.html' with name='postbacks' cls='w-5 h-5 flex-shrink-0' %}<span>Postbacks</span>
-      </a>
-      <a href="{{ url_mmp_callbacks }}"
-         class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
-                {% if request.path == url_mmp_callbacks %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        {% include 'partials/icon.html' with name='mmp' cls='w-5 h-5 flex-shrink-0' %}<span>MMP Callbacks</span>
-      </a>
-
-      <p class="px-3 pt-4 pb-1 text-[11px] uppercase tracking-widest" style="color:var(--side-label)">Analyze</p>
-
-      <a href="{{ url_conversions }}"
-         class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
-                {% if request.path == url_conversions %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        {% include 'partials/icon.html' with name='conversions' cls='w-5 h-5 flex-shrink-0' %}<span>Conversions</span>
-      </a>
-
-      <p class="px-3 pt-4 pb-1 text-[11px] uppercase tracking-widest" style="color:var(--side-label)">Finance</p>
-
-      <a href="{{ url_wallet }}"
-         class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
-                {% if request.path == url_wallet %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        {% include 'partials/icon.html' with name='wallet' cls='w-5 h-5 flex-shrink-0' %}<span>Wallet</span>
-      </a>
-
-      <p class="px-3 pt-4 pb-1 text-[11px] uppercase tracking-widest" style="color:var(--side-label)">More</p>
-
-      <a href="{{ url_settings }}"
-         class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium
-                {% if request.path == url_settings %}bg-[var(--side-active)] text-white{% else %}text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white{% endif %}">
-        {% include 'partials/icon.html' with name='settings' cls='w-5 h-5 flex-shrink-0' %}<span>Settings</span>
-      </a>
-
-    </nav>
-
-    {# Logout #}
-    <div class="px-3 py-4" style="border-top:1px solid var(--line)">
-      <form method="post" action="{% url 'advertiser_ui:logout' %}">
-        {% csrf_token %}
-        <button type="submit"
-                class="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-[var(--side-text-dim)] hover:bg-[var(--side-hover)] hover:text-white transition-colors">
-          {% include 'partials/icon.html' with name='logout' cls='w-5 h-5 flex-shrink-0' %}<span>Log out</span>
-        </button>
-      </form>
-    </div>
-
-  </aside>
-
-  {# ── Main area ── #}
-  <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+  <div class="nx-main">
 
     {# Top bar #}
-    <header class="flex items-center h-16 px-6 flex-shrink-0" style="background:var(--surface);border-bottom:1px solid var(--line)">
-      <h1 class="text-lg font-semibold" style="color:var(--text)">{% block page_title %}{% endblock %}</h1>
-      <span class="flex-1"></span>
-      <button type="button" data-theme-toggle data-theme-url="{% url 'user_profile:set_theme' %}"
-              aria-label="Toggle theme"
-              class="inline-flex items-center justify-center w-9 h-9 rounded-md"
-              style="background:var(--surface-2);border:1px solid var(--line);color:var(--text)">
-        <span data-theme-icon>&#9728;</span>
-      </button>
+    <header class="nx-topbar">
+      <button class="nx-iconbtn nx-hamburger" id="nx-hamburger" type="button" aria-label="Open menu">&#9776;</button>
+      <h1 class="nx-topbar__title">{% block page_title %}{% endblock %}</h1>
+      <span class="nx-topbar__spacer"></span>
+      <button type="button" class="nx-iconbtn" data-theme-toggle data-theme-url="{% url 'user_profile:set_theme' %}"
+              aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>
     </header>
 
     {# Content #}
-    <main class="flex-1 overflow-auto p-6" style="background:var(--bg)">
+    <main class="nx-content">
       {% block content %}{% endblock %}
     </main>
 
@@ -156,6 +62,7 @@
 
 </div>
 
+<script src="{% static 'js/shell.js' %}"></script>
 <script src="{% static 'js/theme.js' %}"></script>
 {% block extra_js %}{% endblock %}
 </body>

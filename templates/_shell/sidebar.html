@@ -1,0 +1,127 @@
+{% comment %}
+  Shared Nexora app-shell sidebar — ONE sidebar for every authenticated role.
+  Token-driven (styling in static/css/shell.css, behaviour in static/js/shell.js),
+  white-label-safe (brand mark via partials/brand_logo.html), Lucide icons via
+  partials/icon.html. Desktop icon-rail collapse + mobile off-canvas drawer.
+
+  Params:
+    role - 'affiliate' (default) or 'advertiser'. Selects the menu, the role
+           label, and the dashboard/logout URL namespace.
+
+  Active state is matched on request.resolver_match.url_name. "Coming soon"
+  destinations render as a disabled <span> (no dead href) with a SOON pill.
+{% endcomment %}
+{% with url_name=request.resolver_match.url_name %}
+<aside class="nx-sidebar" id="nx-sidebar">
+
+  {# Brand: full lockup expanded; the gradient mark takes over in the collapsed rail. #}
+  <a class="nx-brand" href="{% if role == 'advertiser' %}{% url 'advertiser_ui:dashboard' %}{% else %}{% url 'affiliate_ui:dashboard' %}{% endif %}">
+    <span class="nx-brand__lockup">{% include 'partials/brand_logo.html' with variant='lockup' cls='nx-brand__img' %}</span>
+    <span class="nx-brand__mark">{% include 'partials/brand_logo.html' with variant='mark' cls='nx-brand__markimg' %}</span>
+    {% if brand.logo %}<span class="nx-brand__name">{{ brand.name|default:"Nexora" }}</span>{% endif %}
+  </a>
+
+  {# User chip #}
+  <div class="nx-userchip">
+    <span class="nx-userchip__role">{% if role == 'advertiser' %}Advertiser{% else %}{{ request.user.profile.get_role_display|default:"Affiliate" }}{% endif %}</span>
+    <div class="nx-userchip__name">{{ request.user.get_full_name|default:request.user.username }}</div>
+  </div>
+
+  <nav class="nx-nav">
+  {% if role == 'advertiser' %}
+
+    <div class="nx-nav__label">Overview</div>
+    <a class="nx-nav__item {% if url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'advertiser_ui:dashboard' %}">
+      {% include 'partials/icon.html' with name='dashboard' cls='nx-nav__icon' %}<span class="nx-nav__text">Dashboard</span>
+    </a>
+
+    <div class="nx-nav__label">Performance</div>
+    <a class="nx-nav__item {% if url_name == 'offers' %}is-active{% endif %}" href="{% url 'advertiser_ui:offers' %}">
+      {% include 'partials/icon.html' with name='offers' cls='nx-nav__icon' %}<span class="nx-nav__text">Offers</span>
+    </a>
+    <a class="nx-nav__item {% if url_name == 'conversions' %}is-active{% endif %}" href="{% url 'advertiser_ui:conversions' %}">
+      {% include 'partials/icon.html' with name='conversions' cls='nx-nav__icon' %}<span class="nx-nav__text">Conversions</span>
+    </a>
+    <a class="nx-nav__item {% if url_name == 'postbacks' %}is-active{% endif %}" href="{% url 'advertiser_ui:postbacks' %}">
+      {% include 'partials/icon.html' with name='postbacks' cls='nx-nav__icon' %}<span class="nx-nav__text">Postbacks</span>
+    </a>
+    <a class="nx-nav__item {% if url_name == 'mmp_callbacks' %}is-active{% endif %}" href="{% url 'advertiser_ui:mmp_callbacks' %}">
+      {% include 'partials/icon.html' with name='mmp' cls='nx-nav__icon' %}<span class="nx-nav__text">MMP Callbacks</span>
+    </a>
+    <span class="nx-nav__item is-disabled">
+      {% include 'partials/icon.html' with name='analytics' cls='nx-nav__icon' %}<span class="nx-nav__text">Reports</span><span class="nx-soon">Soon</span>
+    </span>
+
+    <div class="nx-nav__label">Billing</div>
+    <a class="nx-nav__item {% if url_name == 'wallet' %}is-active{% endif %}" href="{% url 'advertiser_ui:wallet' %}">
+      {% include 'partials/icon.html' with name='wallet' cls='nx-nav__icon' %}<span class="nx-nav__text">Wallet</span>
+    </a>
+    <span class="nx-nav__item is-disabled">
+      {% include 'partials/icon.html' with name='deposits' cls='nx-nav__icon' %}<span class="nx-nav__text">Deposits</span><span class="nx-soon">Soon</span>
+    </span>
+
+    <div class="nx-nav__label">Account</div>
+    <a class="nx-nav__item {% if url_name == 'settings' %}is-active{% endif %}" href="{% url 'advertiser_ui:settings' %}">
+      {% include 'partials/icon.html' with name='settings' cls='nx-nav__icon' %}<span class="nx-nav__text">Settings</span>
+    </a>
+
+  {% else %}
+
+    <a class="nx-nav__item {% if url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'affiliate_ui:dashboard' %}">
+      {% include 'partials/icon.html' with name='dashboard' cls='nx-nav__icon' %}<span class="nx-nav__text">Dashboard</span>
+    </a>
+
+    <div class="nx-nav__label">Manage</div>
+    <a class="nx-nav__item {% if url_name == 'offer_list' or url_name == 'offer_detail' %}is-active{% endif %}" href="{% url 'affiliate_ui:offer_list' %}">
+      {% include 'partials/icon.html' with name='offers' cls='nx-nav__icon' %}<span class="nx-nav__text">Offers</span>
+    </a>
+    <a class="nx-nav__item {% if url_name == 'payouts' %}is-active{% endif %}" href="{% url 'affiliate_ui:payouts' %}">
+      {% include 'partials/icon.html' with name='payouts' cls='nx-nav__icon' %}<span class="nx-nav__text">Payouts</span>
+    </a>
+    <span class="nx-nav__item is-disabled">
+      {% include 'partials/icon.html' with name='postbacks' cls='nx-nav__icon' %}<span class="nx-nav__text">Postbacks</span><span class="nx-soon">Soon</span>
+    </span>
+
+    <div class="nx-nav__label">Analyze</div>
+    <a class="nx-nav__item {% if url_name == 'daily_report' %}is-active{% endif %}" href="{% url 'affiliate_ui:daily_report' %}">
+      {% include 'partials/icon.html' with name='daily_report' cls='nx-nav__icon' %}<span class="nx-nav__text">Daily Report</span>
+    </a>
+    <a class="nx-nav__item {% if url_name == 'offer_report' %}is-active{% endif %}" href="{% url 'affiliate_ui:offer_report' %}">
+      {% include 'partials/icon.html' with name='offer_report' cls='nx-nav__icon' %}<span class="nx-nav__text">Offer Report</span>
+    </a>
+    <a class="nx-nav__item {% if url_name == 'goal_report' %}is-active{% endif %}" href="{% url 'affiliate_ui:goal_report' %}">
+      {% include 'partials/icon.html' with name='goal_report' cls='nx-nav__icon' %}<span class="nx-nav__text">Goal Report</span>
+    </a>
+    <span class="nx-nav__item is-disabled">
+      {% include 'partials/icon.html' with name='analytics' cls='nx-nav__icon' %}<span class="nx-nav__text">Analytics</span><span class="nx-soon">Soon</span>
+    </span>
+
+    <div class="nx-nav__label">Tools</div>
+    <span class="nx-nav__item is-disabled">
+      {% include 'partials/icon.html' with name='tracking' cls='nx-nav__icon' %}<span class="nx-nav__text">Tracking &amp; Asset Generator</span><span class="nx-soon">Soon</span>
+    </span>
+
+    <div class="nx-nav__label">More</div>
+    <span class="nx-nav__item is-disabled">
+      {% include 'partials/icon.html' with name='settings' cls='nx-nav__icon' %}<span class="nx-nav__text">Company Settings</span><span class="nx-soon">Soon</span>
+    </span>
+
+  {% endif %}
+  </nav>
+
+  {# Footer: desktop rail toggle + logout #}
+  <div class="nx-sidebar__footer">
+    <button type="button" class="nx-railtoggle" id="nx-railtoggle" aria-label="Collapse sidebar">
+      {% include 'partials/icon.html' with name='chevron_left' cls='nx-nav__icon nx-chev' %}<span class="nx-side-label">Collapse</span>
+    </button>
+    <form method="post" action="{% if role == 'advertiser' %}{% url 'advertiser_ui:logout' %}{% else %}{% url 'affiliate_ui:logout' %}{% endif %}">
+      {% csrf_token %}
+      <button type="submit" class="nx-logout">
+        {% include 'partials/icon.html' with name='logout' cls='nx-nav__icon' %}<span>Log out</span>
+      </button>
+    </form>
+  </div>
+
+</aside>
+<div class="nx-overlay" id="nx-overlay"></div>
+{% endwith %}

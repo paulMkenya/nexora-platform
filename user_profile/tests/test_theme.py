@@ -74,7 +74,7 @@ class BaseTemplatesRenderTest(TestCase):
         request = self._request_for(Profile.Role.ADVERTISER)
         html = get_template('advertiser_ui/base.html').render({}, request)
         self.assertIn('data-theme', html)
-        self.assertIn('var(--side)', html)  # structural color via token
+        self.assertIn('nx-sidebar', html)  # shared token-driven shell partial
         self.assertIn('data-theme-toggle', html)
 
     def test_owner_nav_renders(self):

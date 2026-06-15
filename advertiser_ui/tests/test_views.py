@@ -109,6 +109,6 @@ class LogoutViewTestCase(AdvertiserUiAccessMixin, TestCase):
         # Offers page — offers link should be active
         r = self.client.get('/advertiser/offers/')
         content = r.content.decode()
-        # Active item carries the tokenized active background on the offers link
+        # The shared shell marks the current item with the .is-active class.
         offers_idx = content.index('/advertiser/offers/')
-        self.assertIn('bg-[var(--side-active)]', content[max(0, offers_idx - 200):offers_idx + 200])
+        self.assertIn('is-active', content[max(0, offers_idx - 200):offers_idx + 50])
