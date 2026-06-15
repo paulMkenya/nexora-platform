@@ -48,13 +48,23 @@ body {
   font-size: 18px;
 }
 .nx-brand:hover { color: var(--side-text); }
-.nx-logo-mark {
-  width: 28px; height: 28px;
-  border-radius: 8px;
-  background: var(--grad);
-  flex: 0 0 auto;
-}
-.nx-logo-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
+/* Brand logo — white-label-safe (rendered via partials/brand_logo.html).
+   Lockup = full NEXORA TRACK wordmark (on-dark only); mark = gradient N (any bg). */
+.nx-brand__lockup, .nx-brand__mark { display: inline-flex; align-items: center; }
+.nx-brand__img { height: 30px; width: auto; max-width: 176px; object-fit: contain; display: block; }
+.nx-brand__markimg { height: 28px; width: 28px; object-fit: contain; display: block; flex: 0 0 auto; }
+.nx-brand__name { white-space: nowrap; }
+
+/* In the sidebar the lockup is the default; the mark is held in reserve for the
+   collapsed rail (.nx-sidebar.is-collapsed). The unauthenticated top bar uses
+   the mark directly, so the hide rule is scoped to the sidebar only. */
+.nx-sidebar .nx-brand__mark { display: none; }
+.nx-sidebar.is-collapsed .nx-brand__lockup,
+.nx-sidebar.is-collapsed .nx-brand__name { display: none; }
+.nx-sidebar.is-collapsed .nx-brand__mark { display: inline-flex; }
+
+/* Login: full lockup centered on the dark login surface. */
+.nx-login-logo { height: 40px; width: auto; max-width: 220px; object-fit: contain; display: inline-block; }
 
 /* ---- User chip ------------------------------------------------------------- */
 .nx-userchip {

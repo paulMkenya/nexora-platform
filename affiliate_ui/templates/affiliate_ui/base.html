@@ -3,9 +3,9 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>{% block title %}{{ brand.name|default:"Nexora" }}{% endblock %}</title>
-        {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% endif %}
         {% load static %}
+        <title>{% block title %}{{ brand.name|default:"Nexora" }}{% endblock %}</title>
+        {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" type="image/svg+xml" href="{% static 'img/nexora-mark.svg' %}">{% endif %}
         <!-- Nexora theme — no-flash: apply the stored theme before first paint -->
         <script>
           (function () {
@@ -37,8 +37,10 @@
 
             <aside class="nx-sidebar" id="nx-sidebar">
                 <a class="nx-brand" href="{% url 'affiliate_ui:dashboard' %}">
-                    <span class="nx-logo-mark">{% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ brand.name|default:'Nexora' }}">{% endif %}</span>
-                    <span>{{ brand.name|default:"Nexora" }}</span>
+                    {# Full lockup on the dark sidebar; the gradient mark takes over when the rail is collapsed (.nx-sidebar.is-collapsed). #}
+                    <span class="nx-brand__lockup">{% include 'partials/brand_logo.html' with variant='lockup' cls='nx-brand__img' %}</span>
+                    <span class="nx-brand__mark">{% include 'partials/brand_logo.html' with variant='mark' cls='nx-brand__markimg' %}</span>
+                    {% if brand.logo %}<span class="nx-brand__name">{{ brand.name|default:"Nexora" }}</span>{% endif %}
                 </a>
 
                 <div class="nx-userchip">
@@ -110,8 +112,9 @@
         {% else %}
         <header class="nx-topbar">
             <a class="nx-brand" href="{% url 'affiliate_ui:login' %}" style="color:var(--text)">
-                <span class="nx-logo-mark">{% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ brand.name|default:'Nexora' }}">{% endif %}</span>
-                <span>{{ brand.name|default:"Nexora" }}</span>
+                {# Top bar can be light or dark depending on theme — use the background-agnostic mark. #}
+                <span class="nx-brand__mark">{% include 'partials/brand_logo.html' with variant='mark' cls='nx-brand__markimg' %}</span>
+                <span class="nx-brand__name">{{ brand.name|default:"Nexora" }}</span>
             </a>
             <span class="nx-topbar__spacer"></span>
             <button class="nx-iconbtn" type="button" data-theme-toggle aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>

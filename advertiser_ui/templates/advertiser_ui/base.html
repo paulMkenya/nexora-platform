@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}{{ brand.name|default:"Nexora" }} Advertiser{% endblock %}</title>
-  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% endif %}
   {% load static %}
+  <title>{% block title %}{{ brand.name|default:"Nexora" }} Advertiser{% endblock %}</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" type="image/svg+xml" href="{% static 'img/nexora-mark.svg' %}">{% endif %}
   <!-- Nexora theme — no-flash: apply the stored theme before first paint -->
   <script>
     (function () {
@@ -43,13 +43,12 @@
   <aside class="flex flex-col w-64 flex-shrink-0" style="background:var(--side)">
 
     {# Brand #}
+    {# Full lockup on the dark sidebar (--side is dark in both themes). The
+       separate name only shows for a white-label brand whose own logo may be a
+       symbol; the Nexora lockup already carries the wordmark. #}
     <div class="flex items-center h-16 px-6" style="border-bottom:1px solid var(--line)">
-      {% if brand.logo %}
-      <img src="{{ brand.logo }}" alt="{{ brand.name|default:'Nexora' }}" class="h-7 w-auto mr-2">
-      {% else %}
-      <span class="inline-block w-7 h-7 mr-2 rounded-lg" style="background:var(--grad)"></span>
-      {% endif %}
-      <span class="font-semibold text-lg tracking-tight" style="color:var(--side-text)">{{ brand.name|default:"Nexora" }}</span>
+      {% include 'partials/brand_logo.html' with variant='lockup' cls='h-8 w-auto' %}
+      {% if brand.logo %}<span class="font-semibold text-lg tracking-tight ml-2" style="color:var(--side-text)">{{ brand.name|default:"Nexora" }}</span>{% endif %}
     </div>
 
     {# User chip #}

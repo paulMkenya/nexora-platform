@@ -1,0 +1,19 @@
+{% load static %}{% comment %}
+  Reusable, white-label-safe brand logo. Renders the brand's own logo when the
+  brand record carries one (brand.logo, a CharField URL), otherwise falls back
+  to the bundled Nexora default asset. Used everywhere instead of hardcoding an
+  <img> — so a white-label brand swaps its logo in one place.
+
+  Params:
+    brand   - brand record (from brands.context_processors). Optional.
+    variant - 'lockup' (default): full NEXORA TRACK wordmark, white text,
+               ON-DARK ONLY. Use on dark sidebars / dark login surfaces.
+              'mark': gradient N-mark, background-agnostic. Use collapsed, on
+               light surfaces, and anywhere the lockup is too wide/invisible.
+    cls     - CSS classes applied to the <img>.
+    alt     - optional alt-text override (defaults to the brand name / "Nexora").
+
+  Note: the static fallbacks go through {% templatetag openblock %} static {% templatetag closeblock %}
+  so they stay collectstatic / manifest-hash safe in production. Do NOT store a
+  raw /static/... path in brand.logo — manifest hashing would 404 it.
+{% endcomment %}{% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ alt|default:brand.name|default:'Nexora' }}" class="{{ cls }}">{% elif variant == 'mark' %}<img src="{% static 'img/nexora-mark.svg' %}" alt="{{ alt|default:'Nexora' }}" class="{{ cls }}">{% else %}<img src="{% static 'img/nexora-logo.png' %}" alt="{{ alt|default:'Nexora' }}" class="{{ cls }}">{% endif %}
