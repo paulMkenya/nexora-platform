@@ -12,8 +12,8 @@
 <div class="min-h-full flex items-center justify-center py-12 px-4">
   <div class="w-full max-w-md">
     <div class="text-center mb-6">
-      {# WHITE page: the on-dark lockup would be invisible, so use the gradient
-         mark (background-agnostic) paired with the dark heading text below. #}
+      {% comment %}WHITE page: the on-dark lockup would be invisible, so use the gradient
+         mark (background-agnostic) paired with the dark heading text below.{% endcomment %}
       {% include 'partials/brand_logo.html' with variant='mark' cls='h-12 w-auto mx-auto mb-3' %}
       <h1 class="text-2xl font-bold text-gray-900">Advertiser login</h1>
       <p class="text-sm text-gray-500 mt-1">{{ brand.name|default:"Nexora" }}</p>
