@@ -24,3 +24,73 @@
 }
 .nx-content .btn-primary:hover { filter: brightness(1.06); }
 .nx-content hr { border-color: var(--line); }
+
+/* ============================================================================
+   DS layer (Surface 2) — fills the Bootstrap gaps the native overrides above
+   don't cover (card headers, form controls, .bg-light, table heads, badges,
+   status columns), sourced from the CloudTrade DS semantic tokens (ds/styles.css)
+   plus the native token contract. data-brand="nexora" on <html> activates the
+   blue->teal brand mapping. No hardcoded colors; advertiser per-tenant accent
+   is untouched (different shell). All scoped to .nx-content.
+   ============================================================================ */
+
+/* Card chrome */
+.nx-content .card-header {
+  background: var(--surface-sunken);
+  color: var(--text-strong);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* Form controls (Bootstrap inputs default to light — theme them) */
+.nx-content .form-control,
+.nx-content .form-select {
+  background: var(--surface-sunken);
+  color: var(--text-body);
+  border: 1px solid var(--border-default);
+}
+.nx-content .form-control::placeholder { color: var(--text-faint); }
+.nx-content .form-control:focus,
+.nx-content .form-select:focus {
+  background: var(--surface-sunken);
+  color: var(--text-body);
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 2px var(--brand-tint);
+}
+.nx-content .form-label { color: var(--text-muted); }
+
+/* Bootstrap helper backgrounds that otherwise stay light on the dark shell */
+.nx-content .bg-light { background: var(--surface-sunken) !important; color: var(--text-body) !important; }
+
+/* Report tables */
+.nx-content .table thead th {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: .72rem;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--border-default);
+}
+.nx-content .table td,
+.nx-content .table th { border-color: var(--divider); }
+
+/* Numeric / money figures: tabular alignment per DS money convention */
+.nx-content .ds-num   { font-variant-numeric: tabular-nums; }
+.nx-content .ds-money { color: var(--brand-teal); font-variant-numeric: tabular-nums; }
+
+/* Status-column semantics — DS status tokens (light + dark aware via data-theme) */
+.nx-content .ds-approved { color: var(--status-positive-fg); }
+.nx-content .ds-hold     { color: var(--status-warning-fg); }
+.nx-content .ds-rejected { color: var(--status-danger-fg); }
+
+/* Dashboard stat tiles */
+.nx-content .ds-stat-label {
+  font-size: .72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+}
+
+/* Offer badges -> DS status tints (beat Bootstrap's !important text utility) */
+.nx-content .badge.bg-secondary { background: var(--status-neutral-bg) !important; color: var(--status-neutral-fg) !important; }
+.nx-content .badge.bg-info      { background: var(--status-info-bg) !important;    color: var(--status-info-fg) !important; }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="{% if user.is_authenticated %}{{ request.user.profile.theme_preference|default:'dark' }}{% else %}dark{% endif %}">
+<html lang="en" data-brand="nexora" data-theme="{% if user.is_authenticated %}{{ request.user.profile.theme_preference|default:'dark' }}{% else %}dark{% endif %}">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
