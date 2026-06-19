@@ -1,0 +1,120 @@
+/* ============================================================
+   Nexora — Color tokens
+   Two layers:
+   1. PRIMITIVES  — raw palette, never used directly in UI
+   2. SEMANTIC    — role aliases the UI actually references
+   The semantic layer is re-declared under .theme-dark so every
+   surface flips with a single class. Brand hue is injected by
+   --brand-primary / --brand-secondary (see brands.css) so the
+   structure stays brand-neutral and white-label.
+   ============================================================ */
+
+:root {
+  /* ---- PRIMITIVES : neutral (slate-cool gray ramp) ---- */
+  --gray-50:  #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+  --gray-950: #0b1020;   /* deep navy — marketing / get-started canvas */
+
+  /* ---- PRIMITIVES : brand default (Nexora indigo) ---- */
+  --indigo-50:  #eef2ff;
+  --indigo-100: #e0e7ff;
+  --indigo-200: #c7d2fe;
+  --indigo-400: #818cf8;
+  --indigo-500: #6366f1;
+  --indigo-600: #4f46e5;
+  --indigo-700: #4338ca;
+
+  /* ---- PRIMITIVES : semantic status hues ---- */
+  --green-50:  #ecfdf5;  --green-100: #d1fae5;  --green-500: #10b981;  --green-600: #059669;  --green-700: #047857;  --green-800: #065f46;
+  --amber-50:  #fffbeb;  --amber-100: #fef3c7;  --amber-500: #f59e0b;  --amber-600: #d97706;  --amber-700: #b45309;  --amber-800: #92400e;
+  --red-50:    #fef2f2;  --red-100:   #fee2e2;  --red-500:   #ef4444;  --red-600:   #dc2626;  --red-700:   #b91c1c;  --red-800:   #991b1b;
+  --blue-50:   #eff6ff;  --blue-100:  #dbeafe;  --blue-500:  #3b82f6;  --blue-600:  #2563eb;  --blue-700:  #1d4ed8;  --blue-800:  #1e40af;
+
+  /* ---- BRAND : default = Nexora indigo. Overridden per-tenant. ---- */
+  --brand-primary:   var(--indigo-500);
+  --brand-secondary: var(--indigo-600);
+  --brand-primary-fg: #ffffff;          /* text on a brand-filled surface */
+  --brand-tint:      var(--indigo-50);  /* faint brand wash */
+  --brand-tint-border: var(--indigo-100);
+  --brand-tint-fg:   var(--indigo-700); /* brand text on a tint */
+
+  /* ============================================================
+     SEMANTIC ALIASES  —  LIGHT THEME (default)
+     ============================================================ */
+  /* Surfaces */
+  --surface-app:      var(--gray-50);    /* page canvas */
+  --surface-card:     #ffffff;           /* cards, panels, tables */
+  --surface-sunken:   var(--gray-100);   /* filter bars, table head, wells */
+  --surface-inverse:  var(--gray-900);   /* sidebar, dark chrome */
+  --surface-overlay:  rgba(17,24,39,.55);/* modal scrim */
+
+  /* Text */
+  --text-strong:  var(--gray-900);   /* headings, key numbers */
+  --text-body:    var(--gray-700);   /* default body */
+  --text-muted:   var(--gray-500);   /* secondary, captions */
+  --text-faint:   var(--gray-400);   /* placeholders, disabled */
+  --text-inverse: #ffffff;           /* text on dark/brand surfaces */
+  --text-link:    var(--brand-secondary);
+
+  /* Borders & lines */
+  --border-default: var(--gray-200);
+  --border-strong:  var(--gray-300);
+  --divider:        var(--gray-100);
+  --ring-focus:     var(--brand-primary);
+
+  /* Status — pill bg / fg / border, used by Badge & money surfaces */
+  --status-positive-bg:  var(--green-100);  --status-positive-fg:  var(--green-800);  --status-positive-solid: var(--green-600);
+  --status-warning-bg:   var(--amber-100);  --status-warning-fg:   var(--amber-800);  --status-warning-solid:  var(--amber-500);
+  --status-danger-bg:    var(--red-100);    --status-danger-fg:    var(--red-800);    --status-danger-solid:   var(--red-600);
+  --status-info-bg:      var(--blue-100);   --status-info-fg:      var(--blue-800);    --status-info-solid:     var(--blue-600);
+  --status-neutral-bg:   var(--gray-100);   --status-neutral-fg:   var(--gray-600);   --status-neutral-solid:  var(--gray-500);
+
+  /* Impersonation banner — always loud, never themed */
+  --impersonation-bg: var(--red-600);
+  --impersonation-fg: #ffffff;
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   SEMANTIC ALIASES  —  DARK THEME
+   Apply with class="theme-dark" or [data-theme="dark"].
+   ============================================================ */
+.theme-dark, [data-theme="dark"] {
+  --surface-app:     var(--gray-950);
+  --surface-card:    #121a30;
+  --surface-sunken:  #0d1426;
+  --surface-inverse: #060a16;
+  --surface-overlay: rgba(2,6,16,.66);
+
+  --text-strong:  #e8edf7;
+  --text-body:    #c3cde0;
+  --text-muted:   #9fb0d0;
+  --text-faint:   #6b7a99;
+  --text-inverse: #ffffff;
+  --text-link:    var(--indigo-400);
+
+  --border-default: #26314f;
+  --border-strong:  #364268;
+  --divider:        #1c2540;
+
+  --brand-tint:        rgba(99,102,241,.14);
+  --brand-tint-border: rgba(99,102,241,.34);
+  --brand-tint-fg:     var(--indigo-200);
+
+  --status-positive-bg: rgba(16,185,129,.16);  --status-positive-fg: #6ee7b7;
+  --status-warning-bg:  rgba(245,158,11,.16);  --status-warning-fg:  #fcd34d;
+  --status-danger-bg:   rgba(239,68,68,.16);   --status-danger-fg:   #fca5a5;
+  --status-info-bg:     rgba(59,130,246,.16);  --status-info-fg:     #93c5fd;
+  --status-neutral-bg:  rgba(148,163,184,.16); --status-neutral-fg:  #cbd5e1;
+
+  color-scheme: dark;
+}
