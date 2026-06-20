@@ -1,0 +1,40 @@
+/* ============================================================================
+   Advertiser portal — DS layer (Surface 3).
+   The advertiser templates are Tailwind-utility pages authored in a fixed LIGHT
+   palette (bg-white / text-gray-* / borders). The brand ACCENT is handled in the
+   Tailwind config (base.html), where `indigo` is remapped onto the per-tenant
+   --brand-* vars and status colors onto DS --status-* tokens. This file only
+   remaps the NEUTRAL/structural palette for DARK theme so the pages are legible
+   on the dark shell; LIGHT theme keeps Tailwind's native light palette.
+   Scoped to [data-theme="dark"] .nx-content; references DS tokens only — no
+   hardcoded colors, so the per-tenant accent above is never overridden here.
+   ============================================================================ */
+
+/* Surfaces */
+[data-theme="dark"] .nx-content .bg-white { background: var(--surface-card) !important; }
+[data-theme="dark"] .nx-content .bg-gray-50,
+[data-theme="dark"] .nx-content .bg-gray-100 { background: var(--surface-sunken) !important; }
+[data-theme="dark"] .nx-content [class*="hover:bg-gray"]:hover { background: var(--surface-sunken) !important; }
+
+/* Text */
+[data-theme="dark"] .nx-content .text-gray-900 { color: var(--text-strong) !important; }
+[data-theme="dark"] .nx-content .text-gray-800,
+[data-theme="dark"] .nx-content .text-gray-700 { color: var(--text-body) !important; }
+[data-theme="dark"] .nx-content .text-gray-600,
+[data-theme="dark"] .nx-content .text-gray-500 { color: var(--text-muted) !important; }
+[data-theme="dark"] .nx-content .text-gray-400,
+[data-theme="dark"] .nx-content .text-gray-300 { color: var(--text-faint) !important; }
+
+/* Borders & dividers */
+[data-theme="dark"] .nx-content .border-gray-100,
+[data-theme="dark"] .nx-content .border-gray-200,
+[data-theme="dark"] .nx-content .border-gray-300 { border-color: var(--border-default) !important; }
+[data-theme="dark"] .nx-content [class*="divide-gray"] > * { border-color: var(--divider) !important; }
+
+/* Form controls — Tailwind inputs carry no bg utility, so they default to white */
+[data-theme="dark"] .nx-content input,
+[data-theme="dark"] .nx-content select,
+[data-theme="dark"] .nx-content textarea {
+  background: var(--surface-sunken) !important;
+  color: var(--text-body) !important;
+}

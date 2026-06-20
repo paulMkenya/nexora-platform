@@ -17,20 +17,47 @@
   </script>
   <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
   <link rel="stylesheet" href="{% static 'css/shell.css' %}">
-  <!-- CloudTrade Design System tokens (isolated namespace; brand-nexora.css maps blue->teal) -->
+  <!-- CloudTrade Design System tokens. brand-nexora.css ships the blue->teal
+       default; the :root bridge below overrides --brand-primary/secondary with
+       the per-tenant accent so a tenant's colors WIN over the DS fallback. -->
   <link rel="stylesheet" href="{% static 'ds/styles.css' %}">
+  <style>
+    /* Per-tenant accent bridge — source the brand record into the DS brand vars
+       so BOTH Tailwind utilities and DS tokens resolve to the tenant accent.
+       Falls back to Nexora's confirmed blue/teal (not the DS indigo sample). */
+    :root {
+      --brand-primary:   {{ brand.primary_color|default:"#2E8FF0" }};
+      --brand-secondary: {{ brand.secondary_color|default:"#16D9A3" }};
+    }
+  </style>
+  <link rel="stylesheet" href="{% static 'advertiser_ui/css/style.css' %}">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    // Per-brand ACCENT stays sourced from the brand record — the dark/light
-    // theme toggle only swaps STRUCTURAL colors (tokens), never these.
+    // Per-brand ACCENT is sourced from the brand record via the DS --brand-*
+    // vars (see the :root bridge above); the dark/light theme toggle only swaps
+    // STRUCTURAL colors, never the accent. These templates use Tailwind's
+    // `indigo` scale as the accent (they never used `brand-*`), so `indigo` is
+    // remapped onto the brand vars — this is what makes the per-tenant accent
+    // actually reach the UI. green/yellow/red map onto DS status tokens.
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            brand: {
-              primary: '{{ brand.primary_color|default:"#6366f1" }}',
-              secondary: '{{ brand.secondary_color|default:"#4f46e5" }}',
-            }
+            brand: { primary: 'var(--brand-primary)', secondary: 'var(--brand-secondary)' },
+            indigo: {
+              50:  'color-mix(in srgb, var(--brand-primary) 10%, transparent)',
+              100: 'color-mix(in srgb, var(--brand-primary) 16%, transparent)',
+              200: 'color-mix(in srgb, var(--brand-primary) 28%, transparent)',
+              300: 'color-mix(in srgb, var(--brand-primary) 45%, transparent)',
+              400: 'var(--brand-secondary)',
+              500: 'var(--brand-primary)',
+              600: 'var(--brand-primary)',
+              700: 'var(--brand-primary)',
+              800: 'var(--brand-primary)',
+            },
+            green:  { 50:'var(--status-positive-bg)', 100:'var(--status-positive-bg)', 200:'var(--status-positive-bg)', 400:'var(--status-positive-solid)', 500:'var(--status-positive-solid)', 600:'var(--status-positive-fg)', 700:'var(--status-positive-fg)', 800:'var(--status-positive-fg)' },
+            yellow: { 50:'var(--status-warning-bg)', 100:'var(--status-warning-bg)', 200:'var(--status-warning-bg)', 300:'var(--status-warning-bg)', 400:'var(--status-warning-solid)', 500:'var(--status-warning-solid)', 600:'var(--status-warning-fg)', 700:'var(--status-warning-fg)', 800:'var(--status-warning-fg)' },
+            red:    { 50:'var(--status-danger-bg)', 100:'var(--status-danger-bg)', 200:'var(--status-danger-bg)', 300:'var(--status-danger-bg)', 500:'var(--status-danger-solid)', 600:'var(--status-danger-fg)', 700:'var(--status-danger-fg)', 800:'var(--status-danger-fg)' },
           }
         }
       }
