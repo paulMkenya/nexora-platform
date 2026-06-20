@@ -15,8 +15,12 @@
 
 body { font-family: var(--font-sans); background: var(--bg); color: var(--text); }
 
-/* ---- Shell layout (flex; sidebar + main) ---------------------------------- */
-.nx-shell { display: flex; height: 100vh; overflow: hidden; }
+/* ---- Shell layout (flex; sidebar + main) ----------------------------------
+   Set the canvas background on the shell containers (not only on `body`): on the
+   affiliate shell, Bootstrap loads after shell.css and its `body{background:#fff}`
+   would otherwise win, leaving a white main canvas around the dark topbar/cards.
+   Theming the containers makes the dark shell win regardless of body cascade. */
+.nx-shell { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
 
 .nx-sidebar {
   flex: 0 0 var(--nx-side-w);
@@ -35,6 +39,7 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg);
 }
 
 /* ---- Brand mark ------------------------------------------------------------ */
