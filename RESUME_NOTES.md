@@ -1,5 +1,22 @@
 # DS integration — resume notes
 
+## ✅ STATUS: LIVE IN PRODUCTION — RESUME FROM HERE (deployed 2026-06-20)
+
+PR #14 merged to `main` (`25c9b08`) and **deployed to prod** `cpa.cloudtrade.pro`.
+- Running image: `nexora-platform:latest` = `c78fa865a006` (built from `25c9b08`).
+- Migration applied: `user_profile.0009_profile_theme_preference` (additive column; no money tables).
+- Smoke test passed: login/advertiser-login/get-started = 200; money routes (`/partner/payouts/`, `/admin/payouts/`) = 302 auth-gate (no 500); all DS assets 200; no errors in logs; web/worker/beat healthy.
+- ROLLBACK (still valid): image `4a56aa66` = tag `nexora-platform:pre-ds-rollback-20260620-074212`; DB dump `/home/paul/cloudtrade_main_pre-ds-deploy_20260620-074212.dump` (copied off-host by user); record `/home/paul/ROLLBACK_pre-ds-deploy_20260620-074212.txt`. Rollback = retag that image to :latest + `compose up -d` (additive migration needs no DB restore).
+
+### NEXT STEPS when we resume (in priority order)
+1. **Logged-in visual pass (owner's task):** click-through one affiliate money page (`/partner/payouts/`) + one operator money page (`/admin/payouts/`) while authenticated — only thing not exercised on prod (no test users created on prod). Everything else verified.
+2. **Operator-console standalone restyle** (DEFERRED from Surface 4): payout console (admin_payout_list/holds/control_settings/batches), platform_leads pipeline, admin_affiliates/detail, /admin/* dashboard/fraud/brands. These are light Bootstrap docs; DS-wiring them needs a per-page body restyle (DS base.css themes <body>) — the codebase's planned "later PR". Do as its own surface/PR.
+3. **2.2MB default logo** (DEFERRED perf): replace `static/img/nexora-logo.png` (2.2MB @ ~40px) with an optimized SVG/PNG before heavy go-live traffic.
+4. **React-island spike** (only if a real data-dense island is needed): vendor react/react-dom into static/vendor/ + hand-write createElement mounts (no JSX/Babel). Not started.
+5. **Housekeeping (optional):** `chown -R deploy:deploy /opt/nexora-platform` (this deploy wrote files as paul via deploy-group); delete merged branch `feat/design-system-integration` (local+remote) when ready; `unified-shell-ref`/`a1cecda` abandoned (kept as ref).
+
+---
+
 - platform_leads owner pipeline table deferred to Surface 4 (renders in admin_shared/nav.html; styled with operator console after money/impersonation server-side audit).
 - affiliate_ui payouts pages (payouts.views.affiliate_views) + admin_affiliates deferred to Surface 4 (money + operator surfaces, after server-side enforcement audit).
 - REACT ISLAND PREREQUISITE: _ds_bundle.js externalizes React (no React inlined) and ships with Babel-in-browser/SPA mount examples we banned. ANY future island requires first vendoring react.production.min.js + react-dom.production.min.js into static/vendor/ and hand-writing createElement mounts (no JSX, no Babel). This is a separate spike, not a surface task. No islands until that spike is done and approved.
