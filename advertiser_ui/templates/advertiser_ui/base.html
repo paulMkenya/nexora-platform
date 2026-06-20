@@ -26,8 +26,8 @@
        so BOTH Tailwind utilities and DS tokens resolve to the tenant accent.
        Falls back to Nexora's confirmed blue/teal (not the DS indigo sample). */
     :root {
-      --brand-primary:   {{ brand.primary_color|default:"#2E8FF0" }};
-      --brand-secondary: {{ brand.secondary_color|default:"#16D9A3" }};
+      --brand-primary:   {{ brand.primary_color|default:"var(--brand-blue)" }};
+      --brand-secondary: {{ brand.secondary_color|default:"var(--brand-teal)" }};
     }
   </style>
   <link rel="stylesheet" href="{% static 'advertiser_ui/css/style.css' %}">
