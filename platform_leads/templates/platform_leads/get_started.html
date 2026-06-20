@@ -1,20 +1,25 @@
 <!doctype html>
-{% load geo_extras %}
-<html lang="en">
+{% load geo_extras static %}
+<html lang="en" data-brand="nexora" class="theme-dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Get started — {{ brand.name|default:"Nexora" }}</title>
   {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% endif %}
+  <!-- CloudTrade Design System tokens (CSS layer; data-brand=nexora maps blue->teal) -->
+  <link rel="stylesheet" href="{% static 'ds/styles.css' %}">
   <style>
     :root{
-      --brand:{{ brand.primary_color|default:"#6366f1" }};
-      --brand2:{{ brand.secondary_color|default:"#4f46e5" }};
-      --bg:#0b1020;--panel:#121a30;--line:#26314f;--ink:#e8edf7;--ink-dim:#9fb0d0;
+      /* Per-tenant brand override stays the source of truth; DS brand tokens are the fallback. */
+      --brand:{{ brand.primary_color|default:"var(--brand-primary)" }};
+      --brand2:{{ brand.secondary_color|default:"var(--brand-secondary)" }};
+      /* Structure/surface/text now sourced from the DS semantic layer (theme-dark). */
+      --bg:var(--surface-app);--panel:var(--surface-card);--line:var(--border-default);
+      --ink:var(--text-strong);--ink-dim:var(--text-muted);
     }
     *{box-sizing:border-box}
-    body{margin:0;background:radial-gradient(ellipse at top,rgba(99,102,241,.18),transparent 60%),var(--bg);
-      color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5}
+    body{margin:0;background:radial-gradient(ellipse at top,var(--brand-tint),transparent 60%),var(--bg);
+      color:var(--ink);font-family:var(--font-sans);line-height:1.5}
     .wrap{max-width:760px;margin:0 auto;padding:48px 20px 80px}
     .top{display:flex;align-items:center;gap:12px;margin-bottom:28px}
     .top a{color:var(--ink);text-decoration:none;font-weight:700;font-size:1.05rem}
@@ -25,7 +30,7 @@
     .hint{font-weight:400;color:var(--ink-dim);font-size:.82rem}
     input[type=text],input[type=email],input[type=tel],input[type=url],select,textarea{
       width:100%;padding:11px 13px;border-radius:10px;border:1px solid var(--line);
-      background:#0d1426;color:var(--ink);font-size:.95rem;font-family:inherit}
+      background:var(--surface-sunken);color:var(--ink);font-size:.95rem;font-family:inherit}
     textarea{min-height:90px;resize:vertical}
     .field{margin-bottom:18px}
     .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -35,16 +40,16 @@
       padding:13px 15px;cursor:pointer;transition:.15s}
     .type-opt:hover{border-color:var(--brand)}
     .type-opt input{margin-top:3px}
-    .type-opt.sel{border-color:var(--brand);background:rgba(99,102,241,.1)}
+    .type-opt.sel{border-color:var(--brand);background:var(--brand-tint)}
     .checks{display:flex;flex-wrap:wrap;gap:8px}
     .chk{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;
       padding:7px 13px;font-size:.86rem;cursor:pointer}
     .chk input{margin:0}
     .btn{display:inline-block;border:none;cursor:pointer;font-weight:700;font-size:1rem;
-      padding:14px 26px;border-radius:12px;color:#fff;
+      padding:14px 26px;border-radius:12px;color:var(--brand-primary-fg);
       background:linear-gradient(135deg,var(--brand),var(--brand2))}
     .btn:hover{filter:brightness(1.08)}
-    .errors{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#fecaca;
+    .errors{background:var(--status-danger-bg);border:1px solid var(--status-danger-fg);color:var(--status-danger-fg);
       border-radius:12px;padding:14px 16px;margin-bottom:22px}
     .errors ul{margin:6px 0 0;padding-left:20px}
     .ok{text-align:center;padding:30px 10px}

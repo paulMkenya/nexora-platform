@@ -38,7 +38,7 @@ class DashboardTest(TestCase):
         self.assertEqual(response.context['conversions_count'], 3)
         self.assertEqual(response.context['total_earnings'], '15.75')
 
-        # Check rendered HTML
-        self.assertContains(response, '<p class="card-text fs-2">2</p>', html=True)
-        self.assertContains(response, '<p class="card-text fs-2">3</p>', html=True)
-        self.assertContains(response, '<p class="card-text fs-2">$15.75</p>', html=True)
+        # Check rendered HTML (DS stat-card classes added in the design-system pass)
+        self.assertContains(response, '<p class="card-text fs-2 ds-num">2</p>', html=True)
+        self.assertContains(response, '<p class="card-text fs-2 ds-num">3</p>', html=True)
+        self.assertContains(response, '<p class="card-text fs-2 ds-money">$15.75</p>', html=True)

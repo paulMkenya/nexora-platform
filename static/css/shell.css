@@ -1,0 +1,227 @@
+/* ============================================================================
+   Nexora app shell — shared across roles (affiliate + advertiser).
+   ONE sidebar/topbar/shell, rendered from templates/_shell/sidebar.html.
+
+   References ONLY the tokens from /static/css/tokens.css (loaded first) — no
+   hardcoded colors. The sidebar uses --side* (dark in BOTH themes). Layout is
+   flexbox so the desktop rail-collapse (.is-collapsed) reflows the main area
+   automatically; on mobile the sidebar becomes an off-canvas drawer.
+
+   Role-specific page-body styling does NOT live here (e.g. affiliate's
+   Bootstrap overrides stay in affiliate_ui/.../style.css).
+   ============================================================================ */
+
+:root { --nx-side-w: 248px; --nx-rail-w: 64px; }
+
+body { font-family: var(--font-sans); background: var(--bg); color: var(--text); }
+
+/* ---- Shell layout (flex; sidebar + main) ----------------------------------
+   Set the canvas background on the shell containers (not only on `body`): on the
+   affiliate shell, Bootstrap loads after shell.css and its `body{background:#fff}`
+   would otherwise win, leaving a white main canvas around the dark topbar/cards.
+   Theming the containers makes the dark shell win regardless of body cascade. */
+.nx-shell { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
+
+.nx-sidebar {
+  flex: 0 0 var(--nx-side-w);
+  width: var(--nx-side-w);
+  height: 100vh;
+  background: var(--side);
+  display: flex;
+  flex-direction: column;
+  transition: flex-basis .18s ease, width .18s ease, transform .2s ease;
+}
+
+.nx-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ---- Brand mark ------------------------------------------------------------ */
+.nx-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
+  text-decoration: none;
+  color: var(--side-text);
+  font-weight: 600;
+  font-size: 18px;
+  overflow: hidden;
+}
+.nx-brand:hover { color: var(--side-text); }
+/* Brand logo — white-label-safe (rendered via partials/brand_logo.html).
+   Lockup = full NEXORA TRACK wordmark (on-dark only); mark = gradient N (any bg). */
+.nx-brand__lockup, .nx-brand__mark { display: inline-flex; align-items: center; }
+.nx-brand__img { height: 30px; width: auto; max-width: 176px; object-fit: contain; display: block; }
+.nx-brand__markimg { height: 28px; width: 28px; object-fit: contain; display: block; flex: 0 0 auto; }
+.nx-brand__name { white-space: nowrap; }
+
+/* In the sidebar the lockup is the default; the mark takes over in the collapsed
+   rail. The unauthenticated top bar uses the mark directly, so the hide rule is
+   scoped to the sidebar only. */
+.nx-sidebar .nx-brand__mark { display: none; }
+.nx-sidebar.is-collapsed .nx-brand__lockup,
+.nx-sidebar.is-collapsed .nx-brand__name { display: none; }
+.nx-sidebar.is-collapsed .nx-brand__mark { display: inline-flex; }
+
+/* Login: full lockup centered on the dark login surface. */
+.nx-login-logo { height: 40px; width: auto; max-width: 220px; object-fit: contain; display: inline-block; }
+
+/* ---- User chip ------------------------------------------------------------- */
+.nx-userchip {
+  padding: 0 var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--space-2);
+  overflow: hidden;
+}
+.nx-userchip__role {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--side-label);
+  margin: 0 0 2px;
+}
+.nx-userchip__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--side-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ---- Nav groups ------------------------------------------------------------ */
+.nx-nav { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 0 var(--space-2); }
+.nx-nav__label {
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--side-label);
+  padding: var(--space-3) var(--space-2) var(--space-1);
+  white-space: nowrap;
+}
+.nx-nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 9px var(--space-2);
+  margin-bottom: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--side-text-dim);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.nx-nav__item:hover { background: var(--side-hover); color: var(--side-text); }
+.nx-nav__item.is-active { background: var(--side-active); color: var(--side-text); }
+.nx-nav__item.is-disabled {
+  color: var(--side-label);
+  cursor: default;
+  pointer-events: none;
+}
+.nx-nav__icon { width: 18px; height: 18px; flex: 0 0 auto; }
+.nx-nav__text { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.nx-soon {
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: var(--side-hover);
+  color: var(--side-label);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+}
+
+/* ---- Sidebar footer (rail toggle + logout) -------------------------------- */
+.nx-sidebar__footer { padding: var(--space-2); border-top: 1px solid var(--line); }
+.nx-sidebar__footer form { margin: 0; }
+.nx-railtoggle,
+.nx-logout {
+  width: 100%;
+  display: flex; align-items: center; gap: var(--space-2);
+  background: none; border: none;
+  padding: 9px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--side-text-dim);
+  font-size: 14px; font-weight: 500;
+  text-align: left; cursor: pointer;
+  white-space: nowrap;
+}
+.nx-railtoggle:hover,
+.nx-logout:hover { background: var(--side-hover); color: var(--side-text); }
+.nx-railtoggle { display: none; }           /* desktop-only; shown in @media below */
+.nx-railtoggle .nx-chev { transition: transform .18s ease; }
+
+/* ---- Top bar --------------------------------------------------------------- */
+.nx-topbar {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: var(--space-2);
+  height: 56px;
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.nx-topbar__title { font-size: 18px; font-weight: 600; color: var(--text); }
+.nx-topbar__spacer { flex: 1 1 auto; }
+.nx-topbar__user { color: var(--text-dim); font-size: 13px; }
+
+.nx-iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 16px; line-height: 1; cursor: pointer;
+}
+.nx-iconbtn:hover { border-color: var(--line-strong); }
+
+/* Hamburger — mobile only */
+.nx-hamburger { display: none; }
+
+/* ---- Content area ---------------------------------------------------------- */
+.nx-content { flex: 1 1 auto; overflow: auto; padding: var(--space-4); }
+
+/* Off-canvas overlay (mobile) */
+.nx-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 1035;
+}
+.nx-overlay.is-open { display: block; }
+
+/* ---- Desktop: collapsed icon rail ----------------------------------------- */
+@media (min-width: 861px) {
+  .nx-railtoggle { display: flex; }
+  .nx-sidebar.is-collapsed { flex-basis: var(--nx-rail-w); width: var(--nx-rail-w); }
+  .nx-sidebar.is-collapsed .nx-nav__text,
+  .nx-sidebar.is-collapsed .nx-nav__label,
+  .nx-sidebar.is-collapsed .nx-soon,
+  .nx-sidebar.is-collapsed .nx-userchip,
+  .nx-sidebar.is-collapsed .nx-railtoggle .nx-side-label,
+  .nx-sidebar.is-collapsed .nx-logout span { display: none; }
+  .nx-sidebar.is-collapsed .nx-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+  .nx-sidebar.is-collapsed .nx-nav__item,
+  .nx-sidebar.is-collapsed .nx-railtoggle,
+  .nx-sidebar.is-collapsed .nx-logout { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+  .nx-sidebar.is-collapsed .nx-railtoggle .nx-chev { transform: rotate(180deg); }
+}
+
+/* ---- Mobile: off-canvas drawer -------------------------------------------- */
+@media (max-width: 860px) {
+  .nx-sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 1040;
+    transform: translateX(-100%);
+    box-shadow: 2px 0 18px rgba(0,0,0,.45);
+  }
+  .nx-sidebar.is-open { transform: translateX(0); }
+  /* The rail-collapse is a desktop affordance; never collapse the mobile drawer. */
+  .nx-sidebar.is-collapsed { flex-basis: var(--nx-side-w); width: var(--nx-side-w); }
+  .nx-hamburger { display: inline-flex; }
+}

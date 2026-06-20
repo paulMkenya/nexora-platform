@@ -1,0 +1,103 @@
+/* ============================================================================
+   Nexora design tokens — single source of truth.
+   Two themes swapped by `data-theme` on <html>. Dark is the DEFAULT.
+
+   SEMANTIC CONTRACT (use these meanings consistently in every later page PR):
+     --brand-teal  → money / positive / earnings
+     --brand-blue  → primary action / links / active nav
+     --warn        → pending / needs attention
+     --neg         → error / negative / rejected
+     --pos         → success / approved
+
+   STRUCTURAL vs ACCENT:
+     The theme (dark/light) controls STRUCTURAL colors only — bg, surface, text,
+     lines. The per-brand ACCENT (advertiser shells) keeps coming from
+     brand.primary_color/secondary_color and must NOT be replaced by --brand-blue.
+
+   Reference ONLY these variables in templates/CSS — never hardcode hex.
+   ============================================================================ */
+
+/* ---- Theme-independent tokens (spacing / radius / shadow / font) ---------- */
+:root {
+  --radius-sm: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 3px rgba(0,0,0,.12);
+  --shadow-card-hover: 0 6px 20px rgba(0,0,0,.18);
+
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Sidebar stays dark in BOTH themes, so its sub-tokens are theme-independent.
+     (Hover/active are light-on-dark overlays so they read correctly regardless
+     of the active theme — this is the one refinement over "hover = --surface-2",
+     which would wash out on the dark rail in light mode.) */
+  --side-text: #EAF1FB;
+  --side-text-dim: #9DB0C9;
+  --side-label: #61748F;
+  --side-hover: rgba(255,255,255,.06);
+  --side-active: rgba(46,143,240,.18);
+}
+
+/* ---- Dark theme (DEFAULT) -------------------------------------------------- */
+:root,
+[data-theme="dark"] {
+  --brand-blue: #2E8FF0;
+  --brand-teal: #16D9A3;
+  --grad: linear-gradient(120deg, #2E8FF0, #16D9A3);
+
+  --bg: #0C1320;
+  --surface: #121C2E;
+  --surface-2: #18243A;
+
+  --line: rgba(255,255,255,.08);
+  --line-strong: rgba(255,255,255,.16);
+
+  --text: #EAF1FB;
+  --text-dim: #9DB0C9;
+  --text-faint: #61748F;
+
+  --pos: #16D9A3;
+  --neg: #FF6B6B;
+  --warn: #FFB020;
+  --pos-bg: rgba(22,217,163,.14);
+  --warn-bg: rgba(255,176,32,.14);
+  --neg-bg: rgba(255,107,107,.14);
+
+  --on-accent: #04121F;
+  --side: #0E1828;
+}
+
+/* ---- Light theme ----------------------------------------------------------- */
+[data-theme="light"] {
+  --brand-blue: #1E73CC;
+  --brand-teal: #0FB386;
+  --grad: linear-gradient(120deg, #1E73CC, #0FB386);
+
+  --bg: #F4F7FB;
+  --surface: #FFFFFF;
+  --surface-2: #EEF3F9;
+
+  --line: rgba(15,30,55,.10);
+  --line-strong: rgba(15,30,55,.18);
+
+  --text: #0F1B2D;
+  --text-dim: #5A6B82;
+  --text-faint: #90A0B5;
+
+  --pos: #0FB386;
+  --neg: #E24B4A;
+  --warn: #BA7517;
+  --pos-bg: rgba(15,179,134,.12);
+  --warn-bg: rgba(186,117,23,.12);
+  --neg-bg: rgba(226,75,74,.12);
+
+  --on-accent: #FFFFFF;
+  --side: #0F1B2D;   /* sidebar stays dark in BOTH themes */
+}

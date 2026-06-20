@@ -19,6 +19,10 @@ class Profile(Archivable):
         REJECTED = 'REJECTED', 'Rejected'
         SUSPENDED = 'SUSPENDED', 'Suspended'
 
+    class Theme(models.TextChoices):
+        DARK = 'dark', 'Dark'
+        LIGHT = 'light', 'Light'
+
     brand = models.ForeignKey(
         'brands.Brand',
         on_delete=models.SET_NULL,
@@ -47,6 +51,12 @@ class Profile(Archivable):
     email_verified = models.BooleanField(default=False)
     # ISO-3166-1 alpha-2 country code (sourced from countries_plus). Blank = unset.
     country = models.CharField(max_length=2, default='', blank=True)
+    # UI theme preference for the role shells (set via the topbar toggle).
+    theme_preference = models.CharField(
+        max_length=5,
+        choices=Theme.choices,
+        default=Theme.DARK,
+    )
 
     def __str__(self):
         return self.user.username

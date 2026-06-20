@@ -1,0 +1,48 @@
+/* ============================================================
+   Nexora — Brand themes (white-label core)
+   The ENTIRE product is brand-neutral. A tenant's identity is
+   expressed by exactly two cascading variables + a logo:
+       --brand-primary   (fills, links, active states)
+       --brand-secondary (hovers, gradients, emphasis)
+   Plus the brand tint set used for soft brand washes.
+   Drop one of these scopes on <html> (or any subtree) and every
+   button, pill border, focus ring, nav highlight and gradient
+   re-skins. Structure, spacing and type never change.
+   ============================================================ */
+
+/* Brand A — Nexora (indigo) — the platform's own default brand */
+[data-brand="nexora"] {
+  --brand-primary:     #6366f1;
+  --brand-secondary:   #4f46e5;
+  --brand-primary-fg:  #ffffff;
+  --brand-tint:        #eef2ff;
+  --brand-tint-border: #e0e7ff;
+  --brand-tint-fg:     #4338ca;
+}
+
+/* Brand B — CloudTrade Centralised Systems (emerald/teal) —
+   a contrasting tenant that proves the layout is brand-neutral. */
+[data-brand="cloudtrade"] {
+  --brand-primary:     #0d9488;   /* teal-600 */
+  --brand-secondary:   #047857;   /* emerald-700 */
+  --brand-primary-fg:  #ffffff;
+  --brand-tint:        #ecfdf5;
+  --brand-tint-border: #d1fae5;
+  --brand-tint-fg:     #047857;
+}
+[data-brand="cloudtrade"].theme-dark,
+[data-brand="cloudtrade"][data-theme="dark"] {
+  --brand-tint:        rgba(13,148,136,.16);
+  --brand-tint-border: rgba(13,148,136,.36);
+  --brand-tint-fg:     #5eead4;
+}
+
+/* Brand C — Amber/sunset — a third sample tenant for range. */
+[data-brand="sunset"] {
+  --brand-primary:     #ea580c;   /* orange-600 */
+  --brand-secondary:   #c2410c;   /* orange-700 */
+  --brand-primary-fg:  #ffffff;
+  --brand-tint:        #fff7ed;
+  --brand-tint-border: #ffedd5;
+  --brand-tint-fg:     #c2410c;
+}

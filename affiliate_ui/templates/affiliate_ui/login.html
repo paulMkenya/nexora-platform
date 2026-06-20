@@ -5,6 +5,10 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
+        {# Full lockup on the dark login surface (white text reads on var(--bg)/--surface). #}
+        <div class="text-center mb-4">
+            {% include 'partials/brand_logo.html' with variant='lockup' cls='nx-login-logo' %}
+        </div>
         <div class="card">
             <div class="card-header">
                 <h2 class="card-title text-center">Login</h2>
