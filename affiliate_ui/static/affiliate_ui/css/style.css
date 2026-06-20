@@ -91,6 +91,14 @@
   color: var(--text-muted);
 }
 
-/* Offer badges -> DS status tints (beat Bootstrap's !important text utility) */
-.nx-content .badge.bg-secondary { background: var(--status-neutral-bg) !important; color: var(--status-neutral-fg) !important; }
-.nx-content .badge.bg-info      { background: var(--status-info-bg) !important;    color: var(--status-info-fg) !important; }
+/* Offer + payout status badges -> DS status tints (beat Bootstrap's !important) */
+.nx-content .badge.bg-secondary { background: var(--status-neutral-bg) !important;  color: var(--status-neutral-fg) !important; }
+.nx-content .badge.bg-info      { background: var(--status-info-bg) !important;     color: var(--status-info-fg) !important; }
+.nx-content .badge.bg-success   { background: var(--status-positive-bg) !important; color: var(--status-positive-fg) !important; }
+.nx-content .badge.bg-warning   { background: var(--status-warning-bg) !important;  color: var(--status-warning-fg) !important; }
+.nx-content .badge.bg-danger    { background: var(--status-danger-bg) !important;   color: var(--status-danger-fg) !important; }
+
+/* Semantic text utilities (payout earnings figure, live address validation) */
+.nx-content .text-success { color: var(--status-positive-fg) !important; }
+.nx-content .text-warning { color: var(--status-warning-fg) !important; }
+.nx-content .text-danger  { color: var(--status-danger-fg) !important; }
