@@ -5,9 +5,11 @@ Pass `active` in context to highlight the current tool:
   dashboard | affiliates | offers | advertisers | payouts | fraud | brands
 {% endcomment %}
 {% load static %}
-{# Owner/admin nav is restyled in place onto the shared tokens (colors → tokens +
-   theme toggle); the grouped-sidebar conversion of the 20 admin pages is a later
-   PR. Self-contained so any host page (Bootstrap or Tailwind) renders it. #}
+{% comment %}
+Owner/admin nav is restyled in place onto the shared tokens (colors → tokens +
+theme toggle); the grouped-sidebar conversion of the 20 admin pages is a later
+PR. Self-contained so any host page (Bootstrap or Tailwind) renders it.
+{% endcomment %}
 <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
 <script>
   // Owner pages have no themed <head>; resolve the theme so the nav tokens apply.
