@@ -5,17 +5,21 @@
   partials/icon.html. Desktop icon-rail collapse + mobile off-canvas drawer.
 
   Params:
-    role - 'affiliate' (default) or 'advertiser'. Selects the menu, the role
-           label, and the dashboard/logout URL namespace.
+    role - 'affiliate' (default), 'advertiser', or 'admin'. Selects the menu,
+           the role label, and the dashboard/logout URL namespace.
 
-  Active state is matched on request.resolver_match.url_name. "Coming soon"
-  destinations render as a disabled <span> (no dead href) with a SOON pill.
+  Active state is matched on request.resolver_match.url_name (affiliate/
+  advertiser — still hardcoded here pending their own registry migration) or,
+  for role='admin', on the already-resolved ``admin_nav`` context var (see
+  nexora/navigation.py — the registry drives the menu, this template just
+  renders it). "Coming soon" destinations render as a disabled <span> (no
+  dead href) with a SOON pill.
 {% endcomment %}
 {% with url_name=request.resolver_match.url_name %}
 <aside class="nx-sidebar" id="nx-sidebar">
 
   {# Brand: full lockup expanded; the gradient mark takes over in the collapsed rail. #}
-  <a class="nx-brand" href="{% if role == 'advertiser' %}{% url 'advertiser_ui:dashboard' %}{% else %}{% url 'affiliate_ui:dashboard' %}{% endif %}">
+  <a class="nx-brand" href="{% if role == 'advertiser' %}{% url 'advertiser_ui:dashboard' %}{% elif role == 'admin' %}{% url 'admin_dashboard' %}{% else %}{% url 'affiliate_ui:dashboard' %}{% endif %}">
     <span class="nx-brand__lockup">{% include 'partials/brand_logo.html' with variant='lockup' cls='nx-brand__img' %}</span>
     <span class="nx-brand__mark">{% include 'partials/brand_logo.html' with variant='mark' cls='nx-brand__markimg' %}</span>
     {% if brand.logo %}<span class="nx-brand__name">{{ brand.name|default:"Nexora" }}</span>{% endif %}
@@ -23,12 +27,29 @@
 
   {# User chip #}
   <div class="nx-userchip">
-    <span class="nx-userchip__role">{% if role == 'advertiser' %}Advertiser{% else %}{{ request.user.profile.get_role_display|default:"Affiliate" }}{% endif %}</span>
+    <span class="nx-userchip__role">{% if role == 'advertiser' %}Advertiser{% elif role == 'admin' %}{% if is_platform_owner %}Platform Owner{% else %}{{ request.user.profile.get_role_display|default:"Admin" }}{% endif %}{% else %}{{ request.user.profile.get_role_display|default:"Affiliate" }}{% endif %}</span>
     <div class="nx-userchip__name">{{ request.user.get_full_name|default:request.user.username }}</div>
   </div>
 
   <nav class="nx-nav">
-  {% if role == 'advertiser' %}
+  {% if role == 'admin' %}
+
+    {% for group in admin_nav %}
+    {% if group.label %}<div class="nx-nav__label{% if group.quiet %} nx-nav__label--quiet{% endif %}">{{ group.label }}</div>{% endif %}
+    {% for item in group.items %}
+      {% if item.href %}
+      <a class="nx-nav__item{% if group.quiet %} is-quiet{% endif %} {% if item.is_active %}is-active{% endif %}" href="{{ item.href }}">
+        {% include 'partials/icon.html' with name=item.icon cls='nx-nav__icon' %}<span class="nx-nav__text">{{ item.label }}</span>{% if item.badge %}<span class="nx-soon">{{ item.badge }}</span>{% endif %}
+      </a>
+      {% else %}
+      <span class="nx-nav__item is-disabled">
+        {% include 'partials/icon.html' with name=item.icon cls='nx-nav__icon' %}<span class="nx-nav__text">{{ item.label }}</span><span class="nx-soon">{{ item.badge|default:"Soon" }}</span>
+      </span>
+      {% endif %}
+    {% endfor %}
+    {% endfor %}
+
+  {% elif role == 'advertiser' %}
 
     <div class="nx-nav__label">Overview</div>
     <a class="nx-nav__item {% if url_name == 'dashboard' %}is-active{% endif %}" href="{% url 'advertiser_ui:dashboard' %}">

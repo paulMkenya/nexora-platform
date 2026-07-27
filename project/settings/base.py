@@ -105,6 +105,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'brands.context_processors.brand_context',
                 'brands.context_processors.operator_roles',
+                'nexora.navigation.navigation_context',
             ],
         },
     },

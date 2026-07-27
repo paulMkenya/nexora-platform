@@ -84,6 +84,8 @@ def dashboard(request):
 
     ctx = {
         'active': 'dashboard',
+        'shell_role': 'admin',
+        'page_title': 'Dashboard',
         'pending_affiliates': pending_affiliates,
         'pending_payouts': pending_payouts,
         'flagged_conversions': flagged_conversions,

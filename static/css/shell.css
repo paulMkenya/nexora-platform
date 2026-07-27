@@ -120,6 +120,12 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   cursor: default;
   pointer-events: none;
 }
+/* SYSTEM-style groups (admin: API Docs, Nexora Admin, Archived, Impersonation) —
+   same items, rendered last and de-emphasized rather than a separate component. */
+.nx-nav__label--quiet { opacity: .65; }
+.nx-nav__item.is-quiet { opacity: .8; }
+.nx-nav__item.is-quiet:hover,
+.nx-nav__item.is-quiet.is-active { opacity: 1; }
 .nx-nav__icon { width: 18px; height: 18px; flex: 0 0 auto; }
 .nx-nav__text { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .nx-soon {
@@ -164,6 +170,18 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 .nx-topbar__title { font-size: 18px; font-weight: 600; color: var(--text); }
 .nx-topbar__spacer { flex: 1 1 auto; }
 .nx-topbar__user { color: var(--text-dim); font-size: 13px; }
+.nx-topbar__logoutform { margin: 0; display: inline-flex; }
+
+/* Brand pill — compact mark + name, top-right of the shared shell top strip. */
+.nx-brandpill {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.nx-brandpill__img { height: 18px; width: 18px; object-fit: contain; display: block; }
+.nx-brandpill__name { font-size: 13px; font-weight: 500; color: var(--text-dim); white-space: nowrap; }
 
 .nx-iconbtn {
   display: inline-flex; align-items: center; justify-content: center;

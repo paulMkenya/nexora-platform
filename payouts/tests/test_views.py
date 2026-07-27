@@ -43,6 +43,19 @@ class AffiliatePayoutsViewTest(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertTrue(PayoutMethod.objects.filter(affiliate=self.user, method='paypal').exists())
 
+    def test_add_crypto_method_rejected_while_dispatch_disabled(self):
+        # CRYPTO_DISPATCH_ENABLED is off by default — the same kill-switch that
+        # gates real fund movement also gates adding a crypto payout method at
+        # all, so nobody can set one up expecting a payout that will silently
+        # stall (see payouts/views/affiliate_views.py add_payout_method).
+        addr = '0x' + 'a' * 40
+        r = self.client.post('/partner/payouts/methods/add/', {
+            'method': 'crypto', 'network': 'ETH', 'wallet_address': addr, 'asset': 'ETH',
+        })
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(PayoutMethod.objects.filter(affiliate=self.user, method='crypto').exists())
+
+    @override_settings(CRYPTO_DISPATCH_ENABLED=True)
     def test_add_crypto_method_valid_evm(self):
         addr = '0x' + 'a' * 40
         r = self.client.post('/partner/payouts/methods/add/', {
@@ -51,6 +64,7 @@ class AffiliatePayoutsViewTest(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertTrue(PayoutMethod.objects.filter(affiliate=self.user, method='crypto').exists())
 
+    @override_settings(CRYPTO_DISPATCH_ENABLED=True)
     def test_add_crypto_method_invalid_address_redirects_with_error(self):
         r = self.client.post('/partner/payouts/methods/add/', {
             'method': 'crypto', 'network': 'ETH', 'wallet_address': 'badaddr',
