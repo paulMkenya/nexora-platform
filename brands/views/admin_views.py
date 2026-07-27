@@ -98,7 +98,9 @@ def dashboard(request):
 def brand_list(request):
     # Active brands only; archived brands live in the Archived home.
     brands = Brand.objects.filter(is_archived=False)
-    return render(request, 'brands/admin/brand_list.html', {'brands': brands})
+    return render(request, 'brands/admin/brand_list.html', {
+        'brands': brands, 'shell_role': 'admin', 'page_title': 'Brands',
+    })
 
 
 def _validate_new_brand(slug, name, primary_domain, tracking_domain):
@@ -204,6 +206,7 @@ def brand_create(request):
             return render(request, 'brands/admin/brand_form.html', {
                 'action': 'Create', 'post': _form_data(request),
                 'convert_lead': lead,
+                'shell_role': 'admin', 'page_title': 'Create Brand',
             })
         brand = Brand.objects.create(
             slug=slug,
@@ -228,6 +231,7 @@ def brand_create(request):
     return render(request, 'brands/admin/brand_form.html', {
         'action': 'Create', 'post': _form_data(request, seed=seed),
         'convert_lead': lead,
+        'shell_role': 'admin', 'page_title': 'Create Brand',
     })
 
 
@@ -253,6 +257,7 @@ def brand_edit(request, pk):
 
     return render(request, 'brands/admin/brand_form.html', {
         'action': 'Edit', 'post': _form_data(request, brand),
+        'shell_role': 'admin', 'page_title': 'Edit Brand',
     })
 
 
@@ -292,7 +297,9 @@ def brand_delete(request, pk):
 def brand_setup(request, pk):
     """Show operator setup instructions after brand creation."""
     brand = get_object_or_404(Brand, pk=pk)
-    return render(request, 'brands/admin/brand_setup.html', {'brand': brand})
+    return render(request, 'brands/admin/brand_setup.html', {
+        'brand': brand, 'shell_role': 'admin', 'page_title': 'Brand Setup',
+    })
 
 
 @brand_admin_required
@@ -341,4 +348,6 @@ def brand_email_settings(request):
         'brand': brand,
         'active': 'email_settings',
         'has_password': bool(brand.smtp_password_encrypted),
+        'shell_role': 'admin',
+        'page_title': 'Email',
     })

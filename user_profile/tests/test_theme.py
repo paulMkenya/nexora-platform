@@ -77,8 +77,11 @@ class BaseTemplatesRenderTest(TestCase):
         self.assertIn('nx-sidebar', html)  # shared token-driven shell partial
         self.assertIn('data-theme-toggle', html)
 
-    def test_owner_nav_renders(self):
+    def test_owner_base_shell_renders(self):
+        # Admin/operator now shares the same _shell/base_shell.html frame as
+        # affiliate/advertiser (Phase 3), not a standalone top-nav include.
         request = self._request_for(Profile.Role.NETWORK_ADMIN)
-        html = get_template('admin_shared/nav.html').render({}, request)
-        self.assertIn('nx-anav', html)
+        html = get_template('_shell/base_shell.html').render({'shell_role': 'admin'}, request)
+        self.assertIn('data-theme', html)
+        self.assertIn('nx-sidebar', html)
         self.assertIn('data-theme-toggle', html)

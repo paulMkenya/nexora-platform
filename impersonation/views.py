@@ -80,4 +80,6 @@ def impersonation_log(request):
     return render(request, 'impersonation/log.html', {
         'active': 'impersonation',
         'logs': qs[:300],
+        'shell_role': 'admin',
+        'page_title': 'Impersonation',
     })

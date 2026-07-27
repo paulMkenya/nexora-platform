@@ -68,6 +68,8 @@ def payout_list(request):
         'status_choices': REQUEST_STATUS_CHOICES,
         'method_choices': METHOD_CHOICES,
         'show_all_brands': show_all_brands,
+        'shell_role': 'admin',
+        'page_title': 'Payouts',
     }
     return render(request, 'payouts/admin_payout_list.html', ctx)
 
@@ -170,7 +172,9 @@ def download_batch_csv(request):
 @staff_member_required
 def batch_list(request):
     batches = PayoutBatch.objects.prefetch_related('requests').order_by('-created_at')[:50]
-    return render(request, 'payouts/admin_batch_list.html', {'batches': batches})
+    return render(request, 'payouts/admin_batch_list.html', {
+        'batches': batches, 'shell_role': 'admin', 'page_title': 'Payout Batches',
+    })
 
 
 # --- Withdrawal control layer: held-payouts review + config ----------------
@@ -196,6 +200,8 @@ def holds_list(request):
     ctx = {
         'requests': qs[:200],
         'show_all_brands': sees_all_brands(request.user),
+        'shell_role': 'admin',
+        'page_title': 'Held Payouts',
     }
     return render(request, 'payouts/admin_holds_list.html', ctx)
 
@@ -282,5 +288,7 @@ def control_settings(request):
         'cfg': cfg,
         'is_owner': is_owner,
         'fields': [(f, getattr(cfg, f)) for f in _GLOBAL_FIELDS],
+        'shell_role': 'admin',
+        'page_title': 'Withdrawal Controls',
     }
     return render(request, 'payouts/admin_control_settings.html', ctx)
