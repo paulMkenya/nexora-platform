@@ -1,19 +1,21 @@
 {% load static %}{% comment %}
   Shared Nexora app-shell page frame — ONE shell for every authenticated
-  surface (admin/operator today; affiliate + advertiser re-point onto this
-  same file in a later step so nothing is duplicated three ways).
+  surface (admin/operator, affiliate, advertiser). Nothing role-specific
+  lives here beyond shell_role-driven branches (sidebar menu, logout target)
+  — per-surface head assets (Tailwind/Bootstrap CDN, htmx) go in extra_head.
 
-  Params (set by the extending template, e.g. via {% block %} or before
-  {% extends %} is not possible in Django — so these are read straight off
-  context; pass them in the view or set as template variables before include):
-    shell_role  - 'admin' | 'affiliate' | 'advertiser'. Selects the sidebar menu.
-    page_title  - shown top-left in the top strip.
+  Params (set via the view's context dict, same pattern as the pre-existing
+  `active` key each admin view already passed — see e.g. brands/views/
+  admin_views.py:dashboard):
+    shell_role  - 'admin' | 'affiliate' | 'advertiser'. Selects the sidebar menu
+                  (nexora/navigation.py) and the logout URL namespace.
+    page_title  - shown top-left in the top strip. Optional — pages that don't
+                  set it (affiliate/advertiser, unchanged from before Phase 3
+                  step 3) just render an empty title span.
 
   Top strip = page title (left) + brand pill + theme toggle + account name +
   logout (right). No primary nav up top, ever — navigation lives only in the
-  sidebar (templates/_shell/sidebar.html), driven by the nav registry
-  (nexora/navigation.py) for admin, still role-hardcoded for affiliate/advertiser
-  until they're migrated too.
+  sidebar (templates/_shell/sidebar.html), driven entirely by the nav registry.
 {% endcomment %}<!doctype html>
 <html lang="en" data-theme="{% if user.is_authenticated %}{{ request.user.profile.theme_preference|default:'dark' }}{% else %}dark{% endif %}">
 <head>
@@ -53,7 +55,7 @@
             </span>
             <span class="nx-topbar__user">{{ request.user.get_full_name|default:request.user.username }}</span>
             <button class="nx-iconbtn" type="button" data-theme-toggle data-theme-url="{% url 'user_profile:set_theme' %}" aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>
-            <form method="post" action="{% url 'affiliate_ui:logout' %}" class="nx-topbar__logoutform">
+            <form method="post" action="{% if shell_role == 'advertiser' %}{% url 'advertiser_ui:logout' %}{% else %}{% url 'affiliate_ui:logout' %}{% endif %}" class="nx-topbar__logoutform">
                 {% csrf_token %}
                 <button type="submit" class="nx-iconbtn" aria-label="Log out">{% include 'partials/icon.html' with name='logout' cls='nx-nav__icon' %}</button>
             </form>
@@ -62,6 +64,7 @@
         <main class="nx-content">
             {% block content %}{% endblock %}
         </main>
+        {% block footer %}{% endblock %}
     </div>
 
 </div>

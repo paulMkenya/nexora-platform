@@ -1,69 +1,29 @@
-<!doctype html>
-<html lang="en" class="h-full" data-theme="{% if user.is_authenticated %}{{ request.user.profile.theme_preference|default:'dark' }}{% else %}dark{% endif %}">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  {% load static %}
-  <title>{% block title %}{{ brand.name|default:"Nexora" }} Advertiser{% endblock %}</title>
-  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" type="image/svg+xml" href="{% static 'img/nexora-mark.svg' %}">{% endif %}
-  <!-- Nexora theme — no-flash: apply the stored theme before first paint -->
-  <script>
-    (function () {
-      try {
-        var t = localStorage.getItem('nx-theme');
-        if (t === 'light' || t === 'dark') { document.documentElement.setAttribute('data-theme', t); }
-      } catch (e) {}
-    })();
-  </script>
-  <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
-  <link rel="stylesheet" href="{% static 'css/shell.css' %}">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    // Per-brand ACCENT stays sourced from the brand record — the dark/light
-    // theme toggle only swaps STRUCTURAL colors (tokens), never these.
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              primary: '{{ brand.primary_color|default:"#6366f1" }}',
-              secondary: '{{ brand.secondary_color|default:"#4f46e5" }}',
-            }
+{% extends '_shell/base_shell.html' %}
+{% comment %}
+  advertiser_ui has no anonymous templates extending this file (login.html/
+  register.html render standalone, confirmed — grep found no 'extends' in
+  either) so, unlike affiliate_ui/base.html, this is a plain static extends.
+{% endcomment %}
+
+{% block title %}{{ page_title|default:brand.name|default:"Nexora" }} Advertiser{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Per-brand ACCENT stays sourced from the brand record — the dark/light
+  // theme toggle only swaps STRUCTURAL colors (tokens), never these.
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: {
+            primary: '{{ brand.primary_color|default:"#6366f1" }}',
+            secondary: '{{ brand.secondary_color|default:"#4f46e5" }}',
           }
         }
       }
     }
-  </script>
-  <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
-</head>
-<body style="background:var(--bg);color:var(--text)">
-
-<div class="nx-shell">
-
-  {% include '_shell/sidebar.html' with role='advertiser' %}
-
-  <div class="nx-main">
-
-    {# Top bar #}
-    <header class="nx-topbar">
-      <button class="nx-iconbtn nx-hamburger" id="nx-hamburger" type="button" aria-label="Open menu">&#9776;</button>
-      <h1 class="nx-topbar__title">{% block page_title %}{% endblock %}</h1>
-      <span class="nx-topbar__spacer"></span>
-      <button type="button" class="nx-iconbtn" data-theme-toggle data-theme-url="{% url 'user_profile:set_theme' %}"
-              aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>
-    </header>
-
-    {# Content #}
-    <main class="nx-content">
-      {% block content %}{% endblock %}
-    </main>
-
-  </div>
-
-</div>
-
-<script src="{% static 'js/shell.js' %}"></script>
-<script src="{% static 'js/theme.js' %}"></script>
-{% block extra_js %}{% endblock %}
-</body>
-</html>
+  }
+</script>
+<script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+{% endblock %}

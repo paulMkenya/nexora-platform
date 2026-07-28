@@ -100,8 +100,63 @@ _MANAGER_GROUPS = (
 )
 
 
+_AFFILIATE_GROUPS = (
+    NavGroup(None, (
+        NavItem('Dashboard', 'affiliate_ui:dashboard', icon='dashboard'),
+    )),
+    NavGroup('Manage', (
+        NavItem('Offers', 'affiliate_ui:offer_list', icon='offers',
+                match_extra=('affiliate_ui:offer_detail',)),
+        NavItem('Payouts', 'affiliate_ui:payouts', icon='payouts'),
+        NavItem('Postbacks', icon='postbacks'),  # SOON
+    )),
+    NavGroup('Analyze', (
+        NavItem('Daily Report', 'affiliate_ui:daily_report', icon='daily_report'),
+        NavItem('Offer Report', 'affiliate_ui:offer_report', icon='offer_report'),
+        NavItem('Goal Report', 'affiliate_ui:goal_report', icon='goal_report'),
+        NavItem('Analytics', icon='analytics'),  # SOON
+    )),
+    NavGroup('Tools', (
+        NavItem('Tracking & Asset Generator', icon='tracking'),  # SOON
+    )),
+    NavGroup('More', (
+        NavItem('Company Settings', icon='settings'),  # SOON
+    )),
+)
+
+
+_ADVERTISER_GROUPS = (
+    NavGroup('Overview', (
+        NavItem('Dashboard', 'advertiser_ui:dashboard', icon='dashboard'),
+    )),
+    NavGroup('Performance', (
+        NavItem('Offers', 'advertiser_ui:offers', icon='offers', match_extra=(
+            'advertiser_ui:offer_create', 'advertiser_ui:offer_edit', 'advertiser_ui:offer_set_status',
+        )),
+        NavItem('Conversions', 'advertiser_ui:conversions', icon='conversions', match_extra=(
+            'advertiser_ui:conversions_bulk', 'advertiser_ui:conversions_export',
+        )),
+        NavItem('Postbacks', 'advertiser_ui:postbacks', icon='postbacks',
+                match_extra=('advertiser_ui:postbacks_regenerate',)),
+        NavItem('MMP Callbacks', 'advertiser_ui:mmp_callbacks', icon='mmp'),
+        NavItem('Reports', icon='analytics'),  # SOON
+    )),
+    NavGroup('Billing', (
+        NavItem('Wallet', 'advertiser_ui:wallet', icon='wallet'),
+        NavItem('Deposits', icon='deposits'),  # SOON
+    )),
+    NavGroup('Account', (
+        NavItem('Settings', 'advertiser_ui:settings', icon='settings'),
+    )),
+)
+
+
 def nav_for(role: str, *, is_platform_owner: bool = False, is_affiliate_manager: bool = False):
     """The static nav shape for ``role``. No request/URL-reversal here."""
+    if role == 'affiliate':
+        return _AFFILIATE_GROUPS
+    if role == 'advertiser':
+        return _ADVERTISER_GROUPS
     if role != 'admin':
         return ()
     if is_affiliate_manager:
@@ -142,12 +197,40 @@ def resolve_nav_for_request(request, role: str):
     return resolved
 
 
+_NAMESPACE_TO_ROLE = {
+    'affiliate_ui': 'affiliate',
+    'advertiser_ui': 'advertiser',
+}
+
+
+def _default_shell_role(request):
+    """The shell role implied by the current URL, so affiliate_ui/base.html
+    and advertiser_ui/base.html don't need every one of their views to set
+    shell_role explicitly (unlike admin, where each view already does — see
+    e.g. brands/views/admin_views.py:dashboard) — the whole affiliate_ui and
+    advertiser_ui app is exactly one role each, so the namespace IS the role.
+    A view's own explicit 'shell_role' in its context dict still wins (Django
+    layers the view's context on top of context-processor output), so this is
+    purely a default, not a constraint.
+    """
+    namespace = getattr(request.resolver_match, 'namespace', None) if request.resolver_match else None
+    return _NAMESPACE_TO_ROLE.get(namespace, 'admin')
+
+
 def navigation_context(request):
-    """Context processor — wires the admin nav into every template automatically.
+    """Context processor — wires every role's nav (+ the default shell_role)
+    into every template automatically.
 
     Registered in ``project/settings/base.py`` TEMPLATES/context_processors.
-    Only resolves the admin nav today; a future ``role`` param can extend this
-    once affiliate/advertiser move their configs into this same registry
-    (Phase 3 step 3 of the go-live guide).
+    Computing all three navs is cheap (no DB queries beyond what
+    ``brands.context_processors.operator_roles`` already does per-request) and
+    avoids needing to know which shell role is being rendered at
+    context-processor time — ``_shell/sidebar.html`` just picks the one
+    matching ``role``.
     """
-    return {'admin_nav': resolve_nav_for_request(request, 'admin')}
+    return {
+        'shell_role': _default_shell_role(request),
+        'admin_nav': resolve_nav_for_request(request, 'admin'),
+        'affiliate_nav': resolve_nav_for_request(request, 'affiliate'),
+        'advertiser_nav': resolve_nav_for_request(request, 'advertiser'),
+    }
