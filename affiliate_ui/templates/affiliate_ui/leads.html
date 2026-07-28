@@ -69,12 +69,41 @@
                 <td>{{ lead.phone }}</td>
                 <td>{{ lead.get_intake_channel_display }}</td>
                 <td>
-                  <span class="badge bg-{% if lead.status == 'injected' %}success{% elif lead.status == 'failed' or lead.status == 'rejected' %}danger{% elif lead.status == 'duplicate' %}secondary{% elif lead.status == 'deposit' %}info{% else %}light text-dark{% endif %}">
-                    {{ lead.get_status_display }}
-                  </span>
+                  {% if lead.latest_injection %}
+                    <button type="button" class="badge border-0 bg-{% if lead.status == 'injected' %}success{% elif lead.status == 'failed' or lead.status == 'rejected' %}danger{% elif lead.status == 'duplicate' %}secondary{% elif lead.status == 'deposit' %}info{% else %}light text-dark{% endif %}"
+                            data-bs-toggle="collapse" data-bs-target="#aff-inj-{{ lead.pk }}">
+                      {{ lead.get_status_display }} ▾
+                    </button>
+                  {% else %}
+                    <span class="badge bg-{% if lead.status == 'injected' %}success{% elif lead.status == 'failed' or lead.status == 'rejected' %}danger{% elif lead.status == 'duplicate' %}secondary{% elif lead.status == 'deposit' %}info{% else %}light text-dark{% endif %}">
+                      {{ lead.get_status_display }}
+                    </span>
+                  {% endif %}
                 </td>
                 <td class="small text-muted">{{ lead.created_at|date:"Y-m-d H:i" }}</td>
               </tr>
+              {% if lead.latest_injection %}
+              <tr class="collapse" id="aff-inj-{{ lead.pk }}">
+                <td colspan="8" class="bg-light small">
+                  <div>
+                    <span class="text-muted">Buyer:</span> {{ lead.latest_injection.buyer.name }}
+                    &nbsp;•&nbsp; <span class="text-muted">Attempts:</span> {{ lead.latest_injection.attempts }}
+                    {% if lead.latest_injection.external_id %}
+                      &nbsp;•&nbsp; <span class="text-muted">External ID:</span> {{ lead.latest_injection.external_id }}
+                    {% endif %}
+                  </div>
+                  {% if lead.latest_injection.failure_reason %}
+                    <div class="text-danger"><span class="text-muted">Reason:</span> {{ lead.latest_injection.failure_reason }}</div>
+                  {% endif %}
+                  {% if lead.latest_injection.response_payload %}
+                    <div>
+                      <span class="text-muted">Raw response from buyer:</span>
+                      <pre class="bg-white border rounded p-2 mb-0" style="white-space:pre-wrap">{{ lead.latest_injection.response_payload }}</pre>
+                    </div>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endif %}
               {% endfor %}
             </tbody>
           </table>

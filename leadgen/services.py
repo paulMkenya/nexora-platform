@@ -31,3 +31,16 @@ def summarize_injection_results(results):
     duplicate = sum(1 for _, inj in results if inj.status == LeadInjection.STATUS_DUPLICATE)
     failed = len(results) - delivered - duplicate
     return delivered, duplicate, failed
+
+
+def attach_latest_injections(leads):
+    """Set `.latest_injection` on each Lead in `leads` (or None) — one extra
+    query instead of N, so a leads table can show "why did this fail" (buyer,
+    attempts, failure reason, raw response) without leaving the page it's
+    rendered on (operator dashboard, affiliate My Leads)."""
+    lead_ids = [lead.pk for lead in leads]
+    latest_by_lead = {}
+    for injection in LeadInjection.objects.filter(lead_id__in=lead_ids).select_related('buyer').order_by('-created_at'):
+        latest_by_lead.setdefault(injection.lead_id, injection)
+    for lead in leads:
+        lead.latest_injection = latest_by_lead.get(lead.pk)

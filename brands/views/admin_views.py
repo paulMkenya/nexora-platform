@@ -102,6 +102,11 @@ def dashboard(request):
     else:
         selected_affiliate_id = ''
 
+    from leadgen.services import attach_latest_injections
+
+    recent_leads = list(lead_qs.select_related('offer', 'affiliate').order_by('-created_at')[:25])
+    attach_latest_injections(recent_leads)
+
     ctx = {
         'active': 'dashboard',
         'shell_role': 'admin',
@@ -110,7 +115,7 @@ def dashboard(request):
         'pending_payouts': pending_payouts,
         'flagged_conversions': flagged_conversions,
         'show_all_brands': show_all_brands,
-        'recent_leads': lead_qs.select_related('offer', 'affiliate').order_by('-created_at')[:25],
+        'recent_leads': recent_leads,
         'lead_buyers': buyer_qs.order_by('name'),
         'lead_affiliates': lead_affiliates,
         'selected_affiliate_id': selected_affiliate_id,

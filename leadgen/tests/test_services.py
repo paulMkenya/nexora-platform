@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from leadgen.models import Lead, LeadInjection
-from leadgen.services import inject_leads_to_buyer, summarize_injection_results
+from leadgen.services import attach_latest_injections, inject_leads_to_buyer, summarize_injection_results
 
 
 def _lead(**kwargs):
@@ -60,3 +60,32 @@ class TestSummarizeInjectionResults:
 
     def test_empty_results(self):
         assert summarize_injection_results([]) == (0, 0, 0)
+
+
+@pytest.mark.django_db
+class TestAttachLatestInjections:
+    def test_attaches_most_recent_injection_per_lead(self, buyer):
+        lead = _lead()
+        older = LeadInjection.objects.create(lead=lead, buyer=buyer, status=LeadInjection.STATUS_FAILED)
+        newer = LeadInjection.objects.create(lead=lead, buyer=buyer, status=LeadInjection.STATUS_DELIVERED)
+        # created_at is auto_now_add — force explicit ordering rather than
+        # relying on same-microsecond creation order.
+        LeadInjection.objects.filter(pk=older.pk).update(
+            created_at=LeadInjection.objects.get(pk=newer.pk).created_at.replace(year=2020))
+
+        leads = [lead]
+        attach_latest_injections(leads)
+        assert leads[0].latest_injection.pk == newer.pk
+
+    def test_lead_with_no_injection_gets_none(self):
+        lead = _lead()
+        leads = [lead]
+        attach_latest_injections(leads)
+        assert leads[0].latest_injection is None
+
+    def test_one_query_regardless_of_lead_count(self, buyer, django_assert_num_queries):
+        leads = [_lead(email=f'nq{i}@test.com') for i in range(5)]
+        for lead in leads:
+            LeadInjection.objects.create(lead=lead, buyer=buyer, status=LeadInjection.STATUS_DELIVERED)
+        with django_assert_num_queries(1):
+            attach_latest_injections(leads)

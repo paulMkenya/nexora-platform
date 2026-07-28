@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from affiliate_ui.gates import require_approved_affiliate
 from impersonation.decorators import block_when_impersonating
 from leadgen.models import Lead, LeadBuyer, LeadInjection
-from leadgen.services import inject_leads_to_buyer, summarize_injection_results
+from leadgen.services import attach_latest_injections, inject_leads_to_buyer, summarize_injection_results
 
 
 def _available_buyers(request):
@@ -24,7 +24,8 @@ def _available_buyers(request):
 
 @require_approved_affiliate
 def my_leads(request):
-    leads = Lead.objects.filter(affiliate=request.user).order_by('-created_at')[:200]
+    leads = list(Lead.objects.filter(affiliate=request.user).order_by('-created_at')[:200])
+    attach_latest_injections(leads)
     return render(request, 'affiliate_ui/leads.html', {
         'leads': leads,
         'buyers': _available_buyers(request),

@@ -57,6 +57,16 @@ class AdminDashboardLeadsSectionTest(TestCase):
         self.assertContains(r, 'lead-a@test.com')
         self.assertNotContains(r, 'lead-b@test.com')
 
+    def test_dashboard_shows_failure_reason_for_failed_injection(self):
+        LeadInjection.objects.create(
+            lead=self.lead_a, buyer=self.buyer_a, status=LeadInjection.STATUS_FAILED,
+            failure_reason='[401] POST /public/v1/leads -> <empty response body>',
+        )
+        user = self._operator(self.brand_a)
+        self.client.force_login(user)
+        r = self.client.get('/admin/dashboard/')
+        self.assertContains(r, '[401] POST /public/v1/leads')
+
     def test_superuser_sees_all_brands_leads(self):
         owner = User.objects.create_superuser(username='dash_owner', email='o@test.com', password='pass')
         self.client.force_login(owner)

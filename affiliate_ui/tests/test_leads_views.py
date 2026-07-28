@@ -58,6 +58,18 @@ class MyLeadsViewTest(TestCase):
         r = self.client.get('/partner/leads/')
         self.assertContains(r, str(lead.pk))
 
+    def test_shows_failure_reason_for_failed_injection(self):
+        lead = Lead.objects.create(
+            intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
+            email='mine-failed@test.com', phone='+15551234567',
+        )
+        LeadInjection.objects.create(
+            lead=lead, buyer=self.buyer, status=LeadInjection.STATUS_FAILED,
+            failure_reason='[401] POST /public/v1/leads -> <empty response body>',
+        )
+        r = self.client.get('/partner/leads/')
+        self.assertContains(r, '[401] POST /public/v1/leads')
+
     @patch('leadgen.services.inject_lead_task')
     def test_inject_own_lead_creates_injection(self, mock_task):
         lead = Lead.objects.create(
