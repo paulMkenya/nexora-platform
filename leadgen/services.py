@@ -1,28 +1,43 @@
-"""Shared synchronous-injection helper used by every 'inject now' UI surface
-(Django admin action, affiliate My Leads page, operator dashboard) so the
-create-injection-row + run-task + collect-result loop lives in one place."""
+"""Shared injection helpers — the one place every 'send this lead to that
+buyer' entry point (auto-inject on capture, the inject_pending_leads
+command, and every manual 'inject now' UI surface: Django admin action,
+affiliate My Leads page, operator dashboard) does the create-row +
+trigger-task mechanics, so that mechanic only exists once."""
 from .models import LeadInjection
 from .tasks import inject_lead_task
 
 
-def inject_leads_to_buyer(leads, buyer):
-    """Synchronously inject each lead in `leads` to `buyer`.
+def start_injection(lead, buyer, *, synchronous):
+    """Create the LeadInjection row and trigger delivery — the one place
+    'create a LeadInjection + run inject_lead_task' happens, shared by every
+    caller (auto-inject, the management command, every manual UI action).
 
-    Returns a list of (lead, injection) tuples in the same order. Runs
-    inject_lead_task inline (not queued via .delay()) so callers get an
-    immediate delivered/duplicate/failed result — meant for deliberate,
-    low-volume manual actions, not bulk automation (that's what
-    LeadBuyer.auto_inject + Celery is for)."""
-    results = []
-    for lead in leads:
-        injection = LeadInjection.objects.create(lead=lead, buyer=buyer)
+    synchronous=True runs inject_lead_task inline and returns once the
+    outcome (delivered/duplicate/failed) is known — for deliberate,
+    low-volume manual actions where a human is waiting on the result.
+    synchronous=False queues it via Celery .delay() — for auto-inject and
+    bulk/background enqueueing, where nothing should block on a third party.
+    Required keyword, no default: every caller must be deliberate about
+    which one it wants."""
+    injection = LeadInjection.objects.create(lead=lead, buyer=buyer)
+    if synchronous:
         try:
             inject_lead_task(injection.pk)
         except Exception:
             pass  # a scheduled Celery retry raises Retry — state is already saved
         injection.refresh_from_db()
-        results.append((lead, injection))
-    return results
+    else:
+        inject_lead_task.delay(injection.pk)
+    return injection
+
+
+def inject_leads_to_buyer(leads, buyer):
+    """Synchronously inject each lead in `leads` to `buyer`.
+
+    Returns a list of (lead, injection) tuples in the same order — meant for
+    deliberate, low-volume manual actions, not bulk automation (that's what
+    LeadBuyer.auto_inject + Celery is for)."""
+    return [(lead, start_injection(lead, buyer, synchronous=True)) for lead in leads]
 
 
 def summarize_injection_results(results):

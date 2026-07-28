@@ -20,7 +20,7 @@ from public_api.throttling import APIKeyThrottle
 
 from .models import Lead
 from .serializers import LeadOutSerializer, LeadSubmitSerializer
-from .tasks import maybe_auto_inject
+from .tasks import geolocate_lead, maybe_auto_inject
 
 MAX_BATCH_SIZE = 200
 
@@ -50,6 +50,12 @@ def _create_lead(request, data):
         ip=request.META.get('REMOTE_ADDR', '') or None,
         raw_payload=data,
     )
+    # NOTE: for this channel `ip` is the affiliate's own submitting system,
+    # not necessarily the end consumer's — geolocating it is a best-effort
+    # fallback only. sync_buyer_statuses' countryIso2 backfill (sourced from
+    # the buyer, who derives it from the phone number) is the more reliable
+    # signal for affiliate-submitted leads.
+    geolocate_lead.delay(lead.pk)
     maybe_auto_inject(lead)
     return lead
 

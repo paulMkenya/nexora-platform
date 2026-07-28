@@ -54,6 +54,12 @@ class LeadBuyer(models.Model):
     single_endpoint_path = models.CharField(max_length=200, default='/leads')
     batch_endpoint_path = models.CharField(max_length=200, blank=True, default='/leads/batch')
     fetch_endpoint_path = models.CharField(max_length=200, blank=True, default='/leads')
+    # Currently unused — deposit status is pulled via fetch_lead_statuses()
+    # against fetch_endpoint_path instead (returns deposit + status for
+    # every lead, not just deposited ones), so a buyer-specific deposits-only
+    # endpoint stopped being necessary. Left in place (no destructive
+    # migration) rather than dropped; fine to remove in a future pass if it
+    # stays unused.
     deposits_endpoint_path = models.CharField(max_length=200, blank=True, default='')
     batch_max_size = models.PositiveIntegerField(default=1, help_text='1 disables batching.')
 
@@ -139,6 +145,11 @@ class Lead(models.Model):
     last_name = models.CharField(max_length=120, blank=True, default='')
     email = models.EmailField(max_length=250)
     phone = models.CharField(max_length=32)
+    # Not set at intake — filled in best-effort, shortly after, by
+    # tasks.geolocate_lead (IPSTACK lookup on `ip`, requires
+    # settings.IPSTACK_TOKEN) and/or backfilled from a buyer's own
+    # countryIso2 on the next tasks.sync_buyer_statuses run, whichever
+    # lands first. Both paths only ever set this if it's still blank.
     country_iso2 = models.CharField(max_length=2, blank=True, default='')
     vertical = models.CharField(
         max_length=120, blank=True, default='',

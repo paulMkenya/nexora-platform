@@ -10,7 +10,8 @@ Usage:
 from django.core.management.base import BaseCommand
 
 from leadgen.models import Lead, LeadInjection
-from leadgen.tasks import inject_lead_task, resolve_buyer_for_lead
+from leadgen.services import start_injection
+from leadgen.tasks import resolve_buyer_for_lead
 
 
 class Command(BaseCommand):
@@ -39,8 +40,7 @@ class Command(BaseCommand):
             if buyer_slug and buyer.slug != buyer_slug:
                 skipped_wrong_buyer += 1
                 continue
-            injection = LeadInjection.objects.create(lead=lead, buyer=buyer)
-            inject_lead_task.delay(injection.pk)
+            start_injection(lead, buyer, synchronous=False)
             enqueued += 1
 
         self.stdout.write(self.style.SUCCESS(

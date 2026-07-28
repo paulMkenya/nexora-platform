@@ -250,15 +250,25 @@ class TestParseStatusSyncResults:
         connector = LeadBuyerConnector(buyer)
         response = {
             'items': [
-                {'id': 'ext-1', 'deposit': False, 'status': {'name': 'New', 'updatedAtUtc': '2024-08-12T15:59:04Z'}},
-                {'id': 'ext-2', 'deposit': True, 'status': {'name': 'Deposit', 'updatedAtUtc': '2024-08-12T16:00:00Z'}},
+                {'id': 'ext-1', 'deposit': False, 'countryIso2': 'CZ',
+                 'status': {'name': 'New', 'updatedAtUtc': '2024-08-12T15:59:04Z'}},
+                {'id': 'ext-2', 'deposit': True, 'countryIso2': 'DE',
+                 'status': {'name': 'Deposit', 'updatedAtUtc': '2024-08-12T16:00:00Z'}},
             ],
         }
         results = connector.parse_status_sync_results(response)
         assert results == [
-            {'external_id': 'ext-1', 'buyer_status': 'New', 'deposit': False, 'updated_at': '2024-08-12T15:59:04Z'},
-            {'external_id': 'ext-2', 'buyer_status': 'Deposit', 'deposit': True, 'updated_at': '2024-08-12T16:00:00Z'},
+            {'external_id': 'ext-1', 'buyer_status': 'New', 'deposit': False,
+             'updated_at': '2024-08-12T15:59:04Z', 'country_iso2': 'CZ'},
+            {'external_id': 'ext-2', 'buyer_status': 'Deposit', 'deposit': True,
+             'updated_at': '2024-08-12T16:00:00Z', 'country_iso2': 'DE'},
         ]
+
+    def test_missing_country_iso2_defaults_to_empty_string(self, buyer):
+        connector = LeadBuyerConnector(buyer)
+        response = {'items': [{'id': 'ext-1', 'deposit': False, 'status': {'name': 'New'}}]}
+        results = connector.parse_status_sync_results(response)
+        assert results[0]['country_iso2'] == ''
 
     def test_handles_free_text_crm_statuses(self, buyer):
         """The buyer's status isn't an enum we control — could be anything

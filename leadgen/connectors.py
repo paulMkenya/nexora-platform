@@ -68,7 +68,8 @@ class LeadBuyerConnector:
     def build_payload(self, lead) -> dict:
         """Map a leadgen.Lead onto the buyer's own field names. ``deposit``
         is deliberately NOT sent here — a lead has no deposit at submission
-        time; deposit status flows the other way, from fetch_deposits()."""
+        time; deposit status flows the other way, via
+        leadgen.tasks.sync_buyer_statuses (see fetch_lead_statuses() below)."""
         values = {
             'firstname': lead.first_name,
             'lastname': lead.last_name,
@@ -143,11 +144,6 @@ class LeadBuyerConnector:
     def fetch_leads(self, **filters) -> dict:
         return self._request('GET', self.buyer.fetch_endpoint_path, params=filters)
 
-    def fetch_deposits(self, **filters) -> dict:
-        if not self.buyer.deposits_endpoint_path:
-            raise LeadBuyerError(f'{self.buyer.name} has no deposits endpoint configured')
-        return self._request('GET', self.buyer.deposits_endpoint_path, params=filters)
-
     # --- response parsing --------------------------------------------------------
 
     def parse_injection_result(self, response: dict) -> tuple[str, str, str]:
@@ -186,10 +182,14 @@ class LeadBuyerConnector:
         return self.fetch_leads(Ids=list(external_ids), PageSize=len(external_ids))
 
     def parse_status_sync_results(self, response: dict) -> list[dict]:
-        """[{'external_id', 'buyer_status', 'deposit', 'updated_at'}, ...]
-        from a fetch_lead_statuses() response. Default assumes op-brandy's
-        item shape (id / deposit / status.name / status.updatedAtUtc) —
-        override for a buyer with a different GET /leads shape."""
+        """[{'external_id', 'buyer_status', 'deposit', 'updated_at',
+        'country_iso2'}, ...] from a fetch_lead_statuses() response. Default
+        assumes op-brandy's item shape (id / deposit / status.name /
+        status.updatedAtUtc / countryIso2) — override for a buyer with a
+        different GET /leads shape. ``country_iso2`` is a free byproduct of
+        this same call (the buyer derives it from the phone number on their
+        side) — a zero-cost backfill for Lead.country_iso2 alongside
+        IPSTACK-based geolocation at intake (see tasks.geolocate_lead)."""
         results = []
         for item in response.get('items') or []:
             status = item.get('status') or {}
@@ -201,5 +201,6 @@ class LeadBuyerConnector:
                 'buyer_status': status.get('name') or '',
                 'deposit': bool(item.get('deposit')),
                 'updated_at': status.get('updatedAtUtc') or '',
+                'country_iso2': (item.get('countryIso2') or '')[:2],
             })
         return results

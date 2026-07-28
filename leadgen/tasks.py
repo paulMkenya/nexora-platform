@@ -9,7 +9,12 @@ sync_buyer_statuses is a periodic (Celery Beat) task, not an on-create one:
 it pulls whatever CRM/call-center status the buyer tracks for every lead
 we've delivered to them (their own free-text status — "New", "Deposit",
 "Did not pick call", "Asked for followup", ... — see leadgen.models.Lead.
-buyer_status) and keeps our copy in sync.
+buyer_status) and keeps our copy in sync. It also backfills
+Lead.country_iso2 as a free byproduct, for any lead geolocate_lead didn't
+already resolve.
+
+geolocate_lead is a best-effort, on-create IP -> country_iso2 lookup — see
+its own docstring for why it never retries or blocks capture.
 """
 import logging
 from datetime import timedelta
@@ -42,15 +47,13 @@ def maybe_auto_inject(lead):
     auto_inject=True — the kill-switch every new buyer starts with off, same
     shape as payouts' CRYPTO_DISPATCH_ENABLED. Returns the LeadInjection (or
     None if nothing was enqueued)."""
-    from .models import LeadInjection
+    from .services import start_injection
 
     buyer = resolve_buyer_for_lead(lead)
     if buyer is None or not buyer.auto_inject:
         return None
 
-    injection = LeadInjection.objects.create(lead=lead, buyer=buyer)
-    inject_lead_task.delay(injection.pk)
-    return injection
+    return start_injection(lead, buyer, synchronous=False)
 
 
 @_celery.task(bind=True, max_retries=3, ignore_result=True)
@@ -121,6 +124,45 @@ def inject_lead_task(self, injection_id: int):
     ])
 
 
+@_celery.task(ignore_result=True)
+def geolocate_lead(lead_id: int):
+    """Best-effort IP -> country_iso2 lookup, fired right after intake (see
+    api_views._create_lead / public_views.capture_lead). Never retries — a
+    missed geolocation isn't worth spamming ipstack over, and
+    sync_buyer_statuses (below) gets a second, free chance to backfill it
+    from the buyer's own countryIso2 once the lead's delivered. Requires
+    settings.IPSTACK_TOKEN; silently no-ops without one, or on any lookup
+    failure (bad/private IP, ipstack down, quota exhausted, ...) — this is a
+    routing-quality enhancement, never allowed to affect lead capture."""
+    from django.conf import settings
+
+    from .models import Lead
+
+    if not settings.IPSTACK_TOKEN:
+        return
+
+    try:
+        lead = Lead.objects.get(pk=lead_id)
+    except Lead.DoesNotExist:
+        return
+    if lead.country_iso2 or not lead.ip:
+        return
+
+    from ext.ipstack.api import API, Err
+
+    try:
+        result = API(settings.IPSTACK_TOKEN).lookup(lead.ip)
+    except Err:
+        return
+    except Exception:
+        logger.exception('geolocate_lead: unexpected error looking up lead #%s', lead_id)
+        return
+
+    code = (result.country_code or '')[:2]
+    if code:
+        Lead.objects.filter(pk=lead_id, country_iso2='').update(country_iso2=code)
+
+
 def _parse_buyer_timestamp(raw):
     if not raw:
         return None
@@ -175,6 +217,14 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
                 lead_updates['deposit'] = True
                 lead_updates['status'] = Lead.STATUS_DEPOSIT
             Lead.objects.filter(pk=injection.lead_id).update(**lead_updates)
+
+            # Free byproduct of this same call — backfill country_iso2 for
+            # any lead geolocate_lead didn't already resolve (no IPSTACK
+            # token, private/bad IP, etc). Never overwrites an existing value.
+            if result.get('country_iso2'):
+                Lead.objects.filter(pk=injection.lead_id, country_iso2='').update(
+                    country_iso2=result['country_iso2'])
+
             updated += 1
 
     return updated

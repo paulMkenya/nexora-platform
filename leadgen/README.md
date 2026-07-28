@@ -25,16 +25,47 @@ reference example for every field in this doc.
 1. **Intake** — a `Lead` row is created either by an affiliate hitting the
    inbound API (`intake_channel=affiliate_api`) or by a consumer submitting
    the public capture form for one of your own Offers
-   (`intake_channel=landing_page`).
+   (`intake_channel=landing_page`). Right after creation, a best-effort
+   `tasks.geolocate_lead` task fires to fill in `country_iso2` from the
+   captured IP (see "Geolocation" below).
 2. **Routing** — `tasks.resolve_buyer_for_lead()` picks the lead's brand's
    active `LeadBuyer`, falling back to a platform-wide one (`brand=None`).
-3. **Injection** — if a buyer is resolved AND that buyer's `auto_inject` is
-   `True`, a `LeadInjection` row is created and `inject_lead_task` is
-   enqueued on Celery. Every attempt — success, buyer-side rejection,
-   transport failure, retry — is recorded on that row; nothing is silent.
-4. **Manual/scheduled injection** — leads that have no buyer configured yet,
-   or a buyer with `auto_inject=False`, sit in `status=new` until you run
-   `python manage.py inject_pending_leads [--buyer <slug>] [--limit N]`.
+3. **Injection** — every "send this lead to that buyer" path funnels through
+   one shared primitive, `services.start_injection(lead, buyer, *,
+   synchronous)`, which creates the `LeadInjection` row and either runs
+   `inject_lead_task` inline (`synchronous=True` — an admin/affiliate
+   clicking "Inject" and waiting for the result) or queues it via Celery
+   `.delay()` (`synchronous=False` — auto-inject on capture, or the
+   management command below). Every attempt — success, buyer-side
+   rejection, transport failure, retry — is recorded on the `LeadInjection`
+   row; nothing is silent.
+   - **Automatic**: `tasks.maybe_auto_inject()` runs this on every new lead,
+     but only sends anything if a buyer is resolved AND that buyer's
+     `auto_inject` is `True` — off by default for every new buyer.
+   - **Manual, one at a time or in bulk**: three UI surfaces let an admin or
+     affiliate pick specific leads and a buyer, click Inject, and see an
+     immediate delivered/duplicate/failed result — the Django admin bulk
+     action (`/admin/leadgen/lead/`), the affiliate's own "My Leads" page
+     (`/partner/leads/`, restricted server-side to leads they submitted),
+     and the operator dashboard's embedded "Consumer Leads" section
+     (`/admin/dashboard/`, brand-scoped). Clicking a lead's status badge on
+     any of these expands the buyer's response, attempts, and failure
+     reason inline.
+4. **Manual/scheduled bulk injection** — leads that have no buyer configured
+   yet, or a buyer with `auto_inject=False`, sit in `status=new` until you
+   run `python manage.py inject_pending_leads [--buyer <slug>] [--limit N]`
+   (queues via Celery, same as auto-inject — for a scheduled/cron pass
+   rather than a UI click).
+5. **Status sync** — a periodic Celery Beat task (`tasks.sync_buyer_statuses`,
+   every 30 min) pulls each buyer's *own* free-text status for every
+   delivered lead — "New", "Deposit", "Did not pick call", "Asked for
+   followup", whatever their CRM tracks — into `Lead.buyer_status` /
+   `LeadInjection.buyer_status`, shown as the "Lead Deposit Status" column
+   everywhere leads are listed. When a buyer reports `deposit=True`,
+   `Lead.status` flips to `deposit` the same way a fresh delivery would.
+   This same call is also where `country_iso2` gets backfilled for any lead
+   geolocation didn't already resolve (see below) — the buyer derives it
+   from the phone number on their side, at no extra cost to us.
 
 ## Adding buyer #2 (or #3, #4, ...) from the template
 
@@ -58,8 +89,7 @@ buyer = LeadBuyer.objects.create(
     auth_param_name='apiKey',                 # the query param or header name they expect
     single_endpoint_path='/v1/leads',
     batch_endpoint_path='/v1/leads/batch',    # blank if they don't support batch
-    fetch_endpoint_path='/v1/leads',
-    deposits_endpoint_path='',                # blank if not applicable
+    fetch_endpoint_path='/v1/leads',          # also used for the status/deposit sync (see below)
     batch_max_size=1,                         # >1 enables inject_batch(); 1 disables it
     rate_limit_burst=60,              # from THEIR documented rate-limit policy, not a guess
     rate_limit_refill_tokens=5,
@@ -74,8 +104,8 @@ buyer = LeadBuyer.objects.create(
         'vertical': 'Campaign',
         'source_id': 'ExternalId',
         # NOTE: 'deposit' is never sent outbound — see build_payload() in
-        # connectors.py. Deposit status only ever flows INBOUND, via
-        # fetch_deposits() / a future deposit-sync task.
+        # connectors.py. Deposit/status only ever flows INBOUND, via the
+        # periodic tasks.sync_buyer_statuses (see "Injection" above).
     },
 )
 buyer.set_api_key('the-real-secret-from-their-docs')  # encrypted at rest, never logged
@@ -114,7 +144,6 @@ injection). Its shape, for reference when wiring up a similar buyer:
 | `single_endpoint_path` | `/public/v1/leads` |
 | `batch_endpoint_path` | `/public/v1/leads/batch` |
 | `fetch_endpoint_path` | `/public/v1/leads` |
-| `deposits_endpoint_path` | `/public/v1/leads/deposits` |
 | `rate_limit_burst` / `refill_tokens` / `refill_seconds` | `60` / `5` / `2` (their documented policy: 60 burst, 2.5 req/s sustained) |
 | `field_mapping` | `firstname→FirstName, lastname→Lastname, email→Email, phone→PhoneNumber, vertical→Affilate (sic), source_id→SourceId` |
 
@@ -139,5 +168,23 @@ ever readable via `buyer.get_api_key()` (Fernet-decrypted, same helper
 | `Lead.intake_channel` | `affiliate_api` | `landing_page` |
 
 Both paths validate through the same `LeadSubmitSerializer` and both call
-`tasks.maybe_auto_inject()` on creation — the buyer-routing/injection logic
-is identical regardless of where the lead came from.
+`tasks.geolocate_lead()` + `tasks.maybe_auto_inject()` on creation — the
+buyer-routing/injection logic is identical regardless of where the lead
+came from.
+
+## Geolocation (`Lead.country_iso2`)
+
+Not set at intake — filled in by whichever of these lands first, and never
+overwrites an existing value:
+
+1. `tasks.geolocate_lead` — fired right after every lead is created, looks
+   up the captured IP via `ext.ipstack.api` (requires `settings.IPSTACK_TOKEN`
+   — **currently unset**, so this path is wired but inert until a real token
+   is added to `.env.prod`). Never retries; a missed lookup isn't worth
+   spamming ipstack over. For affiliate-API leads specifically, the captured
+   IP is the *affiliate's own submitting system*, not necessarily the
+   consumer's — treat that channel's geolocation as a best-effort fallback.
+2. `tasks.sync_buyer_statuses` — a free byproduct of the periodic status
+   sync (see "Injection" above): the buyer derives `countryIso2` from the
+   phone number on their side and returns it alongside status/deposit for
+   every delivered lead, at no extra API cost.

@@ -120,6 +120,31 @@ class TestSyncBuyerStatusesForBuyer:
             count = sync_buyer_statuses_for_buyer(buyer)
         assert count == 0
 
+    def test_backfills_country_iso2_when_blank(self, buyer):
+        lead = _lead()
+        assert lead.country_iso2 == ''
+        _delivered_injection(lead, buyer, 'ext-geo1')
+        resp = _fetch_response([
+            {'id': 'ext-geo1', 'deposit': False, 'countryIso2': 'FR',
+             'status': {'name': 'New', 'updatedAtUtc': ''}},
+        ])
+        with patch('leadgen.connectors.requests.request', return_value=resp):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.country_iso2 == 'FR'
+
+    def test_never_overwrites_an_existing_country_iso2(self, buyer):
+        lead = _lead(country_iso2='US')
+        _delivered_injection(lead, buyer, 'ext-geo2')
+        resp = _fetch_response([
+            {'id': 'ext-geo2', 'deposit': False, 'countryIso2': 'FR',
+             'status': {'name': 'New', 'updatedAtUtc': ''}},
+        ])
+        with patch('leadgen.connectors.requests.request', return_value=resp):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.country_iso2 == 'US'  # geolocate_lead / an earlier sync already won
+
     def test_chunks_requests_by_chunk_size(self, buyer):
         leads_and_injections = [(_lead(email=f'chunk{i}@test.com'), None) for i in range(3)]
         for i, (lead, _) in enumerate(leads_and_injections):

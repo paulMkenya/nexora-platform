@@ -6,13 +6,47 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from leadgen.models import Lead, LeadInjection
-from leadgen.services import attach_latest_injections, inject_leads_to_buyer, summarize_injection_results
+from leadgen.services import (
+    attach_latest_injections, inject_leads_to_buyer, start_injection, summarize_injection_results,
+)
 
 
 def _lead(**kwargs):
     defaults = dict(intake_channel=Lead.CHANNEL_LANDING_PAGE, email='svc@test.com', phone='+15551234567')
     defaults.update(kwargs)
     return Lead.objects.create(**defaults)
+
+
+@pytest.mark.django_db
+class TestStartInjection:
+    """The one shared primitive every injection entry point (auto-inject,
+    the management command, every manual UI surface) now funnels through."""
+
+    def test_synchronous_runs_inline_and_refreshes(self, buyer):
+        lead = _lead()
+        with patch('leadgen.services.inject_lead_task') as mock_task:
+            injection = start_injection(lead, buyer, synchronous=True)
+        mock_task.assert_called_once_with(injection.pk)
+        mock_task.delay.assert_not_called()
+
+    def test_asynchronous_queues_via_delay(self, buyer):
+        lead = _lead()
+        with patch('leadgen.services.inject_lead_task') as mock_task:
+            injection = start_injection(lead, buyer, synchronous=False)
+        mock_task.delay.assert_called_once_with(injection.pk)
+        mock_task.assert_not_called()  # never run inline
+
+    def test_creates_the_injection_row_either_way(self, buyer):
+        lead = _lead()
+        with patch('leadgen.services.inject_lead_task'):
+            injection = start_injection(lead, buyer, synchronous=False)
+        assert LeadInjection.objects.filter(pk=injection.pk, lead=lead, buyer=buyer).exists()
+
+    def test_synchronous_swallows_retry_exception(self, buyer):
+        lead = _lead()
+        with patch('leadgen.services.inject_lead_task', side_effect=Exception('Retry')):
+            injection = start_injection(lead, buyer, synchronous=True)  # must not raise
+        assert injection.pk is not None
 
 
 @pytest.mark.django_db

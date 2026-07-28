@@ -16,7 +16,7 @@ from offer.models import Offer
 
 from .models import Lead
 from .serializers import LeadSubmitSerializer
-from .tasks import maybe_auto_inject
+from .tasks import geolocate_lead, maybe_auto_inject
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,7 @@ def capture_lead(request, offer_id):
         ip=_client_ip(request),
         raw_payload=data,
     )
+    geolocate_lead.delay(lead.pk)
     maybe_auto_inject(lead)
 
     ctx['submitted'] = True
