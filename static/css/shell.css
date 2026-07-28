@@ -214,6 +214,43 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
 /* ---- Content area ---------------------------------------------------------- */
 .nx-content { flex: 1 1 auto; overflow: auto; padding: var(--space-4); }
 
+/* ---- System-wide typography + density standardization ---------------------
+   Every admin page picks its own CSS framework per-page (Tailwind CDN on
+   some, Bootstrap CDN on others — see e.g. admin/dashboard vs admin/leads),
+   each shipping its own font-stack and type scale, which is why today no two
+   screens look sized or spaced the same. Rather than hand-edit 20+ templates,
+   fix it centrally:
+
+   1. Force the shared Inter font-face over both frameworks' own resets.
+      Font-family inherits naturally, so .nx-content's own rule already beats
+      Bootstrap's `body { font-family }` on specificity (class > element) —
+      the `*` here is only to also catch anything that redeclares its own
+      font-family (Bootstrap buttons/inputs, Tailwind's font-sans utility).
+   2. Shrink the effective root font-size. Tailwind's and Bootstrap's utility
+      classes are BOTH rem-based (relative to <html>, live-recomputed by the
+      browser regardless of when the CSS was authored), so this proportionally
+      shrinks every page's text/spacing/icon sizing at once. The shell itself
+      (sidebar/topbar, tokens.css) is untouched — it's sized in px throughout,
+      never rem, specifically so a change like this can't reach it.
+   3. Edge-to-edge: neutralize the inner max-width wrappers pages already use
+      (Tailwind's max-w-* + mx-auto, Bootstrap's .container/.container-fluid)
+      so content fills .nx-content's own width instead of double-constraining.
+   ============================================================================ */
+html { font-size: 87.5%; }  /* 16px browser default -> 14px effective root */
+
+.nx-content,
+.nx-content * {
+  font-family: var(--font-sans) !important;
+}
+
+.nx-content .container,
+.nx-content .container-fluid,
+.nx-content [class*="max-w-"] {
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
 /* Off-canvas overlay (mobile) */
 .nx-overlay {
   display: none;
