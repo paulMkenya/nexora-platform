@@ -59,6 +59,15 @@ def _admin_groups(*, is_platform_owner: bool) -> Tuple[NavGroup, ...]:
                 'roles_admin:appoint_brand_admin', 'roles_admin:appoint_manager',
             )),
         )),
+        NavGroup('Distribution', (
+            NavItem('Leads', 'leadgen_console:leads', icon='inbox'),
+            NavItem('Buyers', 'leadgen_console:buyers', icon='store', match_extra=(
+                'leadgen_console:buyer_add', 'leadgen_console:buyer_edit',
+            )),
+            NavItem('Routing Rules', 'leadgen_console:routing_rules', icon='route', match_extra=(
+                'leadgen_console:routing_rule_add', 'leadgen_console:routing_rule_edit',
+            )),
+        )),
         NavGroup('Campaigns', (
             NavItem('Offers', 'offers_admin:list', icon='offers', match_extra=(
                 'offers_admin:create', 'offers_admin:edit', 'offers_admin:set_status',

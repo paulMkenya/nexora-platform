@@ -223,3 +223,18 @@ into `Lead.STATUS_UNROUTED`. Idempotent: `advance_chain` always re-derives
 "what's next" from the actual `LeadInjection` rows rather than a separate
 cursor, so calling it repeatedly (or on an already-accepted lead) never
 double-sends.
+
+**Phase 3 — the Distribution console** (`admin_urls.py` / `admin_views.py`
+/ `forms.py` / `templates/leadgen/console/`): a purpose-built surface at
+`/admin/distribution/` — **Leads**, **Buyers**, **Routing Rules** — on the
+shared shell, replacing the raw table that used to sit bolted under the
+operator dashboard. Every view is brand-scoped exactly like the dashboard
+(a superuser sees/acts across every brand; an operator only their own — a
+brand-scoped operator's Buyer/Routing Rule forms lock `brand` to their own,
+so they can't create a platform-wide buyer or a rule for someone else's
+brand). The Leads console shows each lead's *computed* buyer chain (what
+`resolve_buyer_chain` would do right now — nothing has run yet) alongside
+per-lead/bulk **Route now**, which deliberately triggers `advance_chain`
+(async — results appear as the worker processes them, not inline). Django
+admin (`leadgen/admin.py`) stays available as the power-user fallback and
+test surface; nothing there was removed.

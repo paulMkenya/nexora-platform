@@ -1,0 +1,83 @@
+{% extends '_shell/base_shell.html' %}
+
+{% block title %}Buyers — {{ brand.name|default:"Nexora" }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.tailwindcss.com"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+  <div class="mb-6 flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-800">
+        Buyers
+        {% if show_all_brands %}
+          <span class="ml-2 inline-flex items-center rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-medium text-white align-middle">All brands</span>
+        {% endif %}
+      </h1>
+      <p class="text-gray-500 text-sm mt-1">Destination lead-buying partners leads can be routed to.</p>
+    </div>
+    <a href="{% url 'leadgen_console:buyer_add' %}"
+       class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition">
+      + Add Buyer
+    </a>
+  </div>
+
+  {% if messages %}
+    <div class="mb-6 space-y-2">
+      {% for msg in messages %}
+        <div class="rounded-lg border p-3 text-sm bg-emerald-50 border-emerald-200 text-emerald-700">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not buyers %}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+      <p class="text-gray-600 font-medium">No buyers configured yet.</p>
+      <p class="text-gray-500 text-sm mt-1">Add one to start routing leads to a destination.</p>
+    </div>
+  {% else %}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-500 border-b border-gray-200">
+            <th class="py-2 pl-4 pr-3">Name</th>
+            <th class="py-2 pr-3">Brand</th>
+            <th class="py-2 pr-3">Base URL</th>
+            <th class="py-2 pr-3">Active</th>
+            <th class="py-2 pr-3">Auto-inject</th>
+            <th class="py-2 pr-3">Batch</th>
+            <th class="py-2 pr-3 pr-4"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for buyer in buyers %}
+            <tr class="border-b border-gray-100">
+              <td class="py-2 pl-4 pr-3 font-medium text-gray-800">{{ buyer.name }}</td>
+              <td class="py-2 pr-3 text-gray-500">{{ buyer.brand|default:"platform-wide" }}</td>
+              <td class="py-2 pr-3 text-gray-500 max-w-xs truncate">{{ buyer.base_url }}</td>
+              <td class="py-2 pr-3">
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {% if buyer.is_active %}bg-emerald-100 text-emerald-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+                  {{ buyer.is_active|yesno:"active,inactive" }}
+                </span>
+              </td>
+              <td class="py-2 pr-3">
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {% if buyer.auto_inject %}bg-indigo-100 text-indigo-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+                  {{ buyer.auto_inject|yesno:"on,off" }}
+                </span>
+              </td>
+              <td class="py-2 pr-3 text-gray-500">{{ buyer.batch_max_size }}</td>
+              <td class="py-2 pr-3 pr-4 text-right">
+                <a href="{% url 'leadgen_console:buyer_edit' buyer.pk %}" class="text-indigo-600 hover:underline">Edit</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

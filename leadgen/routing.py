@@ -15,6 +15,38 @@ LeadBuyer.auto_inject.
 from .models import RoutingRule
 
 
+def _rule_matches(rule, lead):
+    """True if every criterion `rule` SETS (offer, country_iso2, affiliate,
+    vertical, source_channel) equals `lead`'s corresponding value; a blank/
+    null criterion on the rule is a wildcard that matches any lead. Pure,
+    no queries — caller supplies both objects already loaded."""
+    if rule.offer_id is not None and rule.offer_id != lead.offer_id:
+        return False
+    if rule.country_iso2 and rule.country_iso2 != lead.country_iso2:
+        return False
+    if rule.affiliate_id is not None and rule.affiliate_id != lead.affiliate_id:
+        return False
+    if rule.vertical and rule.vertical != lead.vertical:
+        return False
+    if rule.source_channel and rule.source_channel != lead.intake_channel:
+        return False
+    return True
+
+
+def _chain_from_rules(lead, rules):
+    """Ordered, deduplicated buyer list for `lead` given an already-fetched,
+    already-ordered (priority, id) iterable of candidate rules."""
+    chain = []
+    seen_buyer_ids = set()
+    for rule in rules:
+        if not _rule_matches(rule, lead):
+            continue
+        if rule.buyer_id not in seen_buyer_ids:
+            chain.append(rule.buyer)
+            seen_buyer_ids.add(rule.buyer_id)
+    return chain
+
+
 def resolve_buyer_chain(lead):
     """The ordered list of active LeadBuyers to attempt for `lead`, per its
     brand's active RoutingRules — no side effects, no network calls, and
@@ -45,23 +77,28 @@ def resolve_buyer_chain(lead):
         .select_related('buyer')
         .order_by('priority', 'id')
     )
+    return _chain_from_rules(lead, rules)
 
-    chain = []
-    seen_buyer_ids = set()
-    for rule in rules:
-        if rule.offer_id is not None and rule.offer_id != lead.offer_id:
-            continue
-        if rule.country_iso2 and rule.country_iso2 != lead.country_iso2:
-            continue
-        if rule.affiliate_id is not None and rule.affiliate_id != lead.affiliate_id:
-            continue
-        if rule.vertical and rule.vertical != lead.vertical:
-            continue
-        if rule.source_channel and rule.source_channel != lead.intake_channel:
-            continue
 
-        if rule.buyer_id not in seen_buyer_ids:
-            chain.append(rule.buyer)
-            seen_buyer_ids.add(rule.buyer_id)
+def attach_computed_chains(leads):
+    """Set `.computed_chain` (a list of LeadBuyer) on each Lead in `leads`
+    — what resolve_buyer_chain(lead) WOULD return, computed in bulk: one
+    query for active rules per distinct brand among `leads` (not one query
+    per lead), for a leads-console table showing "what routing would do"
+    without an N+1. Leads with no brand get an empty list, same as
+    resolve_buyer_chain's own behavior."""
+    brand_ids = {lead.brand_id for lead in leads if lead.brand_id is not None}
+    rules_by_brand = {}
+    if brand_ids:
+        all_rules = (
+            RoutingRule.objects
+            .filter(brand_id__in=brand_ids, is_active=True, buyer__is_active=True)
+            .select_related('buyer')
+            .order_by('priority', 'id')
+        )
+        for rule in all_rules:
+            rules_by_brand.setdefault(rule.brand_id, []).append(rule)
 
-    return chain
+    for lead in leads:
+        rules = rules_by_brand.get(lead.brand_id, [])
+        lead.computed_chain = _chain_from_rules(lead, rules)

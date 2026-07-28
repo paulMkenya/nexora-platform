@@ -36,6 +36,7 @@ urlpatterns = [
     path('admin/brands/', include('brands.urls', namespace='brands_admin')),
     path('admin/affiliates/', include('affiliate_ui.admin_urls', namespace='affiliate_admin')),
     path('admin/leads/', include('leads.urls', namespace='leads_admin')),
+    path('admin/distribution/', include('leadgen.admin_urls', namespace='leadgen_console')),
     path('admin/platform-leads/', include('platform_leads.urls', namespace='platform_leads_admin')),
     path('admin/archived/', include('brands.archived_urls', namespace='archived_admin')),
     path('admin/impersonate/', include('impersonation.urls', namespace='impersonation')),
