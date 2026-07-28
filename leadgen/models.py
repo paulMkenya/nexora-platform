@@ -150,6 +150,16 @@ class Lead(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_NEW)
     deposit = models.BooleanField(default=False)
 
+    # The buyer's OWN free-text status for this lead once it's in their
+    # system — "New", "Deposit", "Did not pick call", "Asked for followup",
+    # whatever their call-center/CRM progression looks like. Not an enum:
+    # every buyer defines their own set of values, so this is deliberately
+    # a plain string kept in sync by leadgen.tasks.sync_buyer_statuses.
+    # Denormalized from the delivered LeadInjection for cheap list display;
+    # LeadInjection.buyer_status is the source of truth.
+    buyer_status = models.CharField(max_length=120, blank=True, default='')
+    buyer_status_updated_at = models.DateTimeField(null=True, blank=True)
+
     ip = models.GenericIPAddressField(null=True, blank=True)
     raw_payload = models.JSONField(default=dict, blank=True)
 
@@ -199,6 +209,11 @@ class LeadInjection(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     external_id = models.CharField(max_length=120, blank=True, default='')
     failure_reason = models.CharField(max_length=255, blank=True, default='')
+
+    # The buyer's own status string for this specific delivery, as of the
+    # last successful sync_buyer_statuses run — see Lead.buyer_status.
+    buyer_status = models.CharField(max_length=120, blank=True, default='')
+    buyer_status_updated_at = models.DateTimeField(null=True, blank=True)
 
     # Sanitized — never the API key (see connectors._sanitize_request_log).
     request_payload = models.JSONField(default=dict, blank=True)

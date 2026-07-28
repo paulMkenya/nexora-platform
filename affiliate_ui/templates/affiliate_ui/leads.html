@@ -56,6 +56,7 @@
                 <th>Phone</th>
                 <th>Channel</th>
                 <th>Status</th>
+                <th>Lead Deposit Status</th>
                 <th>Submitted</th>
               </tr>
             </thead>
@@ -80,11 +81,20 @@
                     </span>
                   {% endif %}
                 </td>
+                <td>
+                  {% if lead.buyer_status %}
+                    <span class="badge bg-primary-subtle text-primary-emphasis" title="Updated {{ lead.buyer_status_updated_at|date:'Y-m-d H:i' }}">
+                      {{ lead.buyer_status }}
+                    </span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
                 <td class="small text-muted">{{ lead.created_at|date:"Y-m-d H:i" }}</td>
               </tr>
               {% if lead.latest_injection %}
               <tr class="collapse" id="aff-inj-{{ lead.pk }}">
-                <td colspan="8" class="bg-light small">
+                <td colspan="9" class="bg-light small">
                   <div>
                     <span class="text-muted">Buyer:</span> {{ lead.latest_injection.buyer.name }}
                     &nbsp;•&nbsp; <span class="text-muted">Attempts:</span> {{ lead.latest_injection.attempts }}

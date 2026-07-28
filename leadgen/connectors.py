@@ -172,3 +172,34 @@ class LeadBuyerConnector:
         # Neither list present/populated — treat as an unexpected-but-2xx
         # response rather than silently calling it a success.
         return '', 'failed', 'Unexpected response shape (no addedLeads/failedToAddLeads)'
+
+    def fetch_lead_statuses(self, external_ids) -> dict:
+        """GET leads by their buyer-assigned IDs (op-brandy's ``Ids`` filter
+        on GET /leads — the SAME endpoint used by fetch_leads(), which
+        returns deposit + status.name/updatedAtUtc for every lead regardless
+        of deposit state, not just deposited ones). Used by
+        leadgen.tasks.sync_buyer_statuses to pull whatever CRM/call-center
+        progression the buyer tracks (New, Deposit, Did not pick call, Asked
+        for followup, ...) — their own free-text status, not ours."""
+        if not external_ids:
+            return {'items': []}
+        return self.fetch_leads(Ids=list(external_ids), PageSize=len(external_ids))
+
+    def parse_status_sync_results(self, response: dict) -> list[dict]:
+        """[{'external_id', 'buyer_status', 'deposit', 'updated_at'}, ...]
+        from a fetch_lead_statuses() response. Default assumes op-brandy's
+        item shape (id / deposit / status.name / status.updatedAtUtc) —
+        override for a buyer with a different GET /leads shape."""
+        results = []
+        for item in response.get('items') or []:
+            status = item.get('status') or {}
+            external_id = str(item.get('id') or '')
+            if not external_id:
+                continue
+            results.append({
+                'external_id': external_id,
+                'buyer_status': status.get('name') or '',
+                'deposit': bool(item.get('deposit')),
+                'updated_at': status.get('updatedAtUtc') or '',
+            })
+        return results

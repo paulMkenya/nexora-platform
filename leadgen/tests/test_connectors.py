@@ -223,3 +223,59 @@ class TestParseInjectionResult:
         external_id, status, reason = connector.parse_injection_result({'unexpected': 'shape'})
         assert status == 'failed'
         assert 'Unexpected response shape' in reason
+
+
+@pytest.mark.django_db
+class TestFetchLeadStatuses:
+    def test_empty_external_ids_returns_empty_without_a_request(self, buyer):
+        connector = LeadBuyerConnector(buyer)
+        with patch('leadgen.connectors.requests.request') as mock_req:
+            result = connector.fetch_lead_statuses([])
+        assert result == {'items': []}
+        mock_req.assert_not_called()
+
+    def test_passes_ids_and_page_size(self, buyer):
+        connector = LeadBuyerConnector(buyer)
+        mock_resp = MagicMock(ok=True, content=b'{}', json=lambda: {'items': []})
+        with patch('leadgen.connectors.requests.request', return_value=mock_resp) as mock_req:
+            connector.fetch_lead_statuses(['id-1', 'id-2'])
+        _, kwargs = mock_req.call_args
+        assert kwargs['params']['Ids'] == ['id-1', 'id-2']
+        assert kwargs['params']['PageSize'] == 2
+
+
+@pytest.mark.django_db
+class TestParseStatusSyncResults:
+    def test_parses_items_into_flat_dicts(self, buyer):
+        connector = LeadBuyerConnector(buyer)
+        response = {
+            'items': [
+                {'id': 'ext-1', 'deposit': False, 'status': {'name': 'New', 'updatedAtUtc': '2024-08-12T15:59:04Z'}},
+                {'id': 'ext-2', 'deposit': True, 'status': {'name': 'Deposit', 'updatedAtUtc': '2024-08-12T16:00:00Z'}},
+            ],
+        }
+        results = connector.parse_status_sync_results(response)
+        assert results == [
+            {'external_id': 'ext-1', 'buyer_status': 'New', 'deposit': False, 'updated_at': '2024-08-12T15:59:04Z'},
+            {'external_id': 'ext-2', 'buyer_status': 'Deposit', 'deposit': True, 'updated_at': '2024-08-12T16:00:00Z'},
+        ]
+
+    def test_handles_free_text_crm_statuses(self, buyer):
+        """The buyer's status isn't an enum we control — could be anything
+        their call-center software uses ('Did not pick call', 'Asked for
+        followup', ...). We must pass it through verbatim, not validate it."""
+        connector = LeadBuyerConnector(buyer)
+        response = {'items': [{'id': 'ext-3', 'deposit': False,
+                                'status': {'name': 'Did not pick call', 'updatedAtUtc': ''}}]}
+        results = connector.parse_status_sync_results(response)
+        assert results[0]['buyer_status'] == 'Did not pick call'
+
+    def test_item_with_no_id_is_skipped(self, buyer):
+        connector = LeadBuyerConnector(buyer)
+        response = {'items': [{'deposit': False, 'status': {'name': 'New'}}]}
+        assert connector.parse_status_sync_results(response) == []
+
+    def test_empty_items_returns_empty_list(self, buyer):
+        connector = LeadBuyerConnector(buyer)
+        assert connector.parse_status_sync_results({}) == []
+        assert connector.parse_status_sync_results({'items': []}) == []

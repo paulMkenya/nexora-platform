@@ -57,6 +57,15 @@ class AdminDashboardLeadsSectionTest(TestCase):
         self.assertContains(r, 'lead-a@test.com')
         self.assertNotContains(r, 'lead-b@test.com')
 
+    def test_dashboard_shows_lead_deposit_status_column(self):
+        self.lead_a.buyer_status = 'Asked for followup'
+        self.lead_a.save(update_fields=['buyer_status'])
+        user = self._operator(self.brand_a)
+        self.client.force_login(user)
+        r = self.client.get('/admin/dashboard/')
+        self.assertContains(r, 'Lead Deposit Status')
+        self.assertContains(r, 'Asked for followup')
+
     def test_dashboard_shows_failure_reason_for_failed_injection(self):
         LeadInjection.objects.create(
             lead=self.lead_a, buyer=self.buyer_a, status=LeadInjection.STATUS_FAILED,

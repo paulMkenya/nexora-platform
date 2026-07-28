@@ -81,8 +81,8 @@ inject_to_buyer.short_description = 'Inject selected leads to buyer…'
 
 @admin.register(Lead)
 class LeadAdmin(admin.ModelAdmin):
-    list_display = ('id', 'full_name', 'email', 'phone', 'status', 'intake_channel',
-                     'brand', 'offer', 'affiliate', 'deposit', 'created_at')
+    list_display = ('id', 'full_name', 'email', 'phone', 'status', 'lead_deposit_status',
+                     'intake_channel', 'brand', 'offer', 'affiliate', 'deposit', 'created_at')
     list_filter = ('status', 'intake_channel', 'brand', 'affiliate', 'deposit')
     search_fields = ('first_name', 'last_name', 'email', 'phone', 'source_id')
     readonly_fields = [f.name for f in Lead._meta.fields]  # system-generated; not hand-edited
@@ -92,10 +92,15 @@ class LeadAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
+    def lead_deposit_status(self, obj):
+        return obj.buyer_status or '—'
+    lead_deposit_status.short_description = 'Lead Deposit Status'
+    lead_deposit_status.admin_order_field = 'buyer_status'
+
 
 @admin.register(LeadInjection)
 class LeadInjectionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'lead', 'buyer', 'status', 'attempts', 'external_id', 'created_at', 'delivered_at')
+    list_display = ('id', 'lead', 'buyer', 'status', 'buyer_status', 'attempts', 'external_id', 'created_at', 'delivered_at')
     list_filter = ('status', 'buyer')
     search_fields = ('lead__email', 'lead__phone', 'external_id')
     readonly_fields = [f.name for f in LeadInjection._meta.fields]  # audit trail — never hand-edited

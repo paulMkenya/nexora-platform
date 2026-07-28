@@ -58,6 +58,16 @@ class MyLeadsViewTest(TestCase):
         r = self.client.get('/partner/leads/')
         self.assertContains(r, str(lead.pk))
 
+    def test_shows_lead_deposit_status_column(self):
+        lead = Lead.objects.create(
+            intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
+            email='mine-status@test.com', phone='+15551234567',
+            buyer_status='Did not pick call',
+        )
+        r = self.client.get('/partner/leads/')
+        self.assertContains(r, 'Lead Deposit Status')
+        self.assertContains(r, 'Did not pick call')
+
     def test_shows_failure_reason_for_failed_injection(self):
         lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
