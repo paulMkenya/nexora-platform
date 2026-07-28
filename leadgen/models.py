@@ -241,3 +241,63 @@ class LeadInjection(models.Model):
 
     def __str__(self):
         return f'{self.lead_id} -> {self.buyer.name} [{self.status}]'
+
+
+class RoutingRule(models.Model):
+    """A brand-scoped rule: leads matching every criterion set here (a blank/
+    null criterion is a wildcard — matches anything) should be attempted
+    against `buyer`, in `priority` order relative to other matching rules.
+
+    Ordered by priority ascending — see leadgen.routing.resolve_buyer_chain,
+    the pure function that turns a lead + the active rules for its brand
+    into the ordered chain of buyers to attempt.
+
+    `is_active` defaults to False, same kill-switch posture as
+    LeadBuyer.auto_inject: a new rule is fully computed the moment you save
+    it (visible via resolve_buyer_chain), but never actually influences
+    delivery until you flip it on. As of Phase 1 (see leadgen/README.md),
+    nothing calls resolve_buyer_chain from the delivery path yet either —
+    routing is computed, not wired to auto-send."""
+
+    brand = models.ForeignKey(
+        'brands.Brand', on_delete=models.CASCADE, related_name='routing_rules',
+        help_text='Every rule belongs to exactly one brand — no platform-wide routing rule.',
+    )
+    name = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Optional human label, e.g. "US crypto leads -> BuyerX". Purely for your own scanning.',
+    )
+
+    # --- match criteria: blank/null = wildcard, matches any lead ---
+    offer = models.ForeignKey(
+        'offer.Offer', on_delete=models.SET_NULL, null=True, blank=True, related_name='routing_rules',
+    )
+    country_iso2 = models.CharField(max_length=2, blank=True, default='')
+    affiliate = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='routing_rules',
+    )
+    vertical = models.CharField(max_length=120, blank=True, default='')
+    source_channel = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=[
+            (Lead.CHANNEL_AFFILIATE_API, 'Affiliate API'),
+            (Lead.CHANNEL_LANDING_PAGE, 'Landing page'),
+            ('bought', 'Bought traffic'),  # no live intake channel sets this yet — see build guide Phase 6
+        ],
+    )
+
+    buyer = models.ForeignKey(LeadBuyer, on_delete=models.CASCADE, related_name='routing_rules')
+    priority = models.IntegerField(
+        default=100, help_text='Lower is tried first among a lead\'s matching rules.',
+    )
+    is_active = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('priority', 'id')
+
+    def __str__(self):
+        return self.name or f'Rule #{self.pk} -> {self.buyer.name}'

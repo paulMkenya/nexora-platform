@@ -3,7 +3,7 @@ from django.contrib import admin, messages
 from django.contrib.admin import helpers
 from django.template.response import TemplateResponse
 
-from .models import Lead, LeadBuyer, LeadInjection
+from .models import Lead, LeadBuyer, LeadInjection, RoutingRule
 
 
 class LeadBuyerAdminForm(forms.ModelForm):
@@ -108,3 +108,26 @@ class LeadInjectionAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+@admin.register(RoutingRule)
+class RoutingRuleAdmin(admin.ModelAdmin):
+    """Phase 1 of the lead-distribution build (see leadgen/routing.py):
+    create/edit rules here. is_active defaults to False on every new rule —
+    saving one here computes it into resolve_buyer_chain() immediately, but
+    it stays inert until you flip is_active on, same posture as
+    LeadBuyer.auto_inject. Nothing on the delivery path acts on these rules
+    yet; that's a later phase."""
+    list_display = ('__str__', 'brand', 'buyer', 'priority', 'is_active',
+                     'offer', 'country_iso2', 'affiliate', 'vertical', 'source_channel', 'updated_at')
+    list_filter = ('is_active', 'brand', 'buyer', 'source_channel')
+    search_fields = ('name', 'country_iso2', 'vertical')
+    autocomplete_fields = ('offer', 'affiliate')
+    readonly_fields = ('created_at', 'updated_at')
+    fieldsets = (
+        (None, {'fields': ('brand', 'name', 'buyer', 'priority', 'is_active')}),
+        ('Match criteria (blank = matches any lead)', {
+            'fields': ('offer', 'country_iso2', 'affiliate', 'vertical', 'source_channel'),
+        }),
+        ('Timestamps', {'fields': ('created_at', 'updated_at')}),
+    )
