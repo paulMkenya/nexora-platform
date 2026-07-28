@@ -113,3 +113,62 @@ class AdminDashboardLeadsSectionTest(TestCase):
         })
         self.assertEqual(r.status_code, 302)
         self.assertTrue(LeadInjection.objects.filter(lead=self.lead_b, buyer=self.buyer_b).exists())
+
+
+class AdminDashboardAffiliateFilterTest(TestCase):
+    """The affiliate_id filter on /admin/dashboard/ narrows the leads table
+    (and thus what can be selected for injection) to one affiliate's leads."""
+
+    def setUp(self):
+        self.brand = _brand('dash-leads-affilter')
+        self.affiliate_1 = User.objects.create_user(username='dash_aff1', password='pass')
+        self.affiliate_1.profile.role = Profile.Role.AFFILIATE
+        self.affiliate_1.profile.brand = self.brand
+        self.affiliate_1.profile.save()
+        self.affiliate_2 = User.objects.create_user(username='dash_aff2', password='pass')
+        self.affiliate_2.profile.role = Profile.Role.AFFILIATE
+        self.affiliate_2.profile.brand = self.brand
+        self.affiliate_2.profile.save()
+
+        self.lead_1 = Lead.objects.create(
+            intake_channel=Lead.CHANNEL_AFFILIATE_API, brand=self.brand, affiliate=self.affiliate_1,
+            email='aff1-lead@test.com', phone='+15553330000',
+        )
+        self.lead_2 = Lead.objects.create(
+            intake_channel=Lead.CHANNEL_AFFILIATE_API, brand=self.brand, affiliate=self.affiliate_2,
+            email='aff2-lead@test.com', phone='+15554440000',
+        )
+        # No-affiliate lead (landing page) — must never crash the affiliate
+        # dropdown / filter logic that excludes affiliate__isnull leads.
+        Lead.objects.create(
+            intake_channel=Lead.CHANNEL_LANDING_PAGE, brand=self.brand,
+            email='no-affiliate-lead@test.com', phone='+15555550000',
+        )
+
+        self.operator = User.objects.create_user(username='dash_op_affilter', password='pass', is_staff=True)
+        self.operator.profile.role = Profile.Role.NETWORK_ADMIN
+        self.operator.profile.brand = self.brand
+        self.operator.profile.save()
+        self.client.force_login(self.operator)
+
+    def test_no_filter_shows_all_leads(self):
+        r = self.client.get('/admin/dashboard/')
+        self.assertContains(r, 'aff1-lead@test.com')
+        self.assertContains(r, 'aff2-lead@test.com')
+        self.assertContains(r, 'no-affiliate-lead@test.com')
+
+    def test_filter_narrows_to_one_affiliate(self):
+        r = self.client.get('/admin/dashboard/', {'affiliate_id': self.affiliate_1.pk})
+        self.assertContains(r, 'aff1-lead@test.com')
+        self.assertNotContains(r, 'aff2-lead@test.com')
+        self.assertNotContains(r, 'no-affiliate-lead@test.com')
+
+    def test_affiliate_dropdown_lists_only_affiliates_with_leads_in_scope(self):
+        r = self.client.get('/admin/dashboard/')
+        html = r.content.decode()
+        self.assertIn('dash_aff1', html)
+        self.assertIn('dash_aff2', html)
+
+    def test_invalid_affiliate_id_does_not_crash(self):
+        r = self.client.get('/admin/dashboard/', {'affiliate_id': 'not-a-number'})
+        self.assertEqual(r.status_code, 200)

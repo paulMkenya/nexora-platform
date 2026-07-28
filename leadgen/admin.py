@@ -83,7 +83,7 @@ inject_to_buyer.short_description = 'Inject selected leads to buyer…'
 class LeadAdmin(admin.ModelAdmin):
     list_display = ('id', 'full_name', 'email', 'phone', 'status', 'intake_channel',
                      'brand', 'offer', 'affiliate', 'deposit', 'created_at')
-    list_filter = ('status', 'intake_channel', 'brand', 'deposit')
+    list_filter = ('status', 'intake_channel', 'brand', 'affiliate', 'deposit')
     search_fields = ('first_name', 'last_name', 'email', 'phone', 'source_id')
     readonly_fields = [f.name for f in Lead._meta.fields]  # system-generated; not hand-edited
     date_hierarchy = 'created_at'

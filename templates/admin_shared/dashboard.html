@@ -92,6 +92,24 @@
 
   {# ── Consumer leads: inject to buyer ── #}
   <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mt-10 mb-3">Consumer Leads</h2>
+
+  <form method="get" class="flex flex-wrap items-center gap-3 mb-3">
+    <label class="text-sm font-medium text-gray-700">Affiliate:</label>
+    <select name="affiliate_id" class="rounded-md border-gray-300 text-sm py-1.5 pr-8"
+            onchange="this.form.submit()" {% if not lead_affiliates %}disabled{% endif %}>
+      <option value="">All affiliates{% if not lead_affiliates %} (none yet){% endif %}</option>
+      {% for aff in lead_affiliates %}
+        <option value="{{ aff.pk }}" {% if selected_affiliate_id == aff.pk|stringformat:'s' %}selected{% endif %}>
+          {{ aff.get_full_name|default:aff.username }}
+        </option>
+      {% endfor %}
+    </select>
+    {% if selected_affiliate_id %}
+      <a href="?" class="text-sm text-indigo-600 hover:underline">Clear filter</a>
+    {% endif %}
+    <span class="text-sm text-gray-400">— narrows the list below before you select what to inject.</span>
+  </form>
+
   <form method="post" action="{% url 'admin_dashboard_inject_leads' %}"
         class="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
     {% csrf_token %}

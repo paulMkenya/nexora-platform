@@ -61,6 +61,7 @@ def dashboard(request):
     from payouts.models import PayoutRequest, STATUS_PENDING
     from tracker.models import Conversion
     from brands.scoping import scope_brand, sees_all_brands
+    from django.contrib.auth import get_user_model
     from django.db.models import Q
     from leadgen.models import Lead, LeadBuyer
 
@@ -88,6 +89,19 @@ def dashboard(request):
     pending_payouts = payout_qs.count()
     flagged_conversions = conv_qs.count()
 
+    # Affiliates who've actually submitted a lead in scope — lets the
+    # operator narrow the leads table down to one affiliate before deciding
+    # what to inject, instead of scrolling the raw recent-25 list.
+    lead_affiliates = get_user_model().objects.filter(
+        pk__in=lead_qs.exclude(affiliate__isnull=True).values_list('affiliate_id', flat=True).distinct()
+    ).order_by('username')
+
+    selected_affiliate_id = request.GET.get('affiliate_id') or ''
+    if selected_affiliate_id.isdigit():
+        lead_qs = lead_qs.filter(affiliate_id=selected_affiliate_id)
+    else:
+        selected_affiliate_id = ''
+
     ctx = {
         'active': 'dashboard',
         'shell_role': 'admin',
@@ -98,6 +112,8 @@ def dashboard(request):
         'show_all_brands': show_all_brands,
         'recent_leads': lead_qs.select_related('offer', 'affiliate').order_by('-created_at')[:25],
         'lead_buyers': buyer_qs.order_by('name'),
+        'lead_affiliates': lead_affiliates,
+        'selected_affiliate_id': selected_affiliate_id,
     }
     return render(request, 'admin_shared/dashboard.html', ctx)
 
