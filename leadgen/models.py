@@ -110,6 +110,12 @@ class Lead(models.Model):
     STATUS_REJECTED = 'rejected'
     STATUS_FAILED = 'failed'
     STATUS_DEPOSIT = 'deposit'
+    # The whole resolved buyer chain (leadgen.routing.resolve_buyer_chain)
+    # was tried — every buyer either had no match, terminally rejected, or
+    # exhausted its transient retries — and nobody accepted it. Set by
+    # leadgen.failover.advance_chain; see leadgen/README.md's Phase 2
+    # section (build guide: Nexora_Lead_Distribution_Build_Guide.md).
+    STATUS_UNROUTED = 'unrouted'
     STATUS_CHOICES = [
         (STATUS_NEW, 'New'),
         (STATUS_INJECTED, 'Injected'),
@@ -117,6 +123,7 @@ class Lead(models.Model):
         (STATUS_REJECTED, 'Rejected'),
         (STATUS_FAILED, 'Failed'),
         (STATUS_DEPOSIT, 'Deposit'),
+        (STATUS_UNROUTED, 'Unrouted (chain exhausted)'),
     ]
 
     brand = models.ForeignKey(
@@ -216,6 +223,16 @@ class LeadInjection(models.Model):
 
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='injections')
     buyer = models.ForeignKey(LeadBuyer, on_delete=models.CASCADE, related_name='injections')
+
+    # True only for injections created by leadgen.failover.advance_chain —
+    # the signal tasks.inject_lead_task uses to decide whether a terminal
+    # outcome on THIS injection should advance the lead to the next buyer
+    # in its resolved chain. False (the default) for every deliberate
+    # single-buyer injection — the Django admin action, affiliate My Leads,
+    # the operator dashboard, auto-inject on capture, the management
+    # command — none of those should ever silently redirect to a different
+    # buyer than the one a human (or auto_inject) explicitly chose.
+    chain_managed = models.BooleanField(default=False)
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     external_id = models.CharField(max_length=120, blank=True, default='')

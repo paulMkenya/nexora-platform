@@ -15,6 +15,15 @@ already resolve.
 
 geolocate_lead is a best-effort, on-create IP -> country_iso2 lookup — see
 its own docstring for why it never retries or blocks capture.
+
+inject_lead_task also carries the Phase 2 failover hook: on any TERMINAL
+outcome (buyer-side rejection, or transient retries exhausted) for an
+injection created by leadgen.failover.advance_chain (injection.
+chain_managed=True), it calls back into advance_chain to try the next
+buyer in the lead's resolved chain. A deliberate single-buyer injection
+(chain_managed=False — every UI action, auto-inject, the management
+command) never triggers this; the core per-buyer delivery/retry mechanics
+below are otherwise exactly what they were before Phase 2 existed.
 """
 import logging
 from datetime import timedelta
@@ -77,6 +86,14 @@ def inject_lead_task(self, injection_id: int):
     attempt = injection.attempts
     injection.request_payload = connector.build_payload(lead)  # sanitized — no API key
 
+    # Set True on any TERMINAL outcome for THIS buyer (a buyer-side
+    # rejection, or its own transient retries exhausted) — see
+    # leadgen.failover for what "advance" means. Left False for a
+    # successful delivery (the chain, if any, is done) and for a transient
+    # failure still within its retry budget (Celery calls this task again
+    # for the SAME buyer; must not skip ahead to the next one).
+    reached_terminal_outcome = False
+
     try:
         response = connector.inject_lead(lead)
         injection.response_payload = response
@@ -91,6 +108,7 @@ def inject_lead_task(self, injection_id: int):
         elif status == 'duplicate':
             injection.status = LeadInjection.STATUS_DUPLICATE
             Lead.objects.filter(pk=lead.pk).update(status=Lead.STATUS_DUPLICATE)
+            reached_terminal_outcome = True
         else:
             injection.status = LeadInjection.STATUS_FAILED
             Lead.objects.filter(pk=lead.pk).update(status=Lead.STATUS_REJECTED)
@@ -102,6 +120,9 @@ def inject_lead_task(self, injection_id: int):
                 'request_payload', 'response_payload', 'delivered_at',
             ])
             logger.warning('Lead injection #%s rejected by %s: %s', injection.pk, buyer.name, failure_reason)
+            if injection.chain_managed:
+                from .failover import advance_chain
+                advance_chain(lead.pk)
             return
 
     except LeadBuyerError as exc:
@@ -117,11 +138,16 @@ def inject_lead_task(self, injection_id: int):
         Lead.objects.filter(pk=lead.pk).update(status=Lead.STATUS_FAILED)
         logger.error('Lead injection #%s to %s failed after %s attempts: %s',
                      injection.pk, buyer.name, attempt, exc)
+        reached_terminal_outcome = True
 
     injection.save(update_fields=[
         'attempts', 'status', 'external_id', 'failure_reason',
         'request_payload', 'response_payload', 'delivered_at', 'next_retry_at',
     ])
+
+    if reached_terminal_outcome and injection.chain_managed:
+        from .failover import advance_chain
+        advance_chain(lead.pk)
 
 
 @_celery.task(ignore_result=True)

@@ -188,3 +188,38 @@ overwrites an existing value:
    sync (see "Injection" above): the buyer derives `countryIso2` from the
    phone number on their side and returns it alongside status/deposit for
    every delivered lead, at no extra API cost.
+
+## Lead distribution / routing (in progress)
+
+Nexora is moving from "one lead, one destination" to a broker/router model —
+building against `Nexora_Lead_Distribution_Build_Guide.md`, phase by phase,
+each with its own gate/sign-off before the next starts. **Nothing described
+here is wired to auto-send yet** — everything below is a complete, tested
+capability, deliberately not connected to any live capture/intake path.
+That connection is a later, explicit step.
+
+**Phase 1 — routing rules** (`routing.py`): `RoutingRule` is a brand-scoped
+row matching leads on `offer` / `country_iso2` / `affiliate` / `vertical` /
+`source_channel` (each blank/null is a wildcard). `resolve_buyer_chain(lead)`
+is the pure resolver — given a lead, it returns the ordered, deduplicated
+list of active buyers to attempt from its brand's active matching rules. No
+side effects, no network. A new rule's `is_active` defaults to `False`, same
+kill-switch posture as `LeadBuyer.auto_inject`.
+
+**Phase 2 — failover** (`failover.py`): `advance_chain(lead_id)` walks a
+resolved chain, starting the next untried buyer the moment the current one
+reaches a **terminal** outcome (buyer-side rejection — duplicate, invalid
+geo, cap hit — or its own transient retries exhausted). A **transient**
+failure (timeout, 5xx, connection error) still within its retry budget
+never advances the chain — `tasks.inject_lead_task`'s existing per-buyer
+Celery backoff keeps retrying the *same* buyer, exactly as it always did.
+`LeadInjection.chain_managed` is the opt-in signal: only injections created
+by `advance_chain` trigger this behavior on a terminal outcome — every
+deliberate single-buyer injection (Django admin, affiliate My Leads, the
+dashboard, auto-inject, the management command) is completely unaffected,
+`chain_managed=False` by default. When every buyer in the chain has been
+tried with no acceptance (or the chain resolved empty), the lead settles
+into `Lead.STATUS_UNROUTED`. Idempotent: `advance_chain` always re-derives
+"what's next" from the actual `LeadInjection` rows rather than a separate
+cursor, so calling it repeatedly (or on an already-accepted lead) never
+double-sends.

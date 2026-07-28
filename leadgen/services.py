@@ -7,7 +7,7 @@ from .models import LeadInjection
 from .tasks import inject_lead_task
 
 
-def start_injection(lead, buyer, *, synchronous):
+def start_injection(lead, buyer, *, synchronous, chain_managed=False):
     """Create the LeadInjection row and trigger delivery — the one place
     'create a LeadInjection + run inject_lead_task' happens, shared by every
     caller (auto-inject, the management command, every manual UI action).
@@ -18,8 +18,13 @@ def start_injection(lead, buyer, *, synchronous):
     synchronous=False queues it via Celery .delay() — for auto-inject and
     bulk/background enqueueing, where nothing should block on a third party.
     Required keyword, no default: every caller must be deliberate about
-    which one it wants."""
-    injection = LeadInjection.objects.create(lead=lead, buyer=buyer)
+    which one it wants.
+
+    chain_managed defaults to False for every ordinary caller. Only
+    leadgen.failover.advance_chain passes True — see LeadInjection.
+    chain_managed's docstring for why this needs to be explicit rather than
+    inferred."""
+    injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=chain_managed)
     if synchronous:
         try:
             inject_lead_task(injection.pk)

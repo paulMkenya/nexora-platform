@@ -168,3 +168,150 @@ class TestInjectLeadTask:
         injection.refresh_from_db()
         assert 'raw-test-secret' not in str(injection.request_payload)
         assert 'raw-test-secret' not in str(injection.response_payload)
+
+
+def _delivered_resp(external_id='ext-ok'):
+    return MagicMock(ok=True, content=b'{}',
+                      json=lambda: {'addedLeads': [{'id': external_id}], 'failedToAddLeads': []})
+
+
+def _duplicate_resp():
+    return MagicMock(ok=True, content=b'{}', json=lambda: {
+        'addedLeads': [], 'failedToAddLeads': [{'failureReason': 'duplicate', 'failureMessages': ['dup']}],
+    })
+
+
+def _terminal_reject_resp():
+    return MagicMock(ok=True, content=b'{}', json=lambda: {
+        'addedLeads': [], 'failedToAddLeads': [{'failureReason': 'invalid_geo', 'failureMessages': ['bad geo']}],
+    })
+
+
+@pytest.mark.django_db
+class TestChainManagedInjection:
+    """End-to-end: inject_lead_task's chain_managed hook actually calling
+    back into leadgen.failover.advance_chain, mocked at the HTTP layer like
+    every other test in this file — this is the automated version of the
+    build guide's GATE 2 demo (accept-first-buyer, reject-then-failover,
+    transient-retry-same-buyer, chain-exhausted), plus proof that ordinary
+    (chain_managed=False) injections are completely unaffected."""
+
+    def _second_buyer(self):
+        return LeadBuyer.objects.create(
+            name='Second', slug='chain-second-buyer', is_active=True, base_url='https://second.test')
+
+    def test_accept_first_buyer_never_touches_second(self, buyer):
+        second = self._second_buyer()
+        lead = _lead()
+        injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=True)
+        with patch('leadgen.connectors.requests.request', return_value=_delivered_resp()) as mock_req:
+            inject_lead_task(injection.pk)
+
+        lead.refresh_from_db()
+        assert lead.status == Lead.STATUS_INJECTED
+        assert LeadInjection.objects.filter(lead=lead).count() == 1  # second buyer never attempted
+        assert mock_req.call_count == 1
+
+    def test_duplicate_fails_over_by_starting_next_buyer(self, brand, buyer):
+        """advance_chain hands off to services.start_injection(...,
+        synchronous=False) — a real (mocked-only-at-HTTP-level, not at the
+        Celery layer) .delay() call, so buyer B's own delivery doesn't run
+        inline here (no worker consuming the queue in a test process). What
+        this test can assert: buyer A's own terminal outcome is recorded
+        correctly, AND advance_chain already created buyer B's
+        chain_managed LeadInjection row synchronously before queuing it —
+        proving the failover decision itself, not B's eventual delivery
+        (that's exactly what test_chain_exhausted_after_all_buyers_
+        terminally_reject below verifies, by driving B's task explicitly)."""
+        from leadgen.models import RoutingRule
+        second = self._second_buyer()
+        lead = _lead(brand=brand)
+        RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
+        RoutingRule.objects.create(brand=brand, buyer=second, priority=2, is_active=True)
+        injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=True)
+
+        with patch('leadgen.connectors.requests.request', return_value=_duplicate_resp()):
+            inject_lead_task(injection.pk)
+
+        injection.refresh_from_db()
+        lead.refresh_from_db()
+        assert injection.status == LeadInjection.STATUS_DUPLICATE
+        assert lead.status == Lead.STATUS_DUPLICATE  # buyer A's own record — not yet unrouted, B is pending
+        second_injection = LeadInjection.objects.filter(lead=lead, buyer=second).first()
+        assert second_injection is not None
+        assert second_injection.chain_managed is True
+
+    def test_terminal_reject_fails_over_to_next_buyer(self, brand, buyer):
+        from leadgen.models import RoutingRule
+        second = self._second_buyer()
+        lead = _lead(brand=brand)
+        RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
+        RoutingRule.objects.create(brand=brand, buyer=second, priority=2, is_active=True)
+        injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=True)
+
+        with patch('leadgen.connectors.requests.request', return_value=_terminal_reject_resp()):
+            inject_lead_task(injection.pk)
+
+        injection.refresh_from_db()
+        assert injection.status == LeadInjection.STATUS_FAILED
+        assert injection.attempts == 1  # never retried on this buyer — terminal
+        second_injection = LeadInjection.objects.filter(lead=lead, buyer=second).first()
+        assert second_injection is not None
+        assert second_injection.chain_managed is True
+
+    def test_transient_failure_does_not_touch_second_buyer(self, brand, buyer):
+        second = self._second_buyer()
+        lead = _lead(brand=brand)
+        from leadgen.models import RoutingRule
+        RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
+        RoutingRule.objects.create(brand=brand, buyer=second, priority=2, is_active=True)
+        injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=True)
+
+        with patch('leadgen.connectors.requests.request', side_effect=requests.ConnectionError('down')):
+            try:
+                inject_lead_task(injection.pk)
+            except Exception:
+                pass  # Celery's self.retry() raises Retry outside a real worker
+
+        injection.refresh_from_db()
+        assert injection.status == LeadInjection.STATUS_PENDING  # not yet terminal — still retrying buyer A
+        assert not LeadInjection.objects.filter(lead=lead, buyer=second).exists()  # B never touched
+
+    def test_chain_exhausted_after_all_buyers_terminally_reject(self, brand, buyer):
+        second = self._second_buyer()
+        lead = _lead(brand=brand)
+        from leadgen.models import RoutingRule
+        RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
+        RoutingRule.objects.create(brand=brand, buyer=second, priority=2, is_active=True)
+
+        injection_a = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=True)
+        with patch('leadgen.connectors.requests.request', return_value=_terminal_reject_resp()):
+            inject_lead_task(injection_a.pk)
+
+        injection_b = LeadInjection.objects.filter(lead=lead, buyer=second).first()
+        assert injection_b is not None
+        with patch('leadgen.connectors.requests.request', return_value=_terminal_reject_resp()):
+            inject_lead_task(injection_b.pk)
+
+        lead.refresh_from_db()
+        assert lead.status == Lead.STATUS_UNROUTED
+        assert LeadInjection.objects.filter(lead=lead).count() == 2  # one per buyer, nothing more
+
+    def test_ordinary_injection_never_triggers_failover(self, brand, buyer):
+        """chain_managed=False (every deliberate single-buyer path: admin
+        action, affiliate My Leads, dashboard, auto-inject, the management
+        command) must never advance to a different buyer, even if
+        RoutingRules exist that would otherwise resolve a chain."""
+        second = self._second_buyer()
+        lead = _lead(brand=brand)
+        from leadgen.models import RoutingRule
+        RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
+        RoutingRule.objects.create(brand=brand, buyer=second, priority=2, is_active=True)
+
+        injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=False)
+        with patch('leadgen.connectors.requests.request', return_value=_terminal_reject_resp()):
+            inject_lead_task(injection.pk)
+
+        lead.refresh_from_db()
+        assert lead.status == Lead.STATUS_REJECTED  # the old, single-buyer terminal status — NOT unrouted
+        assert not LeadInjection.objects.filter(lead=lead, buyer=second).exists()  # never touched

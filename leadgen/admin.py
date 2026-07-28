@@ -100,8 +100,8 @@ class LeadAdmin(admin.ModelAdmin):
 
 @admin.register(LeadInjection)
 class LeadInjectionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'lead', 'buyer', 'status', 'buyer_status', 'attempts', 'external_id', 'created_at', 'delivered_at')
-    list_filter = ('status', 'buyer')
+    list_display = ('id', 'lead', 'buyer', 'status', 'chain_managed', 'buyer_status', 'attempts', 'external_id', 'created_at', 'delivered_at')
+    list_filter = ('status', 'buyer', 'chain_managed')
     search_fields = ('lead__email', 'lead__phone', 'external_id')
     readonly_fields = [f.name for f in LeadInjection._meta.fields]  # audit trail — never hand-edited
     date_hierarchy = 'created_at'
