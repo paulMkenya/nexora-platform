@@ -35,6 +35,20 @@ body { font-family: var(--font-sans); background: var(--bg); color: var(--text);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Own background rather than relying on <body> — Bootstrap's reboot (loaded
+     by affiliate/some admin pages) resets body { background: #fff }, which
+     otherwise wins the cascade over shell.css's body rule and leaks a white
+     strip behind content that has no background of its own. */
+  background: var(--bg);
+}
+
+/* Admin/advertiser content has no dark-theme styling of its own yet (unlike
+   affiliate, see affiliate_ui/css/style.css) — its Tailwind classes
+   (text-gray-800 etc.) were authored against a light canvas. Restoring that
+   canvas here fixes the contrast without touching any page's content. */
+.nx-content--light-canvas {
+  background: #F4F6F8;
+  color: #1F2937;
 }
 
 /* ---- Brand mark ------------------------------------------------------------ */

@@ -61,7 +61,7 @@
             </form>
         </header>
 
-        <main class="nx-content">
+        <main class="nx-content{% if shell_role == 'admin' or shell_role == 'advertiser' %} nx-content--light-canvas{% endif %}">
             {% block content %}{% endblock %}
         </main>
         {% block footer %}{% endblock %}
