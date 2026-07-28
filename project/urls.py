@@ -66,4 +66,5 @@ urlpatterns = [
     path('api/', include('api.urls')),
     path('api/v1/', include('reporting.urls')),
     path('api/v1/', include('public_api.urls')),
+    path('', include('leadgen.urls', namespace='leadgen')),
 ]

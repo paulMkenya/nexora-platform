@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'impersonation',
     'leads',
     'platform_leads',
+    'leadgen',
 ]
 
 # CRM lead pipeline: ACTIVATED leads idle beyond this many days are flagged
