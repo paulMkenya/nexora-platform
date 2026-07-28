@@ -10,7 +10,7 @@ from rest_framework_simplejwt.views import (
 from project.views import healthz
 from affiliate_ui.views.general_views import AffiliateLoginView
 from platform_leads.views import get_started
-from brands.views.admin_views import dashboard as admin_dashboard
+from brands.views.admin_views import dashboard as admin_dashboard, inject_consumer_leads as admin_dashboard_inject_leads
 
 # Rebrand the Django model-admin chrome so it never reads "Django administration"
 # (even on the platform owner host).
@@ -29,6 +29,7 @@ urlpatterns = [
     path('login/', AffiliateLoginView.as_view(), name='login'),
 
     path('admin/dashboard/', admin_dashboard, name='admin_dashboard'),
+    path('admin/dashboard/inject-leads/', admin_dashboard_inject_leads, name='admin_dashboard_inject_leads'),
     path('admin/offers/', include('brands.offer_urls', namespace='offers_admin')),
     path('admin/advertisers/', include('brands.advertiser_urls', namespace='advertisers_admin')),
     path('admin/roles/', include('brands.role_urls', namespace='roles_admin')),

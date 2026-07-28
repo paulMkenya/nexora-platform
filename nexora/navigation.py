@@ -107,6 +107,7 @@ _AFFILIATE_GROUPS = (
     NavGroup('Manage', (
         NavItem('Offers', 'affiliate_ui:offer_list', icon='offers',
                 match_extra=('affiliate_ui:offer_detail',)),
+        NavItem('My Leads', 'affiliate_ui:my_leads', icon='leads'),
         NavItem('Payouts', 'affiliate_ui:payouts', icon='payouts'),
         NavItem('Postbacks', icon='postbacks'),  # SOON
     )),

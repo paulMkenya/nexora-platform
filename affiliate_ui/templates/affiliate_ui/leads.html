@@ -1,0 +1,88 @@
+{% extends 'affiliate_ui/base.html' %}
+
+{% block title %}My Leads - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1 class="my-4">My Leads</h1>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="alert alert-{{ msg.tags|default:'info' }} alert-dismissible fade show" role="alert">
+        {{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <p class="text-muted small">
+    Every lead you've submitted, either via the API or a landing page. Select
+    one or more and inject them to a buyer below — this sends the lead's
+    data (name/email/phone) directly to that buyer and can't be undone.
+  </p>
+
+  <form method="post" action="{% url 'affiliate_ui:inject_my_leads' %}">
+    {% csrf_token %}
+
+    <div class="card mb-3">
+      <div class="card-body d-flex align-items-center gap-3 flex-wrap">
+        <label class="form-label mb-0 fw-semibold">Inject selected to:</label>
+        <select name="buyer_id" class="form-select" style="max-width:280px" required {% if not buyers %}disabled{% endif %}>
+          <option value="">--- select a buyer ---</option>
+          {% for buyer in buyers %}
+            <option value="{{ buyer.pk }}">{{ buyer.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm" {% if not buyers %}disabled{% endif %}
+                onclick="return confirm('Inject the selected lead(s) now? This sends their data to the buyer immediately.')">
+          Inject Selected
+        </button>
+        {% if not buyers %}
+          <span class="text-muted small">No active buyers configured for your brand yet.</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        {% if leads %}
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th style="width:32px"><input type="checkbox" onclick="document.querySelectorAll('.lead-check').forEach(c=>c.checked=this.checked)"></th>
+                <th>#</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Channel</th>
+                <th>Status</th>
+                <th>Submitted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lead in leads %}
+              <tr>
+                <td><input type="checkbox" class="lead-check" name="lead_ids" value="{{ lead.pk }}"></td>
+                <td>{{ lead.pk }}</td>
+                <td>{{ lead.full_name|default:'—' }}</td>
+                <td>{{ lead.email }}</td>
+                <td>{{ lead.phone }}</td>
+                <td>{{ lead.get_intake_channel_display }}</td>
+                <td>
+                  <span class="badge bg-{% if lead.status == 'injected' %}success{% elif lead.status == 'failed' or lead.status == 'rejected' %}danger{% elif lead.status == 'duplicate' %}secondary{% elif lead.status == 'deposit' %}info{% else %}light text-dark{% endif %}">
+                    {{ lead.get_status_display }}
+                  </span>
+                </td>
+                <td class="small text-muted">{{ lead.created_at|date:"Y-m-d H:i" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-muted mb-0">No leads submitted yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

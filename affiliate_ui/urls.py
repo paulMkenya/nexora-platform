@@ -3,6 +3,7 @@ from django.views.generic import RedirectView
 from .views.general_views import AffiliateLoginView, affiliate_logout, dashboard, offer_list, offer_detail
 from .views.registration_views import register, verify_email
 from .views.report_views import daily_report_view, offer_report_view, goal_report_view
+from .views.leads_views import my_leads, inject_my_leads
 from .views.auth_views import (
     BrandPasswordResetView,
     BrandPasswordResetDoneView,
@@ -34,6 +35,9 @@ urlpatterns = [
     path('reports/daily/', daily_report_view, name='daily_report'),
     path('reports/offer/', offer_report_view, name='offer_report'),
     path('reports/goal/', goal_report_view, name='goal_report'),
+    # Leads
+    path('leads/', my_leads, name='my_leads'),
+    path('leads/inject/', inject_my_leads, name='inject_my_leads'),
     # Payouts
     path('payouts/', payouts_home, name='payouts'),
     path('payouts/methods/add/', add_payout_method, name='add_payout_method'),

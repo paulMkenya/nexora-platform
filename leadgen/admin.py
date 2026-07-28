@@ -50,23 +50,12 @@ def inject_to_buyer(modeladmin, request, queryset):
             modeladmin.message_user(request, 'Select a valid, active buyer.', level=messages.ERROR)
             return None
 
-        from .tasks import inject_lead_task
+        from .services import inject_leads_to_buyer, summarize_injection_results
 
-        delivered = duplicate = failed = 0
-        for lead in queryset:
-            injection = LeadInjection.objects.create(lead=lead, buyer=buyer)
-            try:
-                inject_lead_task(injection.pk)
-            except Exception:
-                pass  # a scheduled Celery retry raises Retry — state is already saved
-            injection.refresh_from_db()
-
-            if injection.status == LeadInjection.STATUS_DELIVERED:
-                delivered += 1
-            elif injection.status == LeadInjection.STATUS_DUPLICATE:
-                duplicate += 1
-            else:
-                failed += 1
+        results = inject_leads_to_buyer(list(queryset), buyer)
+        delivered, duplicate, failed = summarize_injection_results(results)
+        for lead, injection in results:
+            if injection.status not in (LeadInjection.STATUS_DELIVERED, LeadInjection.STATUS_DUPLICATE):
                 modeladmin.message_user(
                     request,
                     f'Lead #{lead.pk} ({lead.email}) → {buyer.name}: {injection.failure_reason or injection.status}',
