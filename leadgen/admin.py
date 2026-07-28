@@ -1,5 +1,7 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.admin import helpers
+from django.template.response import TemplateResponse
 
 from .models import Lead, LeadBuyer, LeadInjection
 
@@ -35,6 +37,59 @@ class LeadBuyerAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
 
 
+def inject_to_buyer(modeladmin, request, queryset):
+    """Manual injection action: pick one or more leads, choose a buyer on an
+    intermediate page, click Inject — runs synchronously (not queued via
+    Celery .delay()) so the admin gets an immediate delivered/duplicate/failed
+    result per lead, same connector + retry-state bookkeeping as the
+    automatic path (tasks.inject_lead_task), just called inline."""
+    if 'apply' in request.POST:
+        buyer_id = request.POST.get('buyer_id')
+        buyer = LeadBuyer.objects.filter(pk=buyer_id, is_active=True).first()
+        if not buyer:
+            modeladmin.message_user(request, 'Select a valid, active buyer.', level=messages.ERROR)
+            return None
+
+        from .tasks import inject_lead_task
+
+        delivered = duplicate = failed = 0
+        for lead in queryset:
+            injection = LeadInjection.objects.create(lead=lead, buyer=buyer)
+            try:
+                inject_lead_task(injection.pk)
+            except Exception:
+                pass  # a scheduled Celery retry raises Retry — state is already saved
+            injection.refresh_from_db()
+
+            if injection.status == LeadInjection.STATUS_DELIVERED:
+                delivered += 1
+            elif injection.status == LeadInjection.STATUS_DUPLICATE:
+                duplicate += 1
+            else:
+                failed += 1
+                modeladmin.message_user(
+                    request,
+                    f'Lead #{lead.pk} ({lead.email}) → {buyer.name}: {injection.failure_reason or injection.status}',
+                    level=messages.WARNING,
+                )
+
+        summary = f'Injected to {buyer.name}: {delivered} delivered, {duplicate} duplicate, {failed} failed.'
+        modeladmin.message_user(request, summary, level=messages.SUCCESS if not failed else messages.WARNING)
+        return None
+
+    buyers = LeadBuyer.objects.filter(is_active=True).order_by('name')
+    return TemplateResponse(request, 'leadgen/admin/inject_to_buyer.html', {
+        'leads': queryset,
+        'buyers': buyers,
+        'action_checkbox_name': helpers.ACTION_CHECKBOX_NAME,
+        'opts': modeladmin.model._meta,
+        'title': 'Inject selected leads to buyer',
+    })
+
+
+inject_to_buyer.short_description = 'Inject selected leads to buyer…'
+
+
 @admin.register(Lead)
 class LeadAdmin(admin.ModelAdmin):
     list_display = ('id', 'full_name', 'email', 'phone', 'status', 'intake_channel',
@@ -43,6 +98,7 @@ class LeadAdmin(admin.ModelAdmin):
     search_fields = ('first_name', 'last_name', 'email', 'phone', 'source_id')
     readonly_fields = [f.name for f in Lead._meta.fields]  # system-generated; not hand-edited
     date_hierarchy = 'created_at'
+    actions = [inject_to_buyer]
 
     def has_add_permission(self, request):
         return False

@@ -1,0 +1,43 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<p>Select which buyer to inject the {{ leads|length }} selected lead{{ leads|length|pluralize }} to.
+Each lead is sent immediately (not queued) — you'll see delivered/duplicate/failed for every one below.</p>
+
+<form method="post">
+  {% csrf_token %}
+  <div>
+    {% for lead in leads %}
+      <input type="hidden" name="{{ action_checkbox_name }}" value="{{ lead.pk }}">
+    {% endfor %}
+  </div>
+
+  <ul style="margin: 12px 0 20px;">
+    {% for lead in leads %}
+      <li>#{{ lead.pk }} — {{ lead.full_name }} &lt;{{ lead.email }}&gt; ({{ lead.phone }}) — status: {{ lead.get_status_display }}</li>
+    {% endfor %}
+  </ul>
+
+  <fieldset class="module aligned">
+    <div class="form-row">
+      <label for="id_buyer_id">Buyer:</label>
+      <select name="buyer_id" id="id_buyer_id" required>
+        <option value="">--- select a buyer ---</option>
+        {% for buyer in buyers %}
+          <option value="{{ buyer.pk }}">{{ buyer.name }}{% if buyer.brand %} ({{ buyer.brand }}){% else %} (platform-wide){% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </fieldset>
+
+  {% if not buyers %}
+    <p class="errornote">No active buyers configured — add one in Lead buyers first.</p>
+  {% endif %}
+
+  <input type="hidden" name="action" value="inject_to_buyer">
+  <input type="hidden" name="apply" value="1">
+  <input type="submit" value="Inject" class="default" {% if not buyers %}disabled{% endif %}>
+  <a href="." class="button cancel-link">Cancel</a>
+</form>
+{% endblock %}
