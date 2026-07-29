@@ -323,7 +323,12 @@ class Lead(models.Model):
     # flag so an unmapped status doesn't sit invisible.
     canonical_status_needs_review = models.BooleanField(default=False)
 
+    # For CHANNEL_AFFILIATE_API leads, `ip` may be the CONSUMER's IP if the
+    # affiliate's own system captured it (Affiliate Inbound API spec §4.3) —
+    # falls back to the submitting request's own remote address otherwise,
+    # same as it always has for the other channel.
     ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True, default='')
     raw_payload = models.JSONField(default=dict, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
