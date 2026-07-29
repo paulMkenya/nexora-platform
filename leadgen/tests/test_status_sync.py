@@ -7,7 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from leadgen.models import Lead, LeadBuyer, LeadInjection
+from leadgen import canonical_status
+from leadgen.models import AffiliateOfferLink, Lead, LeadBuyer, LeadInjection, LeadStatusEvent
+from leadgen.status_sync import go_live
 from leadgen.tasks import sync_buyer_statuses, sync_buyer_statuses_for_buyer
 
 
@@ -155,6 +157,81 @@ class TestSyncBuyerStatusesForBuyer:
             sync_buyer_statuses_for_buyer(buyer, chunk_size=2)
         # 3 injections, chunk_size=2 -> two fetch calls (2 + 1)
         assert mock_req.call_count == 2
+
+
+@pytest.mark.django_db
+class TestSyncBuyerStatusesCanonicalStatusIntegration:
+    """Affiliate Inbound API spec §3.2/§2: sync_buyer_statuses_for_buyer maps
+    the buyer's raw status through buyer.get_effective_status_mapping() and
+    runs it through the two-phase authority engine — these tests cover that
+    wiring specifically (the authority engine's own boundary logic is
+    covered exhaustively in test_status_authority.py)."""
+
+    def test_unmapped_buyer_status_sets_needs_review(self, buyer):
+        lead = _lead()
+        _delivered_injection(lead, buyer, 'ext-unmapped')
+        resp = _fetch_response([
+            {'id': 'ext-unmapped', 'deposit': False, 'status': {'name': 'Some New CRM Status', 'updatedAtUtc': ''}},
+        ])
+        with patch('leadgen.connectors.requests.request', return_value=resp):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.canonical_status_needs_review is True
+        assert lead.canonical_status == ''
+        assert not LeadStatusEvent.objects.filter(lead=lead).exists()
+
+    def test_mapped_buyer_status_applies_when_lead_has_no_affiliate(self, buyer):
+        buyer.box_type.default_status_mapping = {'Deposit': canonical_status.FTD}
+        buyer.box_type.save(update_fields=['default_status_mapping'])
+        lead = _lead()  # no affiliate/offer — nothing to gate against
+        _delivered_injection(lead, buyer, 'ext-mapped')
+        resp = _fetch_response([
+            {'id': 'ext-mapped', 'deposit': True, 'status': {'name': 'Deposit', 'updatedAtUtc': ''}},
+        ])
+        with patch('leadgen.connectors.requests.request', return_value=resp):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.canonical_status == canonical_status.FTD
+        assert lead.canonical_status_needs_review is False
+        event = LeadStatusEvent.objects.get(lead=lead)
+        assert event.applied is True
+        assert event.source == LeadStatusEvent.SOURCE_BUYER
+        assert event.phase_at_time == ''
+
+    def test_mapped_buyer_status_recorded_not_applied_in_testing(self, buyer, affiliate_user, offer):
+        buyer.box_type.default_status_mapping = {'Deposit': canonical_status.FTD}
+        buyer.box_type.save(update_fields=['default_status_mapping'])
+        lead = _lead(affiliate=affiliate_user, offer=offer)
+        _delivered_injection(lead, buyer, 'ext-testing')
+        resp = _fetch_response([
+            {'id': 'ext-testing', 'deposit': True, 'status': {'name': 'Deposit', 'updatedAtUtc': ''}},
+        ])
+        with patch('leadgen.connectors.requests.request', return_value=resp):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.canonical_status == ''  # NOT applied — testing phase, operator is authoritative
+        event = LeadStatusEvent.objects.get(lead=lead)
+        assert event.applied is False
+        assert event.to_status == canonical_status.FTD
+        assert event.phase_at_time == AffiliateOfferLink.PHASE_TESTING
+
+    def test_mapped_buyer_status_applies_once_live(self, buyer, affiliate_user, offer):
+        buyer.box_type.default_status_mapping = {'Deposit': canonical_status.FTD}
+        buyer.box_type.save(update_fields=['default_status_mapping'])
+        link = AffiliateOfferLink.objects.create(affiliate=affiliate_user, offer=offer)
+        go_live(link, actor=None)
+        lead = _lead(affiliate=affiliate_user, offer=offer)
+        _delivered_injection(lead, buyer, 'ext-live')
+        resp = _fetch_response([
+            {'id': 'ext-live', 'deposit': True, 'status': {'name': 'Deposit', 'updatedAtUtc': ''}},
+        ])
+        with patch('leadgen.connectors.requests.request', return_value=resp):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.canonical_status == canonical_status.FTD
+        event = LeadStatusEvent.objects.get(lead=lead)
+        assert event.applied is True
+        assert event.phase_at_time == AffiliateOfferLink.PHASE_LIVE
 
 
 @pytest.mark.django_db

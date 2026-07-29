@@ -3,7 +3,9 @@ from django.contrib import admin, messages
 from django.contrib.admin import helpers
 from django.template.response import TemplateResponse
 
-from .models import BoxType, Lead, LeadBuyer, LeadInjection, RoutingRule
+from .models import (
+    AffiliateOfferLink, BoxType, Lead, LeadBuyer, LeadInjection, LeadStatusEvent, RoutingRule,
+)
 
 
 @admin.register(BoxType)
@@ -95,8 +97,10 @@ inject_to_buyer.short_description = 'Inject selected leads to buyer…'
 @admin.register(Lead)
 class LeadAdmin(admin.ModelAdmin):
     list_display = ('id', 'full_name', 'email', 'phone', 'status', 'lead_deposit_status',
+                     'canonical_status', 'canonical_status_needs_review',
                      'intake_channel', 'brand', 'offer', 'affiliate', 'deposit', 'created_at')
-    list_filter = ('status', 'intake_channel', 'brand', 'affiliate', 'deposit')
+    list_filter = ('status', 'canonical_status', 'canonical_status_needs_review',
+                    'intake_channel', 'brand', 'affiliate', 'deposit')
     search_fields = ('first_name', 'last_name', 'email', 'phone', 'source_id')
     readonly_fields = [f.name for f in Lead._meta.fields]  # system-generated; not hand-edited
     date_hierarchy = 'created_at'
@@ -144,3 +148,38 @@ class RoutingRuleAdmin(admin.ModelAdmin):
         }),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
+
+
+@admin.register(AffiliateOfferLink)
+class AffiliateOfferLinkAdmin(admin.ModelAdmin):
+    """Affiliate Inbound API spec Phase 1/2 — the two-phase status authority
+    for one (affiliate, offer) pair. Rows are get_or_create'd automatically
+    by leadgen.status_sync the first time a status change is attempted for a
+    pair (see resolve_affiliate_offer_link) — never hand-created here.
+    Read-only for the same reason phase/phase_changed_at/phase_changed_by
+    must never be hand-edited: go_live()/revert_to_testing() are what stamp
+    the audit fields correctly. The real "Go live" action (a button with
+    confirmation, per spec §2.1) is the operator-UI phase of this build, not
+    yet built — until then this view is for visibility/debugging only."""
+    list_display = ('affiliate', 'offer', 'phase', 'phase_changed_at', 'phase_changed_by', 'updated_at')
+    list_filter = ('phase',)
+    search_fields = ('affiliate__username', 'affiliate__email', 'offer__title')
+    readonly_fields = [f.name for f in AffiliateOfferLink._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(LeadStatusEvent)
+class LeadStatusEventAdmin(admin.ModelAdmin):
+    """Append-only status timeline — spec §3.3. Never hand-edited; every row
+    is written by leadgen.status_sync.apply_status_change."""
+    list_display = ('id', 'lead', 'from_status', 'to_status', 'source', 'applied',
+                     'phase_at_time', 'actor', 'created_at')
+    list_filter = ('source', 'applied', 'phase_at_time', 'to_status')
+    search_fields = ('lead__email', 'lead__phone')
+    readonly_fields = [f.name for f in LeadStatusEvent._meta.fields]
+    date_hierarchy = 'created_at'
+
+    def has_add_permission(self, request):
+        return False

@@ -78,6 +78,29 @@ class TestBoxTypeFieldMapping:
 
 
 @pytest.mark.django_db
+class TestBoxTypeStatusMapping:
+    """get_effective_status_mapping() — same override shape as
+    get_effective_field_mapping() above, one level over: buyer's raw status
+    string -> canonical_status (leadgen.canonical_status). Read by
+    leadgen.status_sync.map_buyer_status, Affiliate Inbound API spec §3.2."""
+
+    def test_merges_box_type_defaults_with_instance_overrides(self, buyer):
+        buyer.box_type.default_status_mapping = {'Deposit': 'ftd', 'New': 'pending'}
+        buyer.box_type.save(update_fields=['default_status_mapping'])
+        buyer.status_mapping = {'Deposit': 'qualified_ftd'}  # overrides the box_type default
+        buyer.save(update_fields=['status_mapping'])
+
+        mapping = buyer.get_effective_status_mapping()
+        assert mapping == {'Deposit': 'qualified_ftd', 'New': 'pending'}
+
+    def test_falls_back_to_bare_status_mapping_when_no_box_type(self, brand):
+        buyer = LeadBuyer.objects.create(
+            brand=brand, name='No Box', slug='no-box-status-mapping', is_active=True,
+            base_url='https://nobox.test', status_mapping={'Deposit': 'ftd'})
+        assert buyer.get_effective_status_mapping() == {'Deposit': 'ftd'}
+
+
+@pytest.mark.django_db
 class TestBoxTypeRegistrySharing:
     """The whole point of Phase 4: two LeadBuyer instances on the same
     BoxType share its platform-level config, and changing the shared

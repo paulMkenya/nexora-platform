@@ -204,13 +204,24 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
     PageSize at 200). Updates LeadInjection.buyer_status (source of truth)
     and denormalizes onto Lead.buyer_status; flips Lead.status to
     STATUS_DEPOSIT the moment the buyer reports deposit=True, same as a
-    successful injection would. Returns the number of leads updated."""
+    successful injection would. Returns the number of leads updated.
+
+    Affiliate Inbound API spec §3.2/§2: this is also where a buyer's raw
+    status gets normalized (via buyer.get_effective_status_mapping) into
+    Nexora's canonical_status and run through the two-phase authority engine
+    (leadgen.status_sync.apply_status_change) — reusing this existing
+    pull-based sync rather than building a new buyer-facing ingestion path,
+    per the spec's own "buyer-side changes beyond adding status mapping" non-
+    goal. An unmapped buyer status sets Lead.canonical_status_needs_review
+    instead of guessing."""
     from .connectors import LeadBuyerError, get_connector
     from .models import Lead, LeadInjection
+    from .status_sync import LeadStatusEvent, apply_status_change, map_buyer_status
 
     connector = get_connector(buyer)
     injections = list(
-        LeadInjection.objects.filter(buyer=buyer, status=LeadInjection.STATUS_DELIVERED)
+        LeadInjection.objects.select_related('lead')
+        .filter(buyer=buyer, status=LeadInjection.STATUS_DELIVERED)
         .exclude(external_id='')
     )
     if not injections:
@@ -250,6 +261,16 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
             if result.get('country_iso2'):
                 Lead.objects.filter(pk=injection.lead_id, country_iso2='').update(
                     country_iso2=result['country_iso2'])
+
+            canonical, needs_review = map_buyer_status(buyer, result['buyer_status'])
+            if needs_review:
+                Lead.objects.filter(pk=injection.lead_id).update(canonical_status_needs_review=True)
+                logger.warning(
+                    'sync_buyer_statuses: buyer %s status %r has no status_mapping entry (lead #%s)',
+                    buyer.slug, result['buyer_status'], injection.lead_id)
+            elif canonical:
+                apply_status_change(
+                    injection.lead, canonical, source=LeadStatusEvent.SOURCE_BUYER, raw_payload=result)
 
             updated += 1
 

@@ -23,6 +23,8 @@ from django.db import models
 from nexora.crypto import decrypt_secret, encrypt_secret
 from user_profile.geo import country_choices
 
+from . import canonical_status
+
 
 class BoxType(models.Model):
     """A reusable integration template — the parts of a lead-buying
@@ -83,6 +85,14 @@ class BoxType(models.Model):
     # platform starts from; a LeadBuyer overrides individual entries via
     # its own field_mapping (see LeadBuyer.get_effective_field_mapping) ---
     default_field_mapping = models.JSONField(default=dict, blank=True)
+
+    # Same idea as default_field_mapping, one level over: the buyer's OWN
+    # status string (Lead.buyer_status / LeadInjection.buyer_status, e.g.
+    # "Deposit", "Did not pick call") -> Nexora's canonical_status (see
+    # leadgen/canonical_status.py). A LeadBuyer overrides individual entries
+    # via its own status_mapping (get_effective_status_mapping). Affiliate
+    # Inbound API spec §3.2 — the return path's status normalization.
+    default_status_mapping = models.JSONField(default=dict, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -164,6 +174,13 @@ class LeadBuyer(models.Model):
     # leave this empty entirely.
     field_mapping = models.JSONField(default=dict, blank=True)
 
+    # The buyer's status string -> canonical_status — OVERRIDES on top of
+    # box_type.default_status_mapping (see get_effective_status_mapping).
+    # Same override shape as field_mapping, same reason: two brands on the
+    # same box usually share the platform's status vocabulary, but a brand
+    # occasionally needs its own quirk.
+    status_mapping = models.JSONField(default=dict, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -188,6 +205,15 @@ class LeadBuyer(models.Model):
         if not self.box_type_id:
             return dict(self.field_mapping)
         return {**self.box_type.default_field_mapping, **self.field_mapping}
+
+    def get_effective_status_mapping(self):
+        """box_type.default_status_mapping merged with this instance's own
+        status_mapping — instance overrides win. leadgen.status_sync uses
+        this (never the raw status_mapping) to normalize the buyer's own
+        status string into a canonical_status."""
+        if not self.box_type_id:
+            return dict(self.status_mapping)
+        return {**self.box_type.default_status_mapping, **self.status_mapping}
 
     @property
     def supports_batch(self):
@@ -280,6 +306,23 @@ class Lead(models.Model):
     buyer_status = models.CharField(max_length=120, blank=True, default='')
     buyer_status_updated_at = models.DateTimeField(null=True, blank=True)
 
+    # The affiliate-visible status — Affiliate Inbound API spec §3.1/§3.3.
+    # Deliberately separate from `status` above (the internal delivery-state
+    # machine routing.py/failover.py drive; untouched by this build).
+    # canonical_status is a denormalized read of the latest LeadStatusEvent
+    # for this lead — leadgen.status_sync.apply_status_change() is the ONLY
+    # code allowed to write it; never set it directly. Blank until the first
+    # event is recorded (a lead intake-only, not yet touched by the status
+    # engine, has no opinion yet).
+    canonical_status = models.CharField(
+        max_length=20, choices=canonical_status.CHOICES, blank=True, default='')
+    # Set when a buyer's own status string didn't resolve through the
+    # buyer's status_mapping (see LeadBuyer.get_effective_status_mapping) —
+    # spec §3.2: "do NOT silently drop or guess." Raw value + full context
+    # is on the LeadStatusEvent row itself; this is just the operator-facing
+    # flag so an unmapped status doesn't sit invisible.
+    canonical_status_needs_review = models.BooleanField(default=False)
+
     ip = models.GenericIPAddressField(null=True, blank=True)
     raw_payload = models.JSONField(default=dict, blank=True)
 
@@ -292,6 +335,7 @@ class Lead(models.Model):
             models.Index(fields=['phone']),
             models.Index(fields=['email']),
             models.Index(fields=['status']),
+            models.Index(fields=['canonical_status']),
         ]
 
     def __str__(self):
@@ -427,3 +471,112 @@ class RoutingRule(models.Model):
 
     def __str__(self):
         return self.name or f'Rule #{self.pk} -> {self.buyer.name}'
+
+
+class AffiliateOfferLink(models.Model):
+    """The two-phase status authority for one (affiliate, offer) pair —
+    Affiliate Inbound API spec §2. Confirmed grain with Paul: per
+    affiliate+offer, not per affiliate as a whole — an affiliate can be LIVE
+    on one offer while still TESTING a new one.
+
+    A row is get_or_create'd the first time a status change is ever
+    attempted for a given (affiliate, offer) pair (see
+    leadgen.status_sync.resolve_affiliate_offer_link) — "a new integration is
+    NEVER born live" (spec §2.1), so get_or_create's default is always
+    PHASE_TESTING; there is no path that creates one already LIVE."""
+
+    PHASE_TESTING = 'testing'
+    PHASE_LIVE = 'live'
+    PHASE_CHOICES = [
+        (PHASE_TESTING, 'Testing — Nexora operator sets status'),
+        (PHASE_LIVE, 'Live — buyer postback sets status'),
+    ]
+
+    affiliate = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='offer_links',
+    )
+    offer = models.ForeignKey(
+        'offer.Offer', on_delete=models.CASCADE, related_name='affiliate_links',
+    )
+    phase = models.CharField(max_length=10, choices=PHASE_CHOICES, default=PHASE_TESTING)
+
+    # Audits the go-live (or revert-to-testing) transition itself — see
+    # leadgen.status_sync.go_live / revert_to_testing. Both are deliberate,
+    # logged operator actions (spec §2.1), never an implicit side effect.
+    phase_changed_at = models.DateTimeField(null=True, blank=True)
+    phase_changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['affiliate', 'offer'], name='unique_affiliate_offer_link'),
+        ]
+
+    def __str__(self):
+        return f'{self.affiliate} x {self.offer} [{self.phase}]'
+
+
+class LeadStatusEvent(models.Model):
+    """Append-only status timeline for one Lead — Affiliate Inbound API spec
+    §3.3: "you must be able to prove when and why every status changed,
+    especially around chargebacks and billing disputes." Lead.canonical_status
+    is a denormalized read of the latest event; this table is the source of
+    truth. Never updated or deleted once written — a correction is a new
+    event, not an edit to an old one."""
+
+    SOURCE_OPERATOR = 'operator'
+    SOURCE_BUYER = 'buyer'
+    SOURCE_SYSTEM = 'system'
+    SOURCE_CHOICES = [
+        (SOURCE_OPERATOR, 'Operator (manual flip)'),
+        (SOURCE_BUYER, 'Buyer postback/sync'),
+        (SOURCE_SYSTEM, 'System'),
+    ]
+
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='status_events')
+
+    from_status = models.CharField(max_length=20, blank=True, default='')
+    to_status = models.CharField(max_length=20, choices=canonical_status.CHOICES)
+
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', help_text='Set only for source=operator.',
+    )
+    raw_payload = models.JSONField(
+        default=dict, blank=True,
+        help_text='The buyer status-sync result or operator form submission that produced this event.',
+    )
+    phase_at_time = models.CharField(
+        max_length=10, blank=True, default='',
+        help_text='The governing AffiliateOfferLink.phase at the moment this event was recorded '
+                   '(blank when the lead has no affiliate — no phase gating applies).',
+    )
+
+    # False for a buyer-sourced event recorded during TESTING (spec §2.2:
+    # "accepted but do NOT auto-write" — still audited, just not applied to
+    # Lead.canonical_status). True for every event that actually changed the
+    # affiliate-visible status.
+    applied = models.BooleanField(default=True)
+
+    # Set only when source=operator flips a LIVE-phase lead against the
+    # buyer-postback-is-authoritative rule (spec §2.2's "or require an
+    # explicit override with a logged reason").
+    override_reason = models.CharField(max_length=255, blank=True, default='')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('created_at',)
+        indexes = [
+            models.Index(fields=['lead', 'created_at']),
+        ]
+
+    def __str__(self):
+        marker = '' if self.applied else ' (recorded, not applied)'
+        return f'{self.lead_id}: {self.from_status or "—"} -> {self.to_status}{marker}'
