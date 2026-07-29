@@ -17,6 +17,8 @@ base_url + encrypted API key, and field-name overrides on top of the
 BoxType's defaults. Onboarding a new brand on a KNOWN box is a LeadBuyer
 row, no code.
 """
+import secrets
+
 from django.conf import settings
 from django.db import models
 
@@ -24,6 +26,13 @@ from nexora.crypto import decrypt_secret, encrypt_secret
 from user_profile.geo import country_choices
 
 from . import canonical_status
+
+
+def _generate_postback_secret():
+    """A fresh random HMAC secret for a new AffiliatePostbackConfig — a
+    top-level named function (not a lambda) so Django's migration writer can
+    serialize a reference to it, same reasoning as country_choices above."""
+    return secrets.token_hex(32)
 
 
 class BoxType(models.Model):
@@ -574,6 +583,14 @@ class LeadStatusEvent(models.Model):
     # explicit override with a logged reason").
     override_reason = models.CharField(max_length=255, blank=True, default='')
 
+    # A per-LEAD (not global) monotonic counter — spec §5.3: "Postbacks
+    # carry a monotonic status_seq per lead so an out-of-order delivery
+    # can't regress a lead ... a late no_answer arriving after ftd" — the
+    # receiving affiliate's system ignores a postback whose seq is lower
+    # than one it already saw for that lead. Computed once at creation
+    # (leadgen.status_sync.apply_status_change), never renumbered.
+    lead_seq = models.PositiveIntegerField(default=1)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -585,3 +602,85 @@ class LeadStatusEvent(models.Model):
     def __str__(self):
         marker = '' if self.applied else ' (recorded, not applied)'
         return f'{self.lead_id}: {self.from_status or "—"} -> {self.to_status}{marker}'
+
+
+class AffiliatePostbackConfig(models.Model):
+    """One postback URL an affiliate wants notified on lead status changes —
+    Affiliate Inbound API spec §5.1. Deliberately named
+    AffiliatePostbackConfig, not just "Postback" — a separate, unrelated
+    `postback` app already exists (advertiser-network outbound conversion-
+    pixel system) and reusing that name/app would be a real collision, not
+    just a style nit.
+
+    Shape mirrors public_api.WebhookEndpoint (its Django admin fallback for
+    Phase 4-6; the affiliate-facing self-service UI is Phase 6)."""
+
+    affiliate = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='postback_configs',
+    )
+    url = models.URLField(
+        max_length=500,
+        help_text='Macros: {lead_id} {source_id} {status} {status_time} {offer_id} {payout}.',
+    )
+    # Not encrypted at rest — matches public_api.WebhookEndpoint.secret's own
+    # precedent exactly (unlike LeadBuyer.api_key_encrypted/Fernet: this
+    # secret is handed TO the affiliate so they can verify signatures, not a
+    # third party's credential Nexora alone must protect).
+    secret = models.CharField(
+        max_length=64, default=_generate_postback_secret,
+        help_text='HMAC-SHA256 signing secret (X-Nexora-Signature) — give this to the affiliate once.',
+    )
+    # Empty = every canonical status fires this postback. Deliberately the
+    # OPPOSITE of WebhookEndpoint.events' own "empty matches nothing"
+    # convention — most affiliates wiring up their first postback want
+    # everything by default; only some restrict to a subset (spec §5.1).
+    subscribed_statuses = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.url} [{self.affiliate}]'
+
+    def wants_status(self, status):
+        return not self.subscribed_statuses or status in self.subscribed_statuses
+
+
+class PostbackDelivery(models.Model):
+    """One postback delivery attempt — mirrors public_api.WebhookDelivery's
+    shape exactly (same HMAC + retry/backoff philosophy, same audit
+    posture): "every postback attempt logged (url, payload, response,
+    attempts)" (spec §5.1)."""
+
+    STATUS_PENDING = 'pending'
+    STATUS_DELIVERED = 'delivered'
+    STATUS_FAILED = 'failed'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_DELIVERED, 'Delivered'),
+        (STATUS_FAILED, 'Failed'),
+    ]
+    RETRY_BACKOFFS = [60, 300, 1800]  # seconds: 1 min, 5 min, 30 min — same as WebhookDelivery/LeadInjection
+
+    config = models.ForeignKey(AffiliatePostbackConfig, on_delete=models.CASCADE, related_name='deliveries')
+    status_event = models.ForeignKey(LeadStatusEvent, on_delete=models.CASCADE, related_name='postback_deliveries')
+
+    url = models.URLField(max_length=1000, help_text="The buyer/affiliate URL actually requested (macros resolved).")
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    attempts = models.IntegerField(default=0)
+    next_retry_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(default='', blank=True)
+    response_status_code = models.PositiveIntegerField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.status_event_id} -> {self.url} [{self.status}]'

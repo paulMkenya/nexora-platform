@@ -95,3 +95,29 @@ class LeadOutSerializer(serializers.ModelSerializer):
 
     def get_sub5(self, obj):
         return self._sub(obj, 'sub5')
+
+
+class LeadStatusEventOutSerializer(serializers.Serializer):
+    to_status = serializers.CharField()
+    lead_seq = serializers.IntegerField()
+    source = serializers.CharField()
+    created_at = serializers.DateTimeField()
+
+
+class LeadDetailOutSerializer(LeadOutSerializer):
+    """GET /api/leads/<id> only (spec §5.2: "current status + full or recent
+    status timeline"). Deliberately NOT on the plain LeadOutSerializer used
+    by list/submit — a paginated list of 50 leads would otherwise run 50
+    extra timeline queries for data most pull-API callers don't need."""
+    status_timeline = serializers.SerializerMethodField()
+
+    class Meta(LeadOutSerializer.Meta):
+        fields = LeadOutSerializer.Meta.fields + ['status_timeline']
+        read_only_fields = fields
+
+    def get_status_timeline(self, obj):
+        # Only APPLIED events — a recorded-but-not-applied TESTING-phase
+        # buyer status is internal authority-engine bookkeeping, never
+        # something the affiliate should see as if it were real.
+        events = obj.status_events.filter(applied=True).order_by('created_at')
+        return LeadStatusEventOutSerializer(events, many=True).data

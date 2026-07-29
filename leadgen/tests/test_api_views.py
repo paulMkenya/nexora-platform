@@ -392,6 +392,37 @@ class TestLeadDetail:
         assert resp.data['canonical_status'] == canonical_status.CALLBACK
         assert resp.data['buyer_status'] == 'Asked for followup'
 
+    def test_status_timeline_shows_only_applied_events_in_order(self, affiliate_api_key, affiliate_user, offer):
+        from leadgen.status_sync import apply_status_change
+        from leadgen.models import LeadStatusEvent, AffiliateOfferLink
+
+        lead = Lead.objects.create(
+            intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=affiliate_user, offer=offer,
+            email='timeline@test.com', phone='+15551234567',
+        )
+        apply_status_change(lead, canonical_status.NEW, source=LeadStatusEvent.SOURCE_OPERATOR)
+        apply_status_change(lead, canonical_status.TEST, source=LeadStatusEvent.SOURCE_OPERATOR)
+        # a buyer status in TESTING is recorded but not applied — must be
+        # absent from the affiliate-visible timeline
+        apply_status_change(lead, canonical_status.FTD, source=LeadStatusEvent.SOURCE_BUYER)
+
+        client = _client_with_key(affiliate_api_key)
+        resp = client.get(f'{LIST_URL}/{lead.pk}')
+        timeline = resp.data['status_timeline']
+        assert [e['to_status'] for e in timeline] == [canonical_status.NEW, canonical_status.TEST]
+        assert [e['lead_seq'] for e in timeline] == [1, 2]
+
+    def test_list_endpoint_has_no_status_timeline_field(self, affiliate_api_key, affiliate_user):
+        """status_timeline is detail-only — the pull/list endpoint must not
+        run an extra query per lead for data most callers don't need."""
+        Lead.objects.create(
+            intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=affiliate_user,
+            email='nolist@test.com', phone='+15551234567',
+        )
+        client = _client_with_key(affiliate_api_key)
+        resp = client.get(LIST_URL)
+        assert 'status_timeline' not in resp.data['results'][0]
+
 
 @pytest.mark.django_db
 class TestStatusListEndpoint:

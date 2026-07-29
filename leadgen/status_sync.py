@@ -80,16 +80,23 @@ def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None
 
     current = Lead.objects.only('canonical_status').get(pk=lead.pk).canonical_status
     applies = not (source == LeadStatusEvent.SOURCE_BUYER and phase == AffiliateOfferLink.PHASE_TESTING)
+    next_seq = LeadStatusEvent.objects.filter(lead=lead).count() + 1
 
     event = LeadStatusEvent.objects.create(
         lead=lead, from_status=current, to_status=to_status, source=source, actor=actor,
         raw_payload=raw_payload or {}, phase_at_time=phase, applied=applies,
-        override_reason=override_reason,
+        override_reason=override_reason, lead_seq=next_seq,
     )
 
     if applies:
         Lead.objects.filter(pk=lead.pk).update(canonical_status=to_status)
         lead.canonical_status = to_status
+        # Return path §5.1 — only an event that actually changed the
+        # affiliate-visible status should ever reach the affiliate's
+        # postback URL. A recorded-but-not-applied TESTING-phase buyer
+        # status must stay silent from the affiliate's point of view.
+        from .postback_delivery import dispatch_postbacks_for_event
+        dispatch_postbacks_for_event(event)
 
     return event
 

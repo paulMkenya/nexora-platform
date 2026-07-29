@@ -27,7 +27,7 @@ from public_api.throttling import APIKeyThrottle
 
 from . import canonical_status
 from .models import Lead
-from .serializers import AffiliateLeadSubmitSerializer, LeadOutSerializer
+from .serializers import AffiliateLeadSubmitSerializer, LeadDetailOutSerializer, LeadOutSerializer
 from .tasks import geolocate_lead, maybe_auto_inject
 
 MAX_BATCH_SIZE = 200
@@ -238,7 +238,7 @@ class LeadDetailView(APIView):
         lead = Lead.objects.filter(pk=pk, affiliate=request.user).first()
         if lead is None:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(LeadOutSerializer(lead).data)
+        return Response(LeadDetailOutSerializer(lead).data)
 
 
 class LeadStatusListView(APIView):

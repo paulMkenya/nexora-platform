@@ -4,7 +4,8 @@ from django.contrib.admin import helpers
 from django.template.response import TemplateResponse
 
 from .models import (
-    AffiliateOfferLink, BoxType, Lead, LeadBuyer, LeadInjection, LeadStatusEvent, RoutingRule,
+    AffiliateOfferLink, AffiliatePostbackConfig, BoxType, Lead, LeadBuyer, LeadInjection,
+    LeadStatusEvent, PostbackDelivery, RoutingRule,
 )
 
 
@@ -175,10 +176,39 @@ class LeadStatusEventAdmin(admin.ModelAdmin):
     """Append-only status timeline — spec §3.3. Never hand-edited; every row
     is written by leadgen.status_sync.apply_status_change."""
     list_display = ('id', 'lead', 'from_status', 'to_status', 'source', 'applied',
-                     'phase_at_time', 'actor', 'created_at')
+                     'phase_at_time', 'lead_seq', 'actor', 'created_at')
     list_filter = ('source', 'applied', 'phase_at_time', 'to_status')
     search_fields = ('lead__email', 'lead__phone')
     readonly_fields = [f.name for f in LeadStatusEvent._meta.fields]
+    date_hierarchy = 'created_at'
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(AffiliatePostbackConfig)
+class AffiliatePostbackConfigAdmin(admin.ModelAdmin):
+    """Affiliate Inbound API spec Phase 4 (§5.1): one postback URL for an
+    affiliate. The self-service affiliate-facing form is Phase 6 — this is
+    the operator fallback for configuring one on an affiliate's behalf in
+    the meantime (same posture LeadBuyerAdmin has always had relative to
+    the Distribution console)."""
+    list_display = ('url', 'affiliate', 'is_active', 'subscribed_statuses', 'updated_at')
+    list_filter = ('is_active',)
+    search_fields = ('url', 'affiliate__username', 'affiliate__email')
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(PostbackDelivery)
+class PostbackDeliveryAdmin(admin.ModelAdmin):
+    """One postback delivery attempt — audit trail, never hand-edited.
+    Spec §5.1: "Affiliate can see delivery status in their UI" — Phase 6's
+    affiliate-facing view; this is the operator/debugging view for now."""
+    list_display = ('id', 'config', 'status_event', 'status', 'attempts',
+                     'response_status_code', 'created_at', 'delivered_at')
+    list_filter = ('status',)
+    search_fields = ('config__affiliate__email', 'url')
+    readonly_fields = [f.name for f in PostbackDelivery._meta.fields]
     date_hierarchy = 'created_at'
 
     def has_add_permission(self, request):
