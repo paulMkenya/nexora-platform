@@ -40,6 +40,20 @@ class APIKey(models.Model):
             requests_per_hour=requests_per_hour,
         )
 
+    def regenerate_secret(self) -> str:
+        """Replace this key's secret IN PLACE — same row, same client_id,
+        new value. Affiliate Inbound API spec §6.4: "regenerate warns it
+        breaks existing integrations" — anything still presenting the old
+        secret stops authenticating the instant this saves. Distinct from
+        creating an additional key (generate()): that's for the graceful,
+        no-downtime rotation workflow (issue new, migrate, revoke old);
+        this is for "I need a fresh secret for this exact key, right now."
+        Returns the new secret — like generate(), this is the only moment
+        it's ever readable again."""
+        self.secret = secrets.token_urlsafe(48)
+        self.save(update_fields=['secret'])
+        return self.secret
+
 
 class WebhookEndpoint(models.Model):
     """Admin-configured endpoint to receive signed event notifications."""

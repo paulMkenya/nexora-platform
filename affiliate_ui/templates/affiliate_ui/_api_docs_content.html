@@ -1,0 +1,128 @@
+{% comment %}
+Shared doc BODY content — included by BOTH the live HTML page
+(affiliate_ui/api_docs.html, inside the shared shell) and the PDF source
+(affiliate_ui/api_docs_pdf.html, standalone). One partial, two shells, so
+the actual doc content can never drift between formats — Affiliate Inbound
+API spec §6.3.
+{% endcomment %}
+<h2>Nexora Affiliate Inbound API</h2>
+<p class="subtitle">Generated for you — always reflects your current keys, offers, and the live API contract.</p>
+
+<h3>Base URL</h3>
+<pre>{{ doc.base_url }}</pre>
+
+<h3>Endpoints</h3>
+<table>
+  <thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    {% for ep in doc.endpoints %}
+    <tr><td>{{ ep.method }}</td><td>{{ doc.base_url }}{{ ep.path }}</td><td>{{ ep.purpose }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Authentication</h3>
+<p>Header, not query string: <code>Authorization: ApiKey YOUR_API_KEY_HERE</code></p>
+{% if doc.keys %}
+<table>
+  <thead><tr><th>Key name</th><th>Client ID</th><th>Rate limit</th><th>Created</th></tr></thead>
+  <tbody>
+    {% for key in doc.keys %}
+    <tr><td>{{ key.name }}</td><td>{{ key.client_id }}</td><td>{{ key.requests_per_hour }}/hour</td><td>{{ key.created_at|date:"Y-m-d" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="note">Secret values are shown only once, at creation or regeneration — manage your keys on the API &amp; Docs page. Never share a secret or put it in a URL/query string.</p>
+{% else %}
+<p class="note">You have no active API key yet — create one on the API &amp; Docs page before integrating.</p>
+{% endif %}
+
+<h3>Submit fields</h3>
+<table>
+  <thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Max length</th><th>Notes</th></tr></thead>
+  <tbody>
+    {% for f in doc.fields %}
+    <tr>
+      <td><code>{{ f.name }}</code></td>
+      <td>{% if f.required %}Yes{% else %}No{% endif %}</td>
+      <td>{{ f.type }}</td>
+      <td>{{ f.max_length|default:"—" }}</td>
+      <td>{{ f.help_text|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Your available offers</h3>
+{% if doc.offers %}
+<table>
+  <thead><tr><th>offer_id</th><th>Title</th></tr></thead>
+  <tbody>
+    {% for o in doc.offers %}
+    <tr><td>{{ o.id }}</td><td>{{ o.title }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note">No offers available to send to right now.</p>
+{% endif %}
+
+<h3>Example request (single lead)</h3>
+<pre>curl -X POST {{ doc.base_url }}/api/leads/submit \
+  -H "Authorization: ApiKey YOUR_API_KEY_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "first_name": "Jane", "last_name": "Doe",
+    "email": "jane@example.com", "phone": "+15551234567",
+    "offer_id": {{ doc.offers.0.id|default:"123" }},
+    "source_id": "your-own-tracking-id"
+  }'</pre>
+
+<h3>Canonical status vocabulary</h3>
+<table>
+  <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+  <tbody>
+    {% for s in doc.statuses %}
+    <tr><td><code>{{ s.value }}</code></td><td>{{ s.label }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Testing → Live workflow</h3>
+<p>Every offer you send to starts in <strong>TESTING</strong>: Nexora operator sets your leads' statuses manually
+  (walking a test lead through <code>new</code> → <code>test</code> → <code>test_ftd</code>) so you can confirm your
+  own source receives and records them correctly. Once confirmed, Nexora flips that offer to
+  <strong>LIVE</strong> — from then on, the buyer's own reported status flows to you verbatim as the canonical
+  value, both by postback and via the pull API below.</p>
+
+<h3>Postbacks (push)</h3>
+<p>Register a postback URL (API &amp; Docs page or ask your Nexora contact) with any of these macros — resolved
+  fresh on every delivery:</p>
+<p>{% for m in doc.postback_macros %}<code>{{ '{' }}{{ m }}{{ '}' }}</code>{% if not forloop.last %} {% endif %}{% endfor %}</p>
+<p>Every delivery is signed: <code>X-Nexora-Signature: sha256=&lt;hmac&gt;</code>, computed over the raw JSON body
+  with your postback secret. Verify it before trusting the payload. Each payload also carries a per-lead
+  <code>status_seq</code> — ignore any delivery whose seq is lower than one you've already recorded for that
+  lead_id, so a late out-of-order retry can never regress a status you already have.</p>
+{% if doc.postback_configs %}
+<table>
+  <thead><tr><th>URL</th><th>Subscribed statuses</th></tr></thead>
+  <tbody>
+    {% for c in doc.postback_configs %}
+    <tr><td>{{ c.url }}</td><td>{{ c.subscribed_statuses|join:", " }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note">No postback URL configured yet.</p>
+{% endif %}
+
+<h3>Pull (polling, the safety net)</h3>
+<p><code>GET {{ doc.base_url }}/api/leads?updated_since=2026-01-01T00:00:00Z</code> — poll for what changed since
+  your last check. Use this if a postback delivery to you ever fails; it's the same canonical status either way.</p>
+
+<h3>Rate limits</h3>
+<p>Per your API key's own configured limit (shown above) — a 429 response means back off and retry later.</p>
+
+<h3>Full API reference (OpenAPI)</h3>
+<p>Interactive: <a href="{{ doc.openapi_swagger_url }}">{{ doc.openapi_swagger_url }}</a></p>
+<p>Raw schema (for codegen): <a href="{{ doc.openapi_schema_url }}">{{ doc.openapi_schema_url }}</a></p>
