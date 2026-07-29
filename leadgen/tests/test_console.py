@@ -244,6 +244,14 @@ class ConsoleBrandScopingTest(TestCase):
         self.assertIsNotNone(rule)
         self.assertFalse(rule.is_active)
 
+    def test_rule_form_warns_bought_traffic_has_no_live_channel(self):
+        """Phase 6: same help_text check as test_routing_admin.py, on the
+        console surface (RoutingRuleForm shares the model field, so this
+        should already pass — confirms the two surfaces don't drift)."""
+        self.client.force_login(self._operator(self.brand_a))
+        r = self.client.get('/admin/distribution/routing-rules/add/')
+        self.assertContains(r, 'no live intake path yet')
+
 
 @pytest.mark.django_db
 def test_navigation_includes_distribution_group():

@@ -403,6 +403,9 @@ class RoutingRule(models.Model):
             (Lead.CHANNEL_LANDING_PAGE, 'Landing page'),
             ('bought', 'Bought traffic'),  # no live intake channel sets this yet — see build guide Phase 6
         ],
+        help_text='Restricts this rule to leads from one intake channel; blank matches any. '
+                   '"Bought traffic" has no live intake path yet (leadgen/README.md\'s Phase 6 '
+                   'note) — a rule using it will never match a lead until one exists.',
     )
 
     buyer = models.ForeignKey(LeadBuyer, on_delete=models.CASCADE, related_name='routing_rules')

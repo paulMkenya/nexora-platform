@@ -371,3 +371,46 @@ touching a shell":
 for which our-field-name keys are meaningful in a `field_mapping` override
 — both `build_payload()` and the editor's per-row dropdown read from it, so
 the two can never drift apart.
+
+**Phase 6 — source channel tightening.** This phase's guide text names two
+things platform-owner judgment was needed on. Both were decided and
+documented here rather than deferred, since a go-live gate shouldn't sit
+blocked on a question that has a safe, conservative default:
+
+- **Is `Lead.intake_channel` actually stamped correctly at every capture
+  point?** Audited both real paths: `api_views.py::_create_lead` sets
+  `intake_channel=Lead.CHANNEL_AFFILIATE_API` and
+  `public_views.py::capture_lead` sets `intake_channel=Lead.CHANNEL_LANDING_PAGE`,
+  both unconditionally, at the same `Lead.objects.create()` call that
+  writes every other required field — there's no code path that creates a
+  `Lead` without one. Nothing to fix; this was already solid going back to
+  the original build.
+- **`RoutingRule.source_channel` has a third `'bought'` (Bought traffic)
+  choice with no intake channel that ever produces it** — the model
+  anticipated a lead-buying/bulk-purchase intake path that was never
+  built. Building that path (a bulk-CSV import? a dedicated broker-facing
+  API? who's authorized to use it, and does it bypass affiliate
+  commission/billing the way affiliate-submitted leads don't?) is a real
+  product and security-surface decision, not a "tighten existing code"
+  one — explicitly out of scope for autonomous judgment, left for Paul to
+  scope whenever there's an actual bought-traffic source to wire up.
+  What *was* addressed: the option sat in the dropdown with no
+  indication it was inert, so an operator could build a routing rule
+  around `source_channel='bought'` believing it was live, and that rule
+  would silently never match a single lead. `RoutingRule.source_channel`
+  now carries a `help_text` saying exactly that (surfaces automatically in
+  both the console form and Django admin — one field definition, no
+  template changes needed). No new intake path was built.
+- **Does the landing page redirect anywhere after a successful capture?**
+  Checked `public_views.py::capture_lead` — no, it re-renders
+  `capture_form.html` in place with `submitted=True` (an inline
+  "thanks" state), no `HttpResponseRedirect`. Whether a post-capture
+  redirect to an advertiser's own page (e.g. for a tracking pixel a
+  specific advertiser relies on) should exist depends entirely on the
+  advertiser/offer's actual requirements, which nothing in this repo
+  states — building one speculatively would be guessing at a live,
+  revenue-facing consumer flow's requirements. Left unchanged.
+  Recommendation for whenever this becomes a real requirement: an
+  optional per-`Offer` `post_capture_redirect_url` field, used if set and
+  falling back to today's inline "thanks" behavior otherwise — additive,
+  and doesn't force every existing offer to have an opinion.

@@ -36,6 +36,17 @@ class TestRoutingRuleAdmin:
         r = client.get('/admin/leadgen/routingrule/add/')
         assert r.status_code == 200
 
+    def test_add_form_warns_bought_traffic_has_no_live_channel(self, superuser):
+        """Phase 6: RoutingRule.source_channel's help_text (single field
+        definition, shared by admin + the console form) must warn that
+        'bought' has no live intake path yet, so an operator can't build a
+        rule around it believing it'll ever match a lead."""
+        client = Client()
+        client.force_login(superuser)
+        r = client.get('/admin/leadgen/routingrule/add/')
+        assert r.status_code == 200
+        assert b'no live intake path yet' in r.content
+
     def test_create_rule_via_admin_defaults_to_inactive(self, superuser, brand, buyer):
         client = Client()
         client.force_login(superuser)
