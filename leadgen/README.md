@@ -135,14 +135,27 @@ box_type = BoxType.objects.create(
 # then create the LeadBuyer instance as in Case A, pointing box_type at this row
 ```
 
-Both cases finish the same way:
-1. Run `python manage.py inject_pending_leads --buyer <slug> --limit 1`
-   against one real lead and check the `LeadInjection` row it created in
-   `/admin/leadgen/leadinjection/` — `status`, `response_payload`, and
-   `external_id` tell you immediately whether the field mapping and auth
-   are right.
-2. Once you're confident, flip `auto_inject = True` on the buyer (admin or
-   shell) — from then on, every new lead routed to it injects automatically.
+Both cases finish the same way — and as of Phase 5, neither needs shell
+access for the common case:
+
+1. Open the buyer in the Distribution console
+   (`/admin/distribution/buyers/<pk>/edit/`) and click **Test Connection**.
+   This sends one synthetic, obviously-fake lead (`nexora-test-connection@
+   example.invalid`) through the buyer's real connector — the exact same
+   code path a real lead uses — and shows the raw request payload and the
+   buyer's raw response (or error) right there on the page. Nothing is
+   saved to the Leads console, no `Lead`/`LeadInjection` row is created —
+   it's a pure connectivity check. This is enough to confirm auth, the
+   endpoint, and field mapping are all correct before anything real is at
+   stake. (The console's **Save** button always tests the currently SAVED
+   config, not in-progress edits — save first, then test.)
+2. For a check against a *real* lead already in the system instead of a
+   synthetic one, `python manage.py inject_pending_leads --buyer <slug>
+   --limit 1` still works exactly as before, creating a real
+   `LeadInjection` row in `/admin/leadgen/leadinjection/`.
+3. Once you're confident, flip `auto_inject = True` on the buyer (admin,
+   shell, or the console form) — from then on, every new lead routed to it
+   injects automatically.
 
 ### When you need actual code, not just config
 
@@ -318,3 +331,43 @@ verification confirmed the connector still builds the exact same request
 divergence found was the throwaway-verification-container's `SECRET_KEY`
 not matching the live container's — a pre-existing, unrelated gap (see
 "the API key itself is not in this doc" above), not a Phase 4 bug.
+
+**Phase 5 — trivial buyer onboarding UI** (`buyer_form.html` /
+`admin_views.buyer_test_connection` / `connectors.MAPPABLE_LEAD_FIELDS`):
+the Buyer form gained two things aimed squarely at "onboard brand #2 without
+touching a shell":
+
+- **A live field-mapping override editor.** Selecting a `BoxType` shows its
+  `default_field_mapping` right there on the form (updates instantly,
+  client-side, as you change the dropdown — every `BoxType`'s defaults are
+  fetched once on page load, no extra requests). Below it, `field_mapping`
+  is no longer a raw JSON textarea to hand-edit — it's a row-per-override
+  editor (our field ↔ their field name) that serializes to the same
+  underlying JSON field on submit. The raw textarea still exists in the DOM
+  (hidden, not removed) as the actual field the form posts, so nothing
+  about how `LeadBuyerForm`/`LeadBuyer.field_mapping` works changed — this
+  is presentation only.
+- **A "Test Connection" button** (only shown once a buyer has been saved).
+  Sends one synthetic, obviously-fake lead (`first_name='Nexora'`,
+  `email='...@example.invalid'`, `source_id='test-connection-<slug>'`)
+  through the buyer's *real* connector — same `get_connector()` +
+  `build_payload()` + the actual HTTP call a live lead would use — and
+  shows the raw request payload and the buyer's raw response (or a
+  sanitized error) inline. Deliberately never creates a `Lead` or
+  `LeadInjection` row, so it can't pollute the Leads console, routing
+  stats, or billing — it's a connectivity/config check, not a real
+  delivery. Tests the buyer's currently-*saved* configuration, not
+  in-progress form edits (the endpoint ignores the POST body entirely and
+  re-reads the instance from the DB) — save changes first, then test.
+  Verified live against op-brandy.com's real endpoint from a throwaway
+  preview container: the connector built and sent the exact expected
+  payload (`FirstName`/`Lastname`/`Email`/`PhoneNumber`/`SourceId`/
+  `Affilate`, matching `BoxType.default_field_mapping`) and the page
+  correctly surfaced the buyer's real `401` response — proving the whole
+  path works end-to-end, independent of the known, pre-existing
+  throwaway-container `SECRET_KEY`/API-key gap.
+
+`MAPPABLE_LEAD_FIELDS` (`connectors.py`) is now the single source of truth
+for which our-field-name keys are meaningful in a `field_mapping` override
+— both `build_payload()` and the editor's per-row dropdown read from it, so
+the two can never drift apart.

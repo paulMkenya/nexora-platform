@@ -2,7 +2,7 @@
 build) — leadgen/admin_views.py, leadgen/admin_urls.py. Brand scoping
 mirrors brands/tests/test_admin_dashboard_leads.py's conventions exactly
 (the console is a sibling surface to the operator dashboard)."""
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -169,6 +169,53 @@ class ConsoleBrandScopingTest(TestCase):
         buyer = LeadBuyer.objects.filter(slug='new-console-buyer').first()
         self.assertIsNotNone(buyer)
         self.assertEqual(buyer.get_api_key(), 'secret123')
+
+    # --- test connection (Phase 5) ---
+
+    def test_test_connection_requires_post(self):
+        self.client.force_login(self._operator(self.brand_a))
+        r = self.client.get(f'/admin/distribution/buyers/{self.buyer_a.pk}/test-connection/')
+        self.assertEqual(r.status_code, 405)
+
+    def test_operator_cannot_test_connection_for_other_brands_buyer(self):
+        self.client.force_login(self._operator(self.brand_a))
+        r = self.client.post(f'/admin/distribution/buyers/{self.buyer_b.pk}/test-connection/')
+        self.assertEqual(r.status_code, 404)
+
+    @patch('leadgen.connectors.requests.request')
+    def test_test_connection_success_shows_payload_and_response(self, mock_req):
+        mock_req.return_value = MagicMock(
+            ok=True, content=b'{}',
+            json=lambda: {'addedLeads': [{'id': 'ext-test-1'}], 'failedToAddLeads': []},
+        )
+        self.client.force_login(self._operator(self.brand_a))
+        r = self.client.post(f'/admin/distribution/buyers/{self.buyer_a.pk}/test-connection/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Test connection succeeded')
+        self.assertContains(r, 'ext-test-1')
+        # the synthetic test lead, not a real one, was sent
+        sent_json = mock_req.call_args.kwargs.get('json') or {}
+        self.assertIn('TestConnection', str(sent_json))
+
+    @patch('leadgen.connectors.requests.request')
+    def test_test_connection_failure_shows_error(self, mock_req):
+        mock_req.return_value = MagicMock(ok=False, status_code=401, text='invalid api key', content=b'x')
+        self.client.force_login(self._operator(self.brand_a))
+        r = self.client.post(f'/admin/distribution/buyers/{self.buyer_a.pk}/test-connection/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'Test connection failed')
+        self.assertContains(r, '401')
+
+    @patch('leadgen.connectors.requests.request')
+    def test_test_connection_never_creates_a_lead_or_injection(self, mock_req):
+        mock_req.return_value = MagicMock(
+            ok=True, content=b'{}', json=lambda: {'addedLeads': [{'id': 'ext-test-2'}], 'failedToAddLeads': []})
+        lead_count_before = Lead.objects.count()
+        injection_count_before = LeadInjection.objects.count()
+        self.client.force_login(self._operator(self.brand_a))
+        self.client.post(f'/admin/distribution/buyers/{self.buyer_a.pk}/test-connection/')
+        self.assertEqual(Lead.objects.count(), lead_count_before)
+        self.assertEqual(LeadInjection.objects.count(), injection_count_before)
 
     # --- routing rules ---
 

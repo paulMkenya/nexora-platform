@@ -7,6 +7,8 @@ power-user fallback and test surface — this console is the primary one.
 Every view here is brand-scoped exactly like brands.views.admin_views.
 dashboard: a superuser (platform owner) sees/acts across every brand, an
 ordinary operator only ever sees/touches their own."""
+import json
+
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import get_user_model
@@ -18,8 +20,9 @@ from django.views.decorators.http import require_POST
 
 from brands.scoping import scope_brand, sees_all_brands
 
+from .connectors import MAPPABLE_LEAD_FIELDS, LeadBuyerError, get_connector
 from .forms import LeadBuyerForm, RoutingRuleForm
-from .models import Lead, LeadBuyer, RoutingRule
+from .models import BoxType, Lead, LeadBuyer, RoutingRule
 from .routing import attach_computed_chains
 from .services import attach_latest_injections
 
@@ -142,6 +145,25 @@ def buyers_list(request):
     })
 
 
+def _buyer_form_context(*, page_title, form, instance, test_result=None):
+    """Shared context for buyer_form/buyer_test_connection — both render
+    leadgen/console/buyer_form.html and both need the same BoxType-defaults
+    + mappable-field-names data for the field-mapping editor (see
+    buyer_form.html's <script>), so it's built in one place rather than
+    duplicated per view."""
+    return {
+        'shell_role': 'admin',
+        'page_title': page_title,
+        'form': form,
+        'instance': instance,
+        'box_type_defaults_json': json.dumps({
+            str(bt.pk): bt.default_field_mapping for bt in BoxType.objects.all()
+        }),
+        'mappable_lead_fields_json': json.dumps(list(MAPPABLE_LEAD_FIELDS.keys())),
+        'test_result': test_result,
+    }
+
+
 @staff_member_required
 def buyer_form(request, pk=None):
     show_all_brands = sees_all_brands(request.user)
@@ -162,12 +184,48 @@ def buyer_form(request, pk=None):
     else:
         form = LeadBuyerForm(instance=instance, restrict_to_brand=restrict_to_brand)
 
-    return render(request, 'leadgen/console/buyer_form.html', {
-        'shell_role': 'admin',
-        'page_title': 'Edit Buyer' if instance else 'Add Buyer',
-        'form': form,
-        'instance': instance,
-    })
+    return render(request, 'leadgen/console/buyer_form.html', _buyer_form_context(
+        page_title='Edit Buyer' if instance else 'Add Buyer', form=form, instance=instance))
+
+
+@staff_member_required
+@require_POST
+def buyer_test_connection(request, pk):
+    """Send one synthetic, obviously-fake lead through the buyer's real
+    connector and show the raw request payload + response (or error)
+    inline — build guide Phase 5's "trivial onboarding" ask: confirm a
+    freshly configured buyer's auth/field-mapping/endpoint actually work
+    before flipping auto_inject on, without needing a real consumer lead
+    or shell access. Deliberately does NOT create a Lead or LeadInjection
+    row — this is a connectivity check, not a real delivery, and must
+    never show up in the leads console, routing stats, or billing.
+    Tests the currently SAVED configuration, not unsaved form edits — the
+    submitted POST body (any in-progress edits) is intentionally ignored,
+    see buyer_form.html's Test Connection button."""
+    qs, _, _ = _scoped_buyers(request)
+    instance = get_object_or_404(qs, pk=pk)
+
+    test_lead = Lead(
+        first_name='Nexora', last_name='TestConnection',
+        email='nexora-test-connection@example.invalid',
+        phone='+10000000000', vertical='test',
+        source_id=f'test-connection-{instance.slug}',
+    )
+
+    test_result = {'payload': None, 'response': None, 'error': None}
+    try:
+        connector = get_connector(instance)
+        test_result['payload'] = connector.build_payload(test_lead)
+        test_result['response'] = connector.inject_lead(test_lead)
+    except LeadBuyerError as exc:
+        test_result['error'] = str(exc)
+    except Exception as exc:  # noqa: BLE001 — surface any config error (e.g. missing box_type) to the operator, not a 500
+        test_result['error'] = f'{exc.__class__.__name__}: {exc}'
+
+    form = LeadBuyerForm(
+        instance=instance, restrict_to_brand=None if sees_all_brands(request.user) else scope_brand(request))
+    return render(request, 'leadgen/console/buyer_form.html', _buyer_form_context(
+        page_title='Edit Buyer', form=form, instance=instance, test_result=test_result))
 
 
 @staff_member_required

@@ -10,6 +10,7 @@ urlpatterns = [
     path('buyers/', admin_views.buyers_list, name='buyers'),
     path('buyers/add/', admin_views.buyer_form, name='buyer_add'),
     path('buyers/<int:pk>/edit/', admin_views.buyer_form, name='buyer_edit'),
+    path('buyers/<int:pk>/test-connection/', admin_views.buyer_test_connection, name='buyer_test_connection'),
     path('routing-rules/', admin_views.routing_rules_list, name='routing_rules'),
     path('routing-rules/add/', admin_views.routing_rule_form, name='routing_rule_add'),
     path('routing-rules/<int:pk>/edit/', admin_views.routing_rule_form, name='routing_rule_edit'),

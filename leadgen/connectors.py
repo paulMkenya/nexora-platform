@@ -38,6 +38,19 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 15
 
+# our field name -> Lead model attribute. Single source of truth for both
+# build_payload() below and the console's field-mapping override editor
+# (admin_views.py/buyer_form) — the only keys a field_mapping override can
+# meaningfully affect.
+MAPPABLE_LEAD_FIELDS = {
+    'firstname': 'first_name',
+    'lastname': 'last_name',
+    'email': 'email',
+    'phone': 'phone',
+    'vertical': 'vertical',
+    'source_id': 'source_id',
+}
+
 
 class LeadBuyerError(Exception):
     """A buyer API call returned a non-2xx response or could not be reached.
@@ -96,14 +109,8 @@ class LeadBuyerConnector:
         is deliberately NOT sent here — a lead has no deposit at submission
         time; deposit status flows the other way, via
         leadgen.tasks.sync_buyer_statuses (see fetch_lead_statuses() below)."""
-        values = {
-            'firstname': lead.first_name,
-            'lastname': lead.last_name,
-            'email': lead.email,
-            'phone': lead.phone,
-            'vertical': lead.vertical,
-            'source_id': lead.source_id or str(lead.pk),
-        }
+        values = {our_name: getattr(lead, attr) for our_name, attr in MAPPABLE_LEAD_FIELDS.items()}
+        values['source_id'] = lead.source_id or str(lead.pk)
         payload = {}
         for our_name, value in values.items():
             if value in (None, ''):
