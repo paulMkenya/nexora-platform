@@ -110,6 +110,7 @@
               <th class="py-2 pr-3">Geo</th>
               <th class="py-2 pr-3">Affiliate</th>
               <th class="py-2 pr-3">Status</th>
+              <th class="py-2 pr-3">Affiliate Status</th>
               <th class="py-2 pr-3">Buyer chain (computed)</th>
               <th class="py-2 pr-3 pr-4">Submitted</th>
             </tr>
@@ -146,6 +147,21 @@
                   {% endif %}
                 </td>
                 <td class="py-2 pr-3">
+                  <button type="button" onclick="document.getElementById('console-flip-{{ lead.pk }}').classList.toggle('hidden')"
+                          class="text-left hover:opacity-75 transition">
+                    {% if lead.canonical_status %}
+                      <span class="inline-flex items-center rounded-full bg-purple-50 text-purple-700 px-2 py-0.5 text-xs">{{ lead.get_canonical_status_display }}</span>
+                    {% else %}
+                      <span class="text-gray-400 text-xs">unset</span>
+                    {% endif %}
+                    {% if lead.affiliate_phase == 'live' %}
+                      <span class="ml-1 inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-xs">live</span>
+                    {% elif lead.affiliate_phase == 'testing' %}
+                      <span class="ml-1 inline-flex items-center rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-xs">testing</span>
+                    {% endif %}
+                  </button>
+                </td>
+                <td class="py-2 pr-3">
                   {% if lead.computed_chain %}
                     <div class="flex flex-wrap gap-1">
                       {% for chain_buyer in lead.computed_chain %}
@@ -160,10 +176,37 @@
                 </td>
                 <td class="py-2 pr-3 pr-4 text-gray-500 whitespace-nowrap">{{ lead.created_at|date:"Y-m-d H:i" }}</td>
               </tr>
+              <tr id="console-flip-{{ lead.pk }}" class="hidden bg-purple-50 border-b border-gray-100">
+                <td></td>
+                <td colspan="9" class="py-3 pr-4">
+                  <form method="post" action="{% url 'leadgen_console:lead_status_flip' lead.pk %}" class="flex flex-wrap items-end gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="querystring" value="{{ querystring }}">
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">Set affiliate-visible status</label>
+                      <select name="to_status" class="rounded-md border-gray-300 text-xs py-1 pr-8" required>
+                        {% for value, label in canonical_status_choices %}
+                          <option value="{{ value }}" {% if lead.canonical_status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="flex-1 min-w-[200px]">
+                      <label class="block text-xs text-gray-500 mb-1">
+                        Override reason <span class="text-gray-400">(only needed if this affiliate+offer pair is already LIVE)</span>
+                      </label>
+                      <input type="text" name="override_reason" class="w-full rounded-md border-gray-300 text-xs py-1"
+                             placeholder="e.g. buyer CRM was down, confirmed by phone">
+                    </div>
+                    <button type="submit" class="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 transition">
+                      Set status
+                    </button>
+                  </form>
+                </td>
+              </tr>
               {% if lead.latest_injection %}
                 <tr id="console-inj-{{ lead.pk }}" class="hidden bg-gray-50 border-b border-gray-100">
                   <td></td>
-                  <td colspan="8" class="py-3 pr-4">
+                  <td colspan="9" class="py-3 pr-4">
                     <div class="text-xs space-y-1">
                       <div>
                         <span class="text-gray-500">Last attempt — buyer:</span> {{ lead.latest_injection.buyer.name }}

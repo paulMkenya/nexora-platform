@@ -4,6 +4,11 @@ from .views.general_views import AffiliateLoginView, affiliate_logout, dashboard
 from .views.registration_views import register, verify_email
 from .views.report_views import daily_report_view, offer_report_view, goal_report_view
 from .views.leads_views import my_leads, inject_my_leads
+from .views.api_docs_views import (
+    api_docs, api_docs_pdf, api_docs_text, api_keys,
+    api_key_create, api_key_regenerate, api_key_revoke,
+)
+from .views.postbacks_views import postbacks, postback_create, postback_update, postback_toggle_active
 from .views.auth_views import (
     BrandPasswordResetView,
     BrandPasswordResetDoneView,
@@ -38,6 +43,19 @@ urlpatterns = [
     # Leads
     path('leads/', my_leads, name='my_leads'),
     path('leads/inject/', inject_my_leads, name='inject_my_leads'),
+    # API & Docs (Affiliate Inbound API spec Phase 5)
+    path('api-docs/', api_docs, name='api_docs'),
+    path('api-docs/pdf/', api_docs_pdf, name='api_docs_pdf'),
+    path('api-docs/text/', api_docs_text, name='api_docs_text'),
+    path('api-docs/keys/', api_keys, name='api_keys'),
+    path('api-docs/keys/create/', api_key_create, name='api_key_create'),
+    path('api-docs/keys/<int:pk>/regenerate/', api_key_regenerate, name='api_key_regenerate'),
+    path('api-docs/keys/<int:pk>/revoke/', api_key_revoke, name='api_key_revoke'),
+    # Postbacks (Affiliate Inbound API spec Phase 6)
+    path('postbacks/', postbacks, name='postbacks'),
+    path('postbacks/create/', postback_create, name='postback_create'),
+    path('postbacks/<int:pk>/update/', postback_update, name='postback_update'),
+    path('postbacks/<int:pk>/toggle-active/', postback_toggle_active, name='postback_toggle_active'),
     # Payouts
     path('payouts/', payouts_home, name='payouts'),
     path('payouts/methods/add/', add_payout_method, name='add_payout_method'),

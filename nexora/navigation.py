@@ -67,6 +67,10 @@ def _admin_groups(*, is_platform_owner: bool) -> Tuple[NavGroup, ...]:
             NavItem('Routing Rules', 'leadgen_console:routing_rules', icon='route', match_extra=(
                 'leadgen_console:routing_rule_add', 'leadgen_console:routing_rule_edit',
             )),
+            NavItem('Affiliate Integrations', 'leadgen_console:affiliate_offer_links', icon='affiliate_link',
+                    match_extra=(
+                        'leadgen_console:affiliate_offer_link_go_live', 'leadgen_console:affiliate_offer_link_revert',
+                    )),
         )),
         NavGroup('Campaigns', (
             NavItem('Offers', 'offers_admin:list', icon='offers', match_extra=(
@@ -114,11 +118,13 @@ _AFFILIATE_GROUPS = (
         NavItem('Dashboard', 'affiliate_ui:dashboard', icon='dashboard'),
     )),
     NavGroup('Manage', (
+        NavItem('API & Docs', 'affiliate_ui:api_docs', icon='api_docs',
+                match_extra=('affiliate_ui:api_docs_pdf', 'affiliate_ui:api_docs_text', 'affiliate_ui:api_keys')),
         NavItem('Offers', 'affiliate_ui:offer_list', icon='offers',
                 match_extra=('affiliate_ui:offer_detail',)),
         NavItem('My Leads', 'affiliate_ui:my_leads', icon='leads'),
         NavItem('Payouts', 'affiliate_ui:payouts', icon='payouts'),
-        NavItem('Postbacks', icon='postbacks'),  # SOON
+        NavItem('Postbacks', 'affiliate_ui:postbacks', icon='postbacks'),
     )),
     NavGroup('Analyze', (
         NavItem('Daily Report', 'affiliate_ui:daily_report', icon='daily_report'),

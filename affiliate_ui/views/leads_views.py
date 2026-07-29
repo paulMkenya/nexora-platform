@@ -14,6 +14,7 @@ from affiliate_ui.gates import require_approved_affiliate
 from impersonation.decorators import block_when_impersonating
 from leadgen.models import Lead, LeadBuyer, LeadInjection
 from leadgen.services import attach_latest_injections, inject_leads_to_buyer, summarize_injection_results
+from leadgen.status_sync import attach_affiliate_phase
 
 
 def _available_buyers(request):
@@ -26,6 +27,7 @@ def _available_buyers(request):
 def my_leads(request):
     leads = list(Lead.objects.filter(affiliate=request.user).order_by('-created_at')[:200])
     attach_latest_injections(leads)
+    attach_affiliate_phase(leads)
     return render(request, 'affiliate_ui/leads.html', {
         'leads': leads,
         'buyers': _available_buyers(request),

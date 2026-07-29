@@ -82,6 +82,7 @@ celerybeat.pid
 # Environments
 .env
 .env.prod
+.env.test-ci
 .venv
 env/
 venv/
@@ -124,3 +125,6 @@ data/
 .env.prod.bak.*
 *.dump
 data/
+
+# Collected static assets (build artifact, not source)
+staticfiles/

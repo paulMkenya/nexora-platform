@@ -57,6 +57,8 @@
                 <th>Channel</th>
                 <th>Status</th>
                 <th>Lead Deposit Status</th>
+                <th>Your Status</th>
+                <th>Phase</th>
                 <th>Submitted</th>
               </tr>
             </thead>
@@ -90,11 +92,27 @@
                     <span class="text-muted">—</span>
                   {% endif %}
                 </td>
+                <td>
+                  {% if lead.canonical_status %}
+                    <span class="badge bg-primary-subtle text-primary-emphasis">{{ lead.get_canonical_status_display }}</span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if lead.affiliate_phase == 'live' %}
+                    <span class="badge bg-success" title="The buyer's own reported status flows to you verbatim.">Live</span>
+                  {% elif lead.affiliate_phase == 'testing' %}
+                    <span class="badge bg-warning text-dark" title="Nexora sets your status manually while confirming your integration.">Testing</span>
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
                 <td class="small text-muted">{{ lead.created_at|date:"Y-m-d H:i" }}</td>
               </tr>
               {% if lead.latest_injection %}
               <tr class="collapse" id="aff-inj-{{ lead.pk }}">
-                <td colspan="9" class="bg-light small">
+                <td colspan="11" class="bg-light small">
                   <div>
                     <span class="text-muted">Buyer:</span> {{ lead.latest_injection.buyer.name }}
                     &nbsp;•&nbsp; <span class="text-muted">Attempts:</span> {{ lead.latest_injection.attempts }}

@@ -20,11 +20,13 @@ from django.views.decorators.http import require_POST
 
 from brands.scoping import scope_brand, sees_all_brands
 
+from . import canonical_status
 from .connectors import MAPPABLE_LEAD_FIELDS, LeadBuyerError, get_connector
 from .forms import LeadBuyerForm, RoutingRuleForm
-from .models import BoxType, Lead, LeadBuyer, RoutingRule
+from .models import AffiliateOfferLink, BoxType, Lead, LeadBuyer, LeadStatusEvent, RoutingRule
 from .routing import attach_computed_chains
 from .services import attach_latest_injections
+from .status_sync import StatusAuthorityError, apply_status_change, attach_affiliate_phase, go_live, revert_to_testing
 
 PAGE_SIZE = 50
 
@@ -80,6 +82,7 @@ def leads_console(request):
 
     attach_latest_injections(leads)
     attach_computed_chains(leads)
+    attach_affiliate_phase(leads)
 
     buyers, _, _ = _scoped_buyers(request, active_only=True)
 
@@ -93,10 +96,90 @@ def leads_console(request):
         'selected_affiliate_id': selected_affiliate_id,
         'selected_status': selected_status,
         'status_choices': Lead.STATUS_CHOICES,
+        'canonical_status_choices': canonical_status.CHOICES,
         'show_all_brands': show_all_brands,
         'brand': brand,
         'querystring': request.GET.urlencode(),
     })
+
+
+@staff_member_required
+@require_POST
+def lead_status_flip(request, pk):
+    """Operator mirror control (Affiliate Inbound API spec §7's "manually
+    flip status in testing"): apply_status_change with source=operator.
+    Works from the Leads console's per-lead panel — see leads.html. An
+    override_reason is required (and only meaningful) once the lead's
+    (affiliate, offer) pair is LIVE — see leadgen.status_sync's own
+    TESTING/LIVE rule; this view just surfaces StatusAuthorityError as a
+    normal message instead of a 500 when the operator forgets one."""
+    leads_qs, _, _ = _scoped_leads(request)
+    lead = get_object_or_404(leads_qs, pk=pk)
+
+    to_status = request.POST.get('to_status')
+    if to_status not in canonical_status.VALUES:
+        messages.error(request, 'Select a valid status.')
+        return redirect(_leads_redirect_url(request))
+
+    override_reason = (request.POST.get('override_reason') or '').strip()
+    try:
+        apply_status_change(
+            lead, to_status, source=LeadStatusEvent.SOURCE_OPERATOR,
+            actor=request.user, override_reason=override_reason,
+        )
+    except StatusAuthorityError as exc:
+        messages.error(request, str(exc))
+        return redirect(_leads_redirect_url(request))
+
+    messages.success(request, f'Lead #{lead.pk} status set to {to_status}.')
+    return redirect(_leads_redirect_url(request))
+
+
+def _scoped_affiliate_offer_links(request):
+    show_all_brands = sees_all_brands(request.user)
+    brand = scope_brand(request)
+    qs = AffiliateOfferLink.objects.select_related('affiliate', 'offer', 'phase_changed_by')
+    if not show_all_brands:
+        qs = qs.filter(offer__brand=brand)
+    return qs.order_by('-updated_at'), brand, show_all_brands
+
+
+@staff_member_required
+def affiliate_offer_links_list(request):
+    """Operator mirror control (spec §7): every (affiliate, offer) pair's
+    testing/live phase, with a Go live / Revert to testing action.
+    Postback delivery history is deliberately NOT rebuilt here — Django
+    admin's existing PostbackDeliveryAdmin (leadgen/admin.py) already lists/
+    filters/searches it well; this page links out to that rather than
+    duplicating it."""
+    links, brand, show_all_brands = _scoped_affiliate_offer_links(request)
+    return render(request, 'leadgen/console/affiliate_offer_links.html', {
+        'shell_role': 'admin',
+        'page_title': 'Affiliate Integrations',
+        'links': links,
+        'show_all_brands': show_all_brands,
+        'brand': brand,
+    })
+
+
+@staff_member_required
+@require_POST
+def affiliate_offer_link_go_live(request, pk):
+    links, _, _ = _scoped_affiliate_offer_links(request)
+    link = get_object_or_404(links, pk=pk)
+    go_live(link, actor=request.user)
+    messages.success(request, f'{link.affiliate} × {link.offer} is now LIVE.')
+    return redirect('leadgen_console:affiliate_offer_links')
+
+
+@staff_member_required
+@require_POST
+def affiliate_offer_link_revert(request, pk):
+    links, _, _ = _scoped_affiliate_offer_links(request)
+    link = get_object_or_404(links, pk=pk)
+    revert_to_testing(link, actor=request.user)
+    messages.success(request, f'{link.affiliate} × {link.offer} reverted to TESTING.')
+    return redirect('leadgen_console:affiliate_offer_links')
 
 
 @staff_member_required

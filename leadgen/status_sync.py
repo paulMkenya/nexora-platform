@@ -119,3 +119,32 @@ def revert_to_testing(link, *, actor):
     link.phase_changed_by = actor
     link.save(update_fields=['phase', 'phase_changed_at', 'phase_changed_by', 'updated_at'])
     return link
+
+
+def attach_affiliate_phase(leads):
+    """Set `.affiliate_phase` on each Lead in `leads` — one extra query
+    instead of N, same bulk-attach shape as services.attach_latest_injections
+    (My Leads / operator console both list many leads at once). Read-only:
+    unlike resolve_affiliate_offer_link, this never get_or_create's a row —
+    a pair that's never had a real status change attempted yet is still
+    correctly implied TESTING (AffiliateOfferLink's own "never born live"
+    default), it just doesn't exist as a row until something writes to it.
+    '' for a lead with no affiliate/offer (nothing to phase)."""
+    pairs = {(lead.affiliate_id, lead.offer_id) for lead in leads if lead.affiliate_id and lead.offer_id}
+    if not pairs:
+        for lead in leads:
+            lead.affiliate_phase = ''
+        return
+
+    affiliate_ids = {p[0] for p in pairs}
+    offer_ids = {p[1] for p in pairs}
+    phase_by_pair = {
+        (link.affiliate_id, link.offer_id): link.phase
+        for link in AffiliateOfferLink.objects.filter(affiliate_id__in=affiliate_ids, offer_id__in=offer_ids)
+    }
+    for lead in leads:
+        if lead.affiliate_id and lead.offer_id:
+            lead.affiliate_phase = phase_by_pair.get(
+                (lead.affiliate_id, lead.offer_id), AffiliateOfferLink.PHASE_TESTING)
+        else:
+            lead.affiliate_phase = ''
