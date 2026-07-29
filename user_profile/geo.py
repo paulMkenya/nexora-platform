@@ -4,6 +4,8 @@ The single source of country data is the ``countries_plus`` app (252 countries
 already loaded). We standardise on the ISO-3166-1 alpha-2 ``iso`` code as the
 stored value everywhere.
 """
+from django import forms
+
 from countries_plus.models import Country
 
 
@@ -48,3 +50,26 @@ def country_display(code):
     flag = iso_to_flag(code)
     name = country_name(code)
     return f'{flag} {name}'.strip()
+
+
+class CountryListField(forms.MultipleChoiceField):
+    """A multi-select country field for a CharField column that stores its
+    value as a comma-separated ISO-alpha-2 string (e.g.
+    smartlinks.RoutingRule.countries — "US,GB") rather than a real M2M
+    relation. Renders a <select multiple> sourced from country_choices();
+    converts to/from the CSV string on the ModelForm's behalf so the field
+    can be dropped straight onto a CharField with no other model changes."""
+
+    def __init__(self, *, required=False, **kwargs):
+        kwargs.setdefault('choices', country_choices(include_blank=False))
+        kwargs.setdefault('widget', forms.SelectMultiple(attrs={'size': 8}))
+        super().__init__(required=required, **kwargs)
+
+    def prepare_value(self, value):
+        if isinstance(value, str):
+            value = [v for v in value.split(',') if v]
+        return super().prepare_value(value)
+
+    def clean(self, value):
+        codes = super().clean(value)
+        return ','.join(codes)

@@ -21,6 +21,7 @@ from django.conf import settings
 from django.db import models
 
 from nexora.crypto import decrypt_secret, encrypt_secret
+from user_profile.geo import country_choices
 
 
 class BoxType(models.Model):
@@ -390,7 +391,11 @@ class RoutingRule(models.Model):
     offer = models.ForeignKey(
         'offer.Offer', on_delete=models.SET_NULL, null=True, blank=True, related_name='routing_rules',
     )
-    country_iso2 = models.CharField(max_length=2, blank=True, default='')
+    # Dropdown sourced from countries_plus (see user_profile/geo.py) —
+    # country_choices is a plain function reference, not called here, so
+    # Django re-evaluates it on every render instead of baking a stale list
+    # into migration state.
+    country_iso2 = models.CharField(max_length=2, blank=True, default='', choices=country_choices)
     affiliate = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='routing_rules',

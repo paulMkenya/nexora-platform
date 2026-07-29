@@ -4,6 +4,7 @@ from countries_plus.models import Country
 from tinymce import models as tinymce_models
 from brands.archival import Archivable
 from brands.managers import BrandScopedManager
+from user_profile.geo import country_choices
 
 
 ACTIVE_STATUS = 'Active'
@@ -252,7 +253,10 @@ class Advertiser(Archivable):
     messenger = models.CharField(max_length=64, default='')
     site = models.CharField(max_length=64, default='')
     # ISO-3166-1 alpha-2 country code (sourced from countries_plus). Blank = unset.
-    country = models.CharField(max_length=2, default='', blank=True)
+    # choices=country_choices (a function reference, evaluated per-render, not
+    # baked into migration state) gives Django admin's default form a dropdown —
+    # advertiser_ui's own self-service settings form already has one independently.
+    country = models.CharField(max_length=2, default='', blank=True, choices=country_choices)
     comment = models.TextField(default='', blank=True)
     # Self-registration / approval gating (mirrors the affiliate model on
     # user_profile.Profile). New self-registered advertisers start PENDING and

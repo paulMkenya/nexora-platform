@@ -2,6 +2,7 @@
 admin — the guide's Phase 1 deliverable is 'the engine + admin to create
 rules', not just the model/resolver."""
 import pytest
+from countries_plus.models import Country
 from django.contrib.auth import get_user_model
 from django.test import Client
 
@@ -63,3 +64,18 @@ class TestRoutingRuleAdmin:
         assert rule.is_active is False  # the kill-switch posture — never on by default
         assert rule.brand_id == brand.pk
         assert rule.buyer_id == buyer.pk
+
+    def test_country_iso2_renders_as_a_dropdown_with_real_countries(self, superuser):
+        """country_iso2 gets its choices from user_profile.geo.country_choices
+        (sourced from countries_plus) — a plain function reference on the
+        model field, so both admin and the console form render a <select>
+        with zero form/template changes. countries_plus isn't seeded in a
+        fresh test DB (see brands/tests/test_advertiser_onboarding.py), so
+        seed one row here to prove real data flows through end to end."""
+        Country.objects.create(iso='US', name='United States', iso3='USA', iso_numeric=840)
+        client = Client()
+        client.force_login(superuser)
+        r = client.get('/admin/leadgen/routingrule/add/')
+        assert r.status_code == 200
+        assert b'<select name="country_iso2"' in r.content
+        assert b'United States (US)' in r.content
