@@ -171,7 +171,8 @@ class TestSyncBuyerStatusesTask:
 
     def test_one_buyer_failing_does_not_block_others(self, buyer):
         other_buyer = LeadBuyer.objects.create(
-            name='Other Buyer', slug='sync-other-buyer', is_active=True, base_url='https://other.test')
+            name='Other Buyer', slug='sync-other-buyer', is_active=True,
+            base_url='https://other.test', box_type=buyer.box_type)
         lead_a = _lead(email='buyera@test.com')
         _delivered_injection(lead_a, buyer, 'ext-a')
         lead_b = _lead(email='buyerb@test.com')

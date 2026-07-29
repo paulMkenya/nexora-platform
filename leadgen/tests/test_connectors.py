@@ -67,9 +67,9 @@ class TestRequestAuth:
         )
 
     def test_api_key_query_injects_param(self, buyer):
-        buyer.auth_type = buyer.AUTH_API_KEY_QUERY
-        buyer.auth_param_name = 'apiKey'
-        buyer.save(update_fields=['auth_type', 'auth_param_name'])
+        buyer.box_type.auth_type = buyer.box_type.AUTH_API_KEY_QUERY
+        buyer.box_type.auth_param_name = 'apiKey'
+        buyer.box_type.save(update_fields=['auth_type', 'auth_param_name'])
         connector = LeadBuyerConnector(buyer)
 
         mock_resp = MagicMock(ok=True, content=b'{}', json=lambda: {})
@@ -81,9 +81,9 @@ class TestRequestAuth:
         assert 'Authorization' not in kwargs['headers']
 
     def test_api_key_header_injects_header(self, buyer):
-        buyer.auth_type = buyer.AUTH_API_KEY_HEADER
-        buyer.auth_param_name = 'X-Api-Key'
-        buyer.save(update_fields=['auth_type', 'auth_param_name'])
+        buyer.box_type.auth_type = buyer.box_type.AUTH_API_KEY_HEADER
+        buyer.box_type.auth_param_name = 'X-Api-Key'
+        buyer.box_type.save(update_fields=['auth_type', 'auth_param_name'])
         connector = LeadBuyerConnector(buyer)
 
         mock_resp = MagicMock(ok=True, content=b'{}', json=lambda: {})
@@ -94,8 +94,8 @@ class TestRequestAuth:
         assert kwargs['headers']['X-Api-Key'] == 'raw-test-secret'
 
     def test_bearer_injects_authorization_header(self, buyer):
-        buyer.auth_type = buyer.AUTH_BEARER
-        buyer.save(update_fields=['auth_type'])
+        buyer.box_type.auth_type = buyer.box_type.AUTH_BEARER
+        buyer.box_type.save(update_fields=['auth_type'])
         connector = LeadBuyerConnector(buyer)
 
         mock_resp = MagicMock(ok=True, content=b'{}', json=lambda: {})

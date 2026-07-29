@@ -196,12 +196,13 @@ class TestChainManagedInjection:
     transient-retry-same-buyer, chain-exhausted), plus proof that ordinary
     (chain_managed=False) injections are completely unaffected."""
 
-    def _second_buyer(self):
+    def _second_buyer(self, buyer):
         return LeadBuyer.objects.create(
-            name='Second', slug='chain-second-buyer', is_active=True, base_url='https://second.test')
+            name='Second', slug='chain-second-buyer', is_active=True,
+            base_url='https://second.test', box_type=buyer.box_type)
 
     def test_accept_first_buyer_never_touches_second(self, buyer):
-        second = self._second_buyer()
+        second = self._second_buyer(buyer)
         lead = _lead()
         injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=True)
         with patch('leadgen.connectors.requests.request', return_value=_delivered_resp()) as mock_req:
@@ -224,7 +225,7 @@ class TestChainManagedInjection:
         (that's exactly what test_chain_exhausted_after_all_buyers_
         terminally_reject below verifies, by driving B's task explicitly)."""
         from leadgen.models import RoutingRule
-        second = self._second_buyer()
+        second = self._second_buyer(buyer)
         lead = _lead(brand=brand)
         RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
         RoutingRule.objects.create(brand=brand, buyer=second, priority=2, is_active=True)
@@ -243,7 +244,7 @@ class TestChainManagedInjection:
 
     def test_terminal_reject_fails_over_to_next_buyer(self, brand, buyer):
         from leadgen.models import RoutingRule
-        second = self._second_buyer()
+        second = self._second_buyer(buyer)
         lead = _lead(brand=brand)
         RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
         RoutingRule.objects.create(brand=brand, buyer=second, priority=2, is_active=True)
@@ -260,7 +261,7 @@ class TestChainManagedInjection:
         assert second_injection.chain_managed is True
 
     def test_transient_failure_does_not_touch_second_buyer(self, brand, buyer):
-        second = self._second_buyer()
+        second = self._second_buyer(buyer)
         lead = _lead(brand=brand)
         from leadgen.models import RoutingRule
         RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
@@ -278,7 +279,7 @@ class TestChainManagedInjection:
         assert not LeadInjection.objects.filter(lead=lead, buyer=second).exists()  # B never touched
 
     def test_chain_exhausted_after_all_buyers_terminally_reject(self, brand, buyer):
-        second = self._second_buyer()
+        second = self._second_buyer(buyer)
         lead = _lead(brand=brand)
         from leadgen.models import RoutingRule
         RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)
@@ -302,7 +303,7 @@ class TestChainManagedInjection:
         action, affiliate My Leads, dashboard, auto-inject, the management
         command) must never advance to a different buyer, even if
         RoutingRules exist that would otherwise resolve a chain."""
-        second = self._second_buyer()
+        second = self._second_buyer(buyer)
         lead = _lead(brand=brand)
         from leadgen.models import RoutingRule
         RoutingRule.objects.create(brand=brand, buyer=buyer, priority=1, is_active=True)

@@ -6,7 +6,7 @@ from offer.models import Advertiser, Offer
 from public_api.models import APIKey
 from user_profile.models import Profile
 
-from leadgen.models import LeadBuyer
+from leadgen.models import BoxType, LeadBuyer
 
 User = get_user_model()
 
@@ -66,17 +66,30 @@ def offer(db, brand, advertiser):
 
 
 @pytest.fixture
-def buyer(db, brand):
-    b = LeadBuyer.objects.create(
-        brand=None,
-        name='Test Buyer', slug='test-buyer',
-        is_active=True, auto_inject=False,
-        base_url='https://buyer.test/api',
-        auth_type=LeadBuyer.AUTH_API_KEY_QUERY,
+def box_type(db):
+    """Phase 4's Box Registry template — matches the pre-Phase-4 `buyer`
+    fixture's own values exactly, so every existing test's expectations
+    (URLs, batch behavior, rate-limit shape) stay unchanged."""
+    return BoxType.objects.create(
+        name='Test Box', slug='test-box',
+        connector_class='leadgen.connectors.LeadBuyerConnector',
+        auth_type=BoxType.AUTH_API_KEY_QUERY,
         auth_param_name='apiKey',
         single_endpoint_path='/leads',
         batch_endpoint_path='/leads/batch',
+        fetch_endpoint_path='/leads',
         batch_max_size=50,
+        rate_limit_burst=10, rate_limit_refill_tokens=1, rate_limit_refill_seconds=1,
+    )
+
+
+@pytest.fixture
+def buyer(db, brand, box_type):
+    b = LeadBuyer.objects.create(
+        brand=None, box_type=box_type,
+        name='Test Buyer', slug='test-buyer',
+        is_active=True, auto_inject=False,
+        base_url='https://buyer.test/api',
         field_mapping={'firstname': 'FirstName', 'lastname': 'LastName',
                        'email': 'Email', 'phone': 'PhoneNumber'},
     )

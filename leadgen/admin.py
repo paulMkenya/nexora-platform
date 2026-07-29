@@ -3,7 +3,20 @@ from django.contrib import admin, messages
 from django.contrib.admin import helpers
 from django.template.response import TemplateResponse
 
-from .models import Lead, LeadBuyer, LeadInjection, RoutingRule
+from .models import BoxType, Lead, LeadBuyer, LeadInjection, RoutingRule
+
+
+@admin.register(BoxType)
+class BoxTypeAdmin(admin.ModelAdmin):
+    """Phase 4 of the lead-distribution build (see leadgen/README.md's Box
+    Registry section): the reusable, platform-level template every
+    same-platform LeadBuyer instance shares. Edit here to change something
+    for EVERY buyer on this box at once (e.g. the platform changed an
+    endpoint path) — per-brand specifics belong on the LeadBuyer row
+    instead, never here."""
+    list_display = ('name', 'version', 'slug', 'auth_type', 'batch_max_size', 'updated_at')
+    search_fields = ('name', 'slug', 'description')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 class LeadBuyerAdminForm(forms.ModelForm):
@@ -31,10 +44,10 @@ class LeadBuyerAdminForm(forms.ModelForm):
 @admin.register(LeadBuyer)
 class LeadBuyerAdmin(admin.ModelAdmin):
     form = LeadBuyerAdminForm
-    list_display = ('name', 'brand', 'is_active', 'auto_inject', 'base_url', 'batch_max_size', 'updated_at')
-    list_filter = ('is_active', 'auto_inject', 'brand')
+    list_display = ('name', 'box_type', 'brand', 'is_active', 'auto_inject', 'base_url', 'updated_at')
+    list_filter = ('is_active', 'auto_inject', 'brand', 'box_type')
     search_fields = ('name', 'slug', 'base_url')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at') + LeadBuyer._LEGACY_FIELDS
 
 
 def inject_to_buyer(modeladmin, request, queryset):

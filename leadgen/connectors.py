@@ -1,11 +1,20 @@
 """Generic, config-driven connector for outbound lead delivery.
 
-Handles the common REST + query-string-or-header API key + JSON single/batch
-leads shape used by most lead-buyer platforms — op-brandy.com, the first
-configured buyer, is exactly this shape. A NEW buyer that follows the same
-shape needs ONLY a new LeadBuyer config row, no code. A buyer with a
-meaningfully different API (a different auth scheme entirely, XML, SOAP)
-should subclass this and override _request()/build_payload().
+Phase 4 of the lead-distribution build (the Box Registry — see
+leadgen/README.md): every platform-level setting this connector reads —
+endpoint paths, auth scheme, rate-limit policy, the canonical field set —
+now comes from the buyer's BoxType (leadgen.models.BoxType), not the
+LeadBuyer row itself. A LeadBuyer is now the *instance*: which BoxType it
+speaks, its own base_url + encrypted API key, and field-name overrides on
+top of the BoxType's defaults (get_effective_field_mapping()). Handles the
+common REST + query-string-or-header API key + JSON single/batch leads
+shape used by most lead-buyer platforms — op-brandy.com, BoxType #1, is
+exactly this shape. Onboarding a new brand on a KNOWN box is a LeadBuyer
+row, no code. A genuinely different platform (a different auth scheme
+entirely, XML, SOAP) gets its own BoxType.connector_class (a dotted
+Python path, resolved via get_connector() below — declarative selection,
+never eval'd code) pointing at a subclass overriding _request()/
+build_payload()/parse_injection_result().
 
 Security posture (deliberate, mirrors payouts/providers/nowpayments/base.py):
   * Every call is timeout-bounded so a hung buyer endpoint can never wedge a
@@ -52,18 +61,35 @@ def _sanitize_body(resp) -> str:
     return text[:300] if text else '<empty response body>'
 
 
+def get_connector(buyer, *, timeout: int = DEFAULT_TIMEOUT):
+    """Instantiate the right connector class for `buyer`, per its
+    box_type.connector_class (a dotted Python path — declarative
+    selection via Django's own import_string, the same safe mechanism
+    behind AUTHENTICATION_BACKENDS/STORAGES/etc. — not eval'd code). Every
+    caller that used to do LeadBuyerConnector(buyer) directly should use
+    this instead, so a buyer on a non-default BoxType actually gets its
+    own connector class."""
+    from django.utils.module_loading import import_string
+
+    connector_cls = import_string(buyer.box_type.connector_class)
+    return connector_cls(buyer, timeout=timeout)
+
+
 class LeadBuyerConnector:
-    """Connector for one configured LeadBuyer, fully config-driven."""
+    """Connector for one configured LeadBuyer, fully config-driven — reads
+    platform-level behavior from buyer.box_type, instance-level identity
+    (base_url, API key) from buyer itself."""
 
     def __init__(self, buyer, *, timeout: int = DEFAULT_TIMEOUT):
         self.buyer = buyer
+        self.box_type = buyer.box_type
         self.timeout = timeout
         self._bucket = TokenBucket.for_buyer(buyer)
 
     # --- payload mapping -----------------------------------------------------
 
     def _map_field(self, our_name: str) -> str:
-        return self.buyer.field_mapping.get(our_name, our_name)
+        return self.buyer.get_effective_field_mapping().get(our_name, our_name)
 
     def build_payload(self, lead) -> dict:
         """Map a leadgen.Lead onto the buyer's own field names. ``deposit``
@@ -98,12 +124,13 @@ class LeadBuyerConnector:
         headers = {'Content-Type': 'application/json'}
         params = dict(params or {})
         api_key = self.buyer.get_api_key()
+        box_type = self.box_type
 
-        if self.buyer.auth_type == self.buyer.AUTH_API_KEY_QUERY:
-            params[self.buyer.auth_param_name] = api_key
-        elif self.buyer.auth_type == self.buyer.AUTH_API_KEY_HEADER:
-            headers[self.buyer.auth_param_name] = api_key
-        elif self.buyer.auth_type == self.buyer.AUTH_BEARER:
+        if box_type.auth_type == box_type.AUTH_API_KEY_QUERY:
+            params[box_type.auth_param_name] = api_key
+        elif box_type.auth_type == box_type.AUTH_API_KEY_HEADER:
+            headers[box_type.auth_param_name] = api_key
+        elif box_type.auth_type == box_type.AUTH_BEARER:
             headers['Authorization'] = f'Bearer {api_key}'
 
         self._bucket.acquire()
@@ -130,7 +157,7 @@ class LeadBuyerConnector:
         Raises LeadBuyerError on transport/HTTP failure — the Celery task
         (tasks.py) translates that into a LeadInjection row."""
         payload = self.build_payload(lead)
-        return self._request('POST', self.buyer.single_endpoint_path, json=payload)
+        return self._request('POST', self.box_type.single_endpoint_path, json=payload)
 
     def inject_batch(self, leads) -> dict:
         """POST a batch. Returns the buyer's parsed response dict — the
@@ -139,10 +166,10 @@ class LeadBuyerConnector:
         if not self.buyer.supports_batch:
             raise LeadBuyerError(f'{self.buyer.name} does not support batch injection')
         payload = {'leads': [self.build_payload(lead) for lead in leads]}
-        return self._request('POST', self.buyer.batch_endpoint_path, json=payload)
+        return self._request('POST', self.box_type.batch_endpoint_path, json=payload)
 
     def fetch_leads(self, **filters) -> dict:
-        return self._request('GET', self.buyer.fetch_endpoint_path, params=filters)
+        return self._request('GET', self.box_type.fetch_endpoint_path, params=filters)
 
     # --- response parsing --------------------------------------------------------
 
@@ -151,7 +178,8 @@ class LeadBuyerConnector:
         response. Default assumes op-brandy's envelope — both its single and
         batch endpoints return {"addedLeads": [...], "failedToAddLeads": [...]}
         — which is common enough across this class of API to be the sane
-        default; a buyer with a different envelope overrides this one method.
+        default; a buyer on a BoxType with a different envelope gets its own
+        connector_class overriding this one method.
         """
         added = response.get('addedLeads') or []
         failed = response.get('failedToAddLeads') or []
@@ -185,11 +213,12 @@ class LeadBuyerConnector:
         """[{'external_id', 'buyer_status', 'deposit', 'updated_at',
         'country_iso2'}, ...] from a fetch_lead_statuses() response. Default
         assumes op-brandy's item shape (id / deposit / status.name /
-        status.updatedAtUtc / countryIso2) — override for a buyer with a
-        different GET /leads shape. ``country_iso2`` is a free byproduct of
-        this same call (the buyer derives it from the phone number on their
-        side) — a zero-cost backfill for Lead.country_iso2 alongside
-        IPSTACK-based geolocation at intake (see tasks.geolocate_lead)."""
+        status.updatedAtUtc / countryIso2) — a buyer on a BoxType with a
+        different GET /leads shape gets its own connector_class overriding
+        this method. ``country_iso2`` is a free byproduct of this same call
+        (the buyer derives it from the phone number on their side) — a
+        zero-cost backfill for Lead.country_iso2 alongside IPSTACK-based
+        geolocation at intake (see tasks.geolocate_lead)."""
         results = []
         for item in response.get('items') or []:
             status = item.get('status') or {}

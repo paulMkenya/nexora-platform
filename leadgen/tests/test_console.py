@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from brands.models import Brand
-from leadgen.models import Lead, LeadBuyer, LeadInjection, RoutingRule
+from leadgen.models import BoxType, Lead, LeadBuyer, LeadInjection, RoutingRule
 from user_profile.models import Profile
 
 User = get_user_model()
@@ -26,12 +26,20 @@ class ConsoleBrandScopingTest(TestCase):
     def setUp(self):
         self.brand_a = _brand('console-a')
         self.brand_b = _brand('console-b')
+        self.box_type = BoxType.objects.create(
+            name='Console Test Box', slug='console-test-box',
+            connector_class='leadgen.connectors.LeadBuyerConnector',
+            auth_type=BoxType.AUTH_API_KEY_QUERY, auth_param_name='apiKey',
+            single_endpoint_path='/leads', batch_endpoint_path='',
+            fetch_endpoint_path='/leads', batch_max_size=1,
+            rate_limit_burst=10, rate_limit_refill_tokens=1, rate_limit_refill_seconds=1,
+        )
         self.buyer_a = LeadBuyer.objects.create(
-            brand=self.brand_a, name='Buyer A', slug='console-buyer-a',
+            brand=self.brand_a, box_type=self.box_type, name='Buyer A', slug='console-buyer-a',
             is_active=True, base_url='https://buyer-a.test',
         )
         self.buyer_b = LeadBuyer.objects.create(
-            brand=self.brand_b, name='Buyer B', slug='console-buyer-b',
+            brand=self.brand_b, box_type=self.box_type, name='Buyer B', slug='console-buyer-b',
             is_active=True, base_url='https://buyer-b.test',
         )
         self.lead_a = Lead.objects.create(
@@ -129,6 +137,7 @@ class ConsoleBrandScopingTest(TestCase):
 
     def test_operator_sees_only_own_brand_and_platform_wide_buyers(self):
         platform_buyer = LeadBuyer.objects.create(
+            box_type=self.box_type,
             name='Platform Buyer', slug='console-platform-buyer', is_active=True, base_url='https://p.test')
         self.client.force_login(self._operator(self.brand_a))
         r = self.client.get('/admin/distribution/buyers/')
@@ -151,13 +160,10 @@ class ConsoleBrandScopingTest(TestCase):
     def test_create_buyer_via_console(self):
         self.client.force_login(self._operator(self.brand_a))
         r = self.client.post('/admin/distribution/buyers/add/', {
-            'brand': self.brand_a.pk, 'name': 'New Console Buyer', 'slug': 'new-console-buyer',
+            'brand': self.brand_a.pk, 'box_type': self.box_type.pk,
+            'name': 'New Console Buyer', 'slug': 'new-console-buyer',
             'is_active': 'on', 'auto_inject': '', 'base_url': 'https://new.test',
-            'auth_type': LeadBuyer.AUTH_API_KEY_QUERY, 'auth_param_name': 'apiKey',
-            'api_key': 'secret123', 'single_endpoint_path': '/leads', 'batch_endpoint_path': '',
-            'fetch_endpoint_path': '/leads', 'deposits_endpoint_path': '', 'batch_max_size': '1',
-            'rate_limit_burst': '10', 'rate_limit_refill_tokens': '1', 'rate_limit_refill_seconds': '1',
-            'field_mapping': '{}',
+            'api_key': 'secret123', 'field_mapping': '{}',
         })
         self.assertEqual(r.status_code, 302)
         buyer = LeadBuyer.objects.filter(slug='new-console-buyer').first()

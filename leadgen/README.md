@@ -69,23 +69,44 @@ reference example for every field in this doc.
 
 ## Adding buyer #2 (or #3, #4, ...) from the template
 
-If the new buyer's API looks like op-brandy's — REST, an API key in a
-header/query string/bearer token, JSON bodies, a single + optional batch
-upload endpoint, an `addedLeads`/`failedToAddLeads`-shaped response (or
-close enough) — **you do not need to write any Python.** Just create a
-`LeadBuyer` row, either in `/admin/leadgen/leadbuyer/add/` or via the shell:
+As of Phase 4 (the Box Registry — see below), platform-level API shape and
+brand-specific identity are two separate rows, so onboarding splits into two
+cases:
+
+**Case A — a brand on a platform someone's already onboarded** (e.g. a
+second brand also wants to sell into op-brandy.com). No new `BoxType`
+needed — just create a `LeadBuyer` instance pointing at the existing one:
 
 ```python
-from leadgen.models import LeadBuyer
+from leadgen.models import BoxType, LeadBuyer
 
+box_type = BoxType.objects.get(slug='op-brandy-v1')
 buyer = LeadBuyer.objects.create(
-    brand=None,                       # or a specific Brand for a brand-scoped buyer
-    name='New Buyer Inc',
-    slug='new-buyer',
+    brand=my_brand,                   # or None for a platform-wide buyer
+    box_type=box_type,
+    name='op-brandy.com (Brand X)',
+    slug='op-brandy-brand-x',
     is_active=True,
     auto_inject=False,                # leave OFF until you've verified a manual injection works
-    base_url='https://api.newbuyer.example',
-    auth_type=LeadBuyer.AUTH_API_KEY_QUERY,   # or AUTH_API_KEY_HEADER / AUTH_BEARER
+    base_url='https://api.op-brandy.com',
+    field_mapping={},                 # only set keys here to OVERRIDE box_type.default_field_mapping
+)
+buyer.set_api_key('the-real-secret-from-their-docs')  # encrypted at rest, never logged
+buyer.save(update_fields=['api_key_encrypted'])
+```
+
+**Case B — a genuinely new platform.** Create the `BoxType` once (its
+`connector_class` stays the default `leadgen.connectors.LeadBuyerConnector`
+unless the API shape needs actual code — see below), then create the
+`LeadBuyer` instance exactly as in Case A:
+
+```python
+from leadgen.models import BoxType, LeadBuyer
+
+box_type = BoxType.objects.create(
+    name='New Buyer Inc',
+    slug='new-buyer-inc-v1',
+    auth_type=BoxType.AUTH_API_KEY_QUERY,     # or AUTH_API_KEY_HEADER / AUTH_BEARER
     auth_param_name='apiKey',                 # the query param or header name they expect
     single_endpoint_path='/v1/leads',
     batch_endpoint_path='/v1/leads/batch',    # blank if they don't support batch
@@ -94,9 +115,12 @@ buyer = LeadBuyer.objects.create(
     rate_limit_burst=60,              # from THEIR documented rate-limit policy, not a guess
     rate_limit_refill_tokens=5,
     rate_limit_refill_seconds=2,
-    field_mapping={
+    default_field_mapping={
         # our field name -> their field name. Only fields present here are
         # sent; omit a field to fall back to sending it under our own name.
+        # Lives on the BoxType because it's identical for every brand on
+        # this platform — a LeadBuyer instance only needs field_mapping
+        # entries where ITS naming differs from the template.
         'firstname': 'FirstName',
         'lastname': 'LastName',
         'email': 'Email',
@@ -108,12 +132,11 @@ buyer = LeadBuyer.objects.create(
         # periodic tasks.sync_buyer_statuses (see "Injection" above).
     },
 )
-buyer.set_api_key('the-real-secret-from-their-docs')  # encrypted at rest, never logged
-buyer.save(update_fields=['api_key_encrypted'])
+# then create the LeadBuyer instance as in Case A, pointing box_type at this row
 ```
 
-Then:
-1. Run `python manage.py inject_pending_leads --buyer new-buyer --limit 1`
+Both cases finish the same way:
+1. Run `python manage.py inject_pending_leads --buyer <slug> --limit 1`
    against one real lead and check the `LeadInjection` row it created in
    `/admin/leadgen/leadinjection/` — `status`, `response_payload`, and
    `external_id` tell you immediately whether the field mapping and auth
@@ -128,24 +151,33 @@ is a genuinely different shape — a different envelope for
 success/duplicate/failure, XML/SOAP instead of JSON, signed-request auth,
 etc. Override `build_payload()` and/or `parse_injection_result()`; leave
 `_request()` (rate limiting, timeouts, auth injection, error sanitization)
-alone unless the transport itself differs.
+alone unless the transport itself differs. Point the new `BoxType`'s
+`connector_class` at your subclass's dotted path (e.g.
+`'leadgen.connectors.SomeWeirdBuyerConnector'`) — resolved via
+`get_connector()` at call time, see "Phase 4 — the Box Registry" below.
 
 ## The op-brandy.com config (reference example)
 
-Already seeded as the `op-brandy` `LeadBuyer` row (platform-wide,
-`auto_inject=False` — turn it on once you've smoke-tested a real
-injection). Its shape, for reference when wiring up a similar buyer:
+Already seeded as `BoxType` #1 (`slug='op-brandy-v1'`), with one `LeadBuyer`
+instance (`slug='op-brandy'`, platform-wide, `auto_inject=False` — turn it
+on once you've smoke-tested a real injection). Its shape, for reference
+when wiring up a similar buyer:
 
-| LeadBuyer field | Value |
+| BoxType field | Value |
 |---|---|
-| `base_url` | `https://api.op-brandy.com` |
 | `auth_type` | `AUTH_API_KEY_QUERY` |
 | `auth_param_name` | `apiKey` |
 | `single_endpoint_path` | `/public/v1/leads` |
 | `batch_endpoint_path` | `/public/v1/leads/batch` |
 | `fetch_endpoint_path` | `/public/v1/leads` |
 | `rate_limit_burst` / `refill_tokens` / `refill_seconds` | `60` / `5` / `2` (their documented policy: 60 burst, 2.5 req/s sustained) |
-| `field_mapping` | `firstname→FirstName, lastname→Lastname, email→Email, phone→PhoneNumber, vertical→Affilate (sic), source_id→SourceId` |
+| `default_field_mapping` | `firstname→FirstName, lastname→Lastname, email→Email, phone→PhoneNumber, vertical→Affilate (sic), source_id→SourceId` |
+
+| LeadBuyer instance field | Value |
+|---|---|
+| `box_type` | the BoxType above |
+| `base_url` | `https://api.op-brandy.com` |
+| `field_mapping` | `{}` (no brand-specific overrides needed yet — uses the BoxType's mapping as-is) |
 
 Its response envelope (`{"addedLeads": [...], "failedToAddLeads": [...]}`,
 with `failureReason: "duplicate"` for dupes) is exactly what
@@ -238,3 +270,51 @@ per-lead/bulk **Route now**, which deliberately triggers `advance_chain`
 (async — results appear as the worker processes them, not inline). Django
 admin (`leadgen/admin.py`) stays available as the power-user fallback and
 test surface; nothing there was removed.
+
+**Phase 4 — the Box Registry** (`models.py::BoxType` / `connectors.py::get_connector`):
+splits what used to be a single `LeadBuyer` row into two levels —
+
+- **`BoxType`** — a reusable, platform-level template: everything about a
+  lead-buying platform's own API that's identical no matter which brand is
+  selling into it (auth scheme, endpoint paths, rate-limit policy,
+  `connector_class`, `default_field_mapping`).
+- **`LeadBuyer`** — now a *buyer instance*: which `BoxType` it speaks, plus
+  only what varies per brand — `base_url`, the encrypted API key, and a
+  `field_mapping` that's merged on top of the `BoxType`'s own
+  (`get_effective_field_mapping()`, instance overrides win). Onboarding
+  brand #2 (or #10) onto a platform already in the registry is a `LeadBuyer`
+  row, full stop — see "Adding buyer #2" above for both cases (existing
+  platform vs. a genuinely new one).
+
+Connector class selection is **declarative**, not eval'd code:
+`BoxType.connector_class` is a dotted Python path, resolved through
+Django's own `django.utils.module_loading.import_string` — the same
+mechanism behind `AUTHENTICATION_BACKENDS`/`STORAGES` — via
+`connectors.get_connector(buyer)`. Every call site that used to construct
+`LeadBuyerConnector(buyer)` directly now goes through `get_connector()`, so
+a buyer on a non-default `BoxType` actually gets its own connector class.
+
+**Migration was purely additive, no destructive schema change**: the old
+per-buyer fields (`auth_type`, `single_endpoint_path`, `batch_max_size`,
+the rate-limit fields, etc.) still exist as columns on `LeadBuyer` — they're
+just inert now, kept as `LeadBuyer._LEGACY_FIELDS` (the single list both
+`forms.py`, which excludes them from the console form entirely, and
+`admin.py`, which keeps them visible-but-readonly for audit/debugging, key
+off of). Nothing reads them anymore; a future cleanup pass can drop them
+once every buyer has been backfilled onto a `BoxType` and Paul is
+comfortable with the drop.
+
+op-brandy.com was backfilled as `BoxType` #1 (`slug='op-brandy-v1'`) from
+its live, already-working config — its `LeadBuyer` row's identity fields
+(`base_url`, the encrypted API key) were untouched; only its now-legacy
+platform-level fields moved to the new `BoxType` and its `field_mapping`
+was cleared to `{}` (the whole mapping now lives on the `BoxType`, with the
+instance free to override individual keys later if a second brand on this
+same box needs different field names). Verified after backfill:
+`get_effective_field_mapping()`, `supports_batch`, and `get_connector()`
+all resolve identically to their pre-Phase-4 behavior — a mocked-HTTP
+verification confirmed the connector still builds the exact same request
+(URL, auth param, field mapping) it did before the split; the only
+divergence found was the throwaway-verification-container's `SECRET_KEY`
+not matching the live container's — a pre-existing, unrelated gap (see
+"the API key itself is not in this doc" above), not a Phase 4 bug.

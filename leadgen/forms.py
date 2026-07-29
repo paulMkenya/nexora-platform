@@ -9,9 +9,15 @@ from .models import LeadBuyer, RoutingRule
 
 
 class LeadBuyerForm(forms.ModelForm):
-    """Mirrors leadgen.admin.LeadBuyerAdminForm exactly: the API key is
-    write-only (encrypted at rest, see LeadBuyer.set_api_key) and never
-    rendered back."""
+    """Mirrors leadgen.admin.LeadBuyerAdminForm's write-only API key field
+    exactly. Unlike the Django admin form, this one EXCLUDES the legacy
+    pre-Box-Registry fields (auth_type, endpoint paths, rate limits — see
+    models.py's "Legacy fields" comment) rather than showing them readonly:
+    the console is meant to be the clean, primary surface (build guide
+    3.3), and a field that does nothing when edited has no business being
+    in a form an operator is expected to fill out. `field_mapping` here is
+    this instance's OVERRIDES on top of box_type.default_field_mapping —
+    see LeadBuyer.get_effective_field_mapping()."""
     api_key = forms.CharField(
         required=False, widget=forms.PasswordInput(render_value=False),
         help_text='Leave blank to keep the currently stored key unchanged.',
@@ -19,9 +25,13 @@ class LeadBuyerForm(forms.ModelForm):
 
     class Meta:
         model = LeadBuyer
-        exclude = ['api_key_encrypted']
+        exclude = ['api_key_encrypted'] + list(LeadBuyer._LEGACY_FIELDS)
         widgets = {
-            'field_mapping': forms.Textarea(attrs={'rows': 6}),
+            'field_mapping': forms.Textarea(attrs={
+                'rows': 6,
+                'placeholder': 'Overrides on top of the box type\'s defaults, e.g. '
+                                '{"phone": "MobileNumber"} — leave {} if none.',
+            }),
         }
 
     def __init__(self, *args, restrict_to_brand=None, **kwargs):

@@ -8,10 +8,14 @@ Two intake channels feed the same Lead store:
      an Offer's own funnel (see public_views.py).
 
 Every Lead is then routed OUT to a configured LeadBuyer (see
-connectors.py) — the reusable "template" piece: a new buyer is a LeadBuyer
-config row, not new code, as long as it follows the common REST +
-query-string API key + JSON leads/batch shape (which op-brandy.com, the
-first configured buyer, does).
+connectors.py). Phase 4 of the lead-distribution build (the Box
+Registry — see leadgen/README.md) split what used to be one flat LeadBuyer
+config into two levels: BoxType is the reusable, platform-level template
+(the same for every brand on that platform — op-brandy.com is BoxType #1);
+LeadBuyer is the tenant instance — which BoxType it speaks, its own
+base_url + encrypted API key, and field-name overrides on top of the
+BoxType's defaults. Onboarding a new brand on a KNOWN box is a LeadBuyer
+row, no code.
 """
 from django.conf import settings
 from django.db import models
@@ -19,8 +23,17 @@ from django.db import models
 from nexora.crypto import decrypt_secret, encrypt_secret
 
 
-class LeadBuyer(models.Model):
-    """A configured outbound lead-buying partner."""
+class BoxType(models.Model):
+    """A reusable integration template — the parts of a lead-buying
+    platform's API that are IDENTICAL for every brand/tenant using it
+    (endpoint shape, auth scheme, rate-limit policy, the canonical field
+    set). A LeadBuyer (the brand-specific instance) points at exactly one
+    BoxType and supplies only what varies per brand: base_url, the
+    encrypted API key, and field-name overrides. See leadgen/README.md's
+    Box Registry section — "if onboarding brand #2 on the same platform
+    requires editing anything other than a LeadBuyer row, the BoxType
+    wasn't abstracted correctly" is the test for whether something belongs
+    here or on LeadBuyer."""
 
     AUTH_API_KEY_QUERY = 'api_key_query'
     AUTH_API_KEY_HEADER = 'api_key_header'
@@ -30,6 +43,101 @@ class LeadBuyer(models.Model):
         (AUTH_API_KEY_HEADER, 'API key in header'),
         (AUTH_BEARER, 'Bearer token'),
     ]
+
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=60, unique=True)
+    version = models.PositiveIntegerField(
+        default=1,
+        help_text='Bump when the platform changes its own API shape, so buyers on '
+                   'an older version of this box do not silently start behaving '
+                   'differently — a version bump is a signal to review them.',
+    )
+    description = models.TextField(blank=True, default='')
+
+    # Declarative connector selection — a dotted Python path, resolved via
+    # connectors.get_connector() using Django's own import_string (the same
+    # safe mechanism behind AUTHENTICATION_BACKENDS/STORAGES/etc.), never
+    # eval'd code. The generic LeadBuyerConnector handles the common REST +
+    # API-key + JSON leads/batch shape; only a genuinely different platform
+    # (a different auth scheme entirely, XML, SOAP, a different success/
+    # duplicate/failure envelope) needs its own connector_class pointing at
+    # a real Python subclass — see leadgen/README.md.
+    connector_class = models.CharField(max_length=200, default='leadgen.connectors.LeadBuyerConnector')
+
+    # --- endpoint shape (same for every buyer on this platform) ---
+    auth_type = models.CharField(max_length=20, choices=AUTH_CHOICES, default=AUTH_API_KEY_QUERY)
+    auth_param_name = models.CharField(max_length=60, default='apiKey')
+    single_endpoint_path = models.CharField(max_length=200, default='/leads')
+    batch_endpoint_path = models.CharField(max_length=200, blank=True, default='/leads/batch')
+    fetch_endpoint_path = models.CharField(max_length=200, blank=True, default='/leads')
+    deposits_endpoint_path = models.CharField(max_length=200, blank=True, default='')
+    batch_max_size = models.PositiveIntegerField(default=1, help_text='1 disables batching.')
+
+    # --- rate-limit policy (this platform's documented limits) ---
+    rate_limit_burst = models.PositiveIntegerField(default=10)
+    rate_limit_refill_tokens = models.PositiveIntegerField(default=1)
+    rate_limit_refill_seconds = models.PositiveIntegerField(default=1)
+
+    # --- canonical field set — the DEFAULT mapping every instance on this
+    # platform starts from; a LeadBuyer overrides individual entries via
+    # its own field_mapping (see LeadBuyer.get_effective_field_mapping) ---
+    default_field_mapping = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('name',)
+
+    def __str__(self):
+        return f'{self.name} (v{self.version})'
+
+
+class LeadBuyer(models.Model):
+    """A configured outbound lead-buying partner — a BuyerInstance in the
+    build guide's terms: which BoxType it speaks (box_type), plus only
+    what varies per brand (base_url, the encrypted API key, field-mapping
+    overrides, caps/priority/brand scope, its own auto_inject switch)."""
+
+    box_type = models.ForeignKey(
+        BoxType, on_delete=models.PROTECT, related_name='buyers', null=True, blank=False,
+        help_text='Which platform template this buyer speaks. Nullable at the DB '
+                   'level only so the Phase 4 migration stayed additive for the '
+                   'buyer row(s) that predate the Box Registry; always set this.',
+    )
+
+    # --- Legacy fields (pre-Box-Registry). Superseded by box_type's
+    # equivalents as of Phase 4 — the connector no longer reads these.
+    # Left in place rather than dropped (no destructive migration); fine to
+    # remove in a future pass once every buyer has a box_type. _LEGACY_FIELDS
+    # is the single source of truth both forms.py (excludes them entirely)
+    # and admin.py (keeps them readonly, for audit/debugging) key off of —
+    # add/remove a legacy field here only, never duplicate the list.
+    _LEGACY_FIELDS = (
+        'auth_type', 'auth_param_name', 'single_endpoint_path', 'batch_endpoint_path',
+        'fetch_endpoint_path', 'deposits_endpoint_path', 'batch_max_size',
+        'rate_limit_burst', 'rate_limit_refill_tokens', 'rate_limit_refill_seconds',
+    )
+
+    AUTH_API_KEY_QUERY = 'api_key_query'
+    AUTH_API_KEY_HEADER = 'api_key_header'
+    AUTH_BEARER = 'bearer'
+    AUTH_CHOICES = [
+        (AUTH_API_KEY_QUERY, 'API key in query string'),
+        (AUTH_API_KEY_HEADER, 'API key in header'),
+        (AUTH_BEARER, 'Bearer token'),
+    ]
+    auth_type = models.CharField(max_length=20, choices=AUTH_CHOICES, default=AUTH_API_KEY_QUERY)
+    auth_param_name = models.CharField(max_length=60, default='apiKey')
+    single_endpoint_path = models.CharField(max_length=200, default='/leads')
+    batch_endpoint_path = models.CharField(max_length=200, blank=True, default='/leads/batch')
+    fetch_endpoint_path = models.CharField(max_length=200, blank=True, default='/leads')
+    deposits_endpoint_path = models.CharField(max_length=200, blank=True, default='')
+    batch_max_size = models.PositiveIntegerField(default=1, help_text='1 disables batching.')
+    rate_limit_burst = models.PositiveIntegerField(default=10)
+    rate_limit_refill_tokens = models.PositiveIntegerField(default=1)
+    rate_limit_refill_seconds = models.PositiveIntegerField(default=1)
+    # --- end legacy fields ---
 
     brand = models.ForeignKey(
         'brands.Brand', on_delete=models.CASCADE, related_name='lead_buyers',
@@ -47,31 +155,12 @@ class LeadBuyer(models.Model):
     auto_inject = models.BooleanField(default=False)
 
     base_url = models.URLField(max_length=500)
-    auth_type = models.CharField(max_length=20, choices=AUTH_CHOICES, default=AUTH_API_KEY_QUERY)
-    auth_param_name = models.CharField(max_length=60, default='apiKey')
     api_key_encrypted = models.CharField(max_length=512, blank=True, default='')
 
-    single_endpoint_path = models.CharField(max_length=200, default='/leads')
-    batch_endpoint_path = models.CharField(max_length=200, blank=True, default='/leads/batch')
-    fetch_endpoint_path = models.CharField(max_length=200, blank=True, default='/leads')
-    # Currently unused — deposit status is pulled via fetch_lead_statuses()
-    # against fetch_endpoint_path instead (returns deposit + status for
-    # every lead, not just deposited ones), so a buyer-specific deposits-only
-    # endpoint stopped being necessary. Left in place (no destructive
-    # migration) rather than dropped; fine to remove in a future pass if it
-    # stays unused.
-    deposits_endpoint_path = models.CharField(max_length=200, blank=True, default='')
-    batch_max_size = models.PositiveIntegerField(default=1, help_text='1 disables batching.')
-
-    # Client-side token bucket — mirrors whatever the buyer's own documented
-    # policy is, so we never actually trigger their 429s in the first place.
-    rate_limit_burst = models.PositiveIntegerField(default=10)
-    rate_limit_refill_tokens = models.PositiveIntegerField(default=1)
-    rate_limit_refill_seconds = models.PositiveIntegerField(default=1)
-
-    # Our field name -> the buyer's field name, e.g. {"firstname": "FirstName",
-    # "lastname": "Lastname", "email": "Email", "phone": "PhoneNumber",
-    # "vertical": "Affilate", "deposit": "Deposit", "source_id": "SourceId"}.
+    # Our field name -> the buyer's field name — OVERRIDES on top of
+    # box_type.default_field_mapping (see get_effective_field_mapping). A
+    # brand with zero quirks vs. the platform's canonical field set can
+    # leave this empty entirely.
     field_mapping = models.JSONField(default=dict, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -89,9 +178,21 @@ class LeadBuyer(models.Model):
     def get_api_key(self):
         return decrypt_secret(self.api_key_encrypted)
 
+    def get_effective_field_mapping(self):
+        """box_type.default_field_mapping merged with this instance's own
+        field_mapping — instance overrides win. The connector uses this
+        (never the raw field_mapping) to map a Lead onto the buyer's field
+        names, so a brand's quirks layer cleanly on top of the platform
+        template without needing to repeat the whole mapping."""
+        if not self.box_type_id:
+            return dict(self.field_mapping)
+        return {**self.box_type.default_field_mapping, **self.field_mapping}
+
     @property
     def supports_batch(self):
-        return self.batch_max_size > 1 and bool(self.batch_endpoint_path)
+        if not self.box_type_id:
+            return False
+        return self.box_type.batch_max_size > 1 and bool(self.box_type.batch_endpoint_path)
 
 
 class Lead(models.Model):

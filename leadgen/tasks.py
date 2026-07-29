@@ -67,7 +67,7 @@ def maybe_auto_inject(lead):
 
 @_celery.task(bind=True, max_retries=3, ignore_result=True)
 def inject_lead_task(self, injection_id: int):
-    from .connectors import LeadBuyerConnector, LeadBuyerError
+    from .connectors import LeadBuyerError, get_connector
     from .models import Lead, LeadInjection
 
     try:
@@ -80,7 +80,7 @@ def inject_lead_task(self, injection_id: int):
 
     lead = injection.lead
     buyer = injection.buyer
-    connector = LeadBuyerConnector(buyer)
+    connector = get_connector(buyer)
 
     injection.attempts += 1
     attempt = injection.attempts
@@ -205,10 +205,10 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
     and denormalizes onto Lead.buyer_status; flips Lead.status to
     STATUS_DEPOSIT the moment the buyer reports deposit=True, same as a
     successful injection would. Returns the number of leads updated."""
-    from .connectors import LeadBuyerConnector, LeadBuyerError
+    from .connectors import LeadBuyerError, get_connector
     from .models import Lead, LeadInjection
 
-    connector = LeadBuyerConnector(buyer)
+    connector = get_connector(buyer)
     injections = list(
         LeadInjection.objects.filter(buyer=buyer, status=LeadInjection.STATUS_DELIVERED)
         .exclude(external_id='')

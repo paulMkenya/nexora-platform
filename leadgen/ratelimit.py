@@ -1,9 +1,11 @@
 """Client-side token bucket rate limiter.
 
-Mirrors whatever rate a buyer documents (LeadBuyer.rate_limit_*) so we stay
-under their limit proactively rather than reacting to 429s after the fact —
-op-brandy's own policy (60 burst, 5 tokens/2s refill) is the first configured
-example.
+Mirrors whatever rate a buyer's platform documents (BoxType.rate_limit_* —
+see leadgen/README.md's Box Registry section; this is platform-level, the
+same for every LeadBuyer instance speaking that BoxType) so we stay under
+their limit proactively rather than reacting to 429s after the fact —
+op-brandy's own policy (60 burst, 5 tokens/2s refill) is the first
+configured example.
 
 State lives in Django's cache (Redis in prod — see CACHES in settings), so
 it's shared across Celery worker processes rather than per-process. This
@@ -65,9 +67,15 @@ class TokenBucket:
 
     @classmethod
     def for_buyer(cls, buyer) -> 'TokenBucket':
+        """Bucket is keyed per LeadBuyer INSTANCE (buyer.pk), not per
+        BoxType — two different brands on the same platform each get their
+        own budget, even though the rate/capacity NUMBERS both read from
+        the same BoxType (every instance on that platform is subject to
+        the same documented policy)."""
+        box_type = buyer.box_type
         return cls(
             key=f'buyer:{buyer.pk}',
-            capacity=buyer.rate_limit_burst,
-            refill_tokens=buyer.rate_limit_refill_tokens,
-            refill_seconds=buyer.rate_limit_refill_seconds,
+            capacity=box_type.rate_limit_burst,
+            refill_tokens=box_type.rate_limit_refill_tokens,
+            refill_seconds=box_type.rate_limit_refill_seconds,
         )
