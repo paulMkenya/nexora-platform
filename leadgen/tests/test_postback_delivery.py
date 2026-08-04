@@ -180,7 +180,10 @@ class TestApplyStatusChangeTriggersPostback:
 
         mock_resp = MagicMock(status_code=200)
         mock_resp.raise_for_status.return_value = None
-        with patch('leadgen.postback_delivery.requests.post', return_value=mock_resp) as mock_post:
+        # aff.test (RFC 2606 reserved) doesn't really resolve — Phase 7's
+        # SSRF guard is tested in isolation in test_security.py, not here.
+        with patch('leadgen.postback_delivery.validate_postback_url'), \
+             patch('leadgen.postback_delivery.requests.post', return_value=mock_resp) as mock_post:
             deliver_affiliate_postback(delivery.pk)
 
         delivery.refresh_from_db()
@@ -192,6 +195,15 @@ class TestApplyStatusChangeTriggersPostback:
 
 @pytest.mark.django_db
 class TestDeliverAffiliatePostbackTask:
+    @pytest.fixture(autouse=True)
+    def _skip_postback_url_ssrf_check(self):
+        """These tests exercise signing/retry/payload logic against the
+        reserved aff.test domain (RFC 2606), which doesn't really resolve.
+        Phase 7's SSRF guard (leadgen.security.validate_postback_url) is
+        unit-tested in isolation in test_security.py, not here."""
+        with patch('leadgen.postback_delivery.validate_postback_url'):
+            yield
+
     def _delivery(self, affiliate_user, offer, **kwargs):
         config = AffiliatePostbackConfig.objects.create(affiliate=affiliate_user, url='https://aff.test/cb')
         lead = _lead(affiliate=affiliate_user, offer=offer)

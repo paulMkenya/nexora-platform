@@ -20,6 +20,7 @@ row, no code.
 import secrets
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from nexora.crypto import decrypt_secret, encrypt_secret
@@ -645,6 +646,14 @@ class AffiliatePostbackConfig(models.Model):
 
     def __str__(self):
         return f'{self.url} [{self.affiliate}]'
+
+    def clean(self):
+        from .security import UnsafePostbackURLError, validate_postback_url
+        if self.url:
+            try:
+                validate_postback_url(self.url)
+            except UnsafePostbackURLError as exc:
+                raise ValidationError({'url': str(exc)})
 
     def wants_status(self, status):
         return not self.subscribed_statuses or status in self.subscribed_statuses

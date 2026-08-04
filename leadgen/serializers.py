@@ -46,8 +46,22 @@ class AffiliateLeadSubmitSerializer(LeadSubmitSerializer):
     Lead columns — they ride in Lead.raw_payload and are echoed back by
     LeadOutSerializer from there, same as every other field already does."""
     offer_id = serializers.IntegerField()
-    country = serializers.CharField(max_length=2, required=False, allow_blank=True, default='')
-    ip = serializers.IPAddressField(required=False, allow_blank=True, default='')
+    country = serializers.CharField(
+        max_length=2, required=False, allow_blank=True, default='',
+        help_text=(
+            'ISO 3166-1 alpha-2 (e.g. US). If you know the consumer country, send it -- it wins '
+            'outright. If omitted, Nexora makes a best-effort geolocation guess from ip instead, '
+            'which is a weaker signal for an affiliate-submitted lead than what your own system '
+            'usually already knows.'
+        ),
+    )
+    ip = serializers.IPAddressField(
+        required=False, allow_blank=True, default='',
+        help_text=(
+            'The consumer real IP, if you have it -- used for the geolocation fallback above '
+            'when country is not sent. Not the IP of your own server.'
+        ),
+    )
     user_agent = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')
     sub1 = serializers.CharField(max_length=120, required=False, allow_blank=True, default='')
     sub2 = serializers.CharField(max_length=120, required=False, allow_blank=True, default='')
