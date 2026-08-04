@@ -11,6 +11,7 @@ import pytest
 from leadgen import canonical_status
 from leadgen.models import AffiliateOfferLink, AffiliatePostbackConfig, Lead, LeadStatusEvent, PostbackDelivery
 from leadgen.postback_delivery import _render_url, _sign, deliver_affiliate_postback, dispatch_postbacks_for_event
+from leadgen.security import PostbackURLResolutionError, UnsafePostbackURLError
 from leadgen.status_sync import apply_status_change, go_live
 
 
@@ -262,3 +263,61 @@ class TestDeliverAffiliatePostbackTask:
         sent_payload = json.loads(mock_post.call_args.kwargs['data'])
         assert sent_payload['status_seq'] == delivery.status_event.lead_seq
         assert sent_payload['status'] == canonical_status.FTD
+
+
+@pytest.mark.django_db
+class TestDeliveryTimeURLGuard:
+    """How the delivery task reacts to the Phase 7 guard. Deliberately not a
+    subclass of TestDeliverAffiliatePostbackTask — these tests need the real
+    guard in the call path, not that class's autouse patch of it.
+
+    The distinction under test: an unsafe destination is a verdict that can
+    only repeat, so it fails permanently, while a resolver that didn't answer
+    is a transient network condition and must retry — otherwise a DNS blip
+    silently drops an affiliate's postbacks."""
+
+    def _delivery(self, affiliate_user, offer, **kwargs):
+        config = AffiliatePostbackConfig.objects.create(affiliate=affiliate_user, url='https://aff.test/cb')
+        lead = _lead(affiliate=affiliate_user, offer=offer)
+        event = apply_status_change(lead, canonical_status.FTD, source=LeadStatusEvent.SOURCE_OPERATOR)
+        return PostbackDelivery.objects.create(
+            config=config, status_event=event, url=config.url, **kwargs)
+
+    def test_unsafe_destination_fails_permanently_without_requesting(self, affiliate_user, offer):
+        delivery = self._delivery(affiliate_user, offer)
+        with patch('leadgen.postback_delivery.validate_postback_url',
+                   side_effect=UnsafePostbackURLError('resolves to a private or internal address')), \
+             patch('leadgen.postback_delivery.requests.post') as mock_post:
+            deliver_affiliate_postback(delivery.pk)
+        delivery.refresh_from_db()
+        mock_post.assert_not_called()
+        assert delivery.status == PostbackDelivery.STATUS_FAILED
+        assert delivery.next_retry_at is None
+        assert 'private or internal' in delivery.last_error
+
+    def test_unresolvable_host_schedules_a_retry(self, affiliate_user, offer):
+        delivery = self._delivery(affiliate_user, offer)
+        with patch('leadgen.postback_delivery.validate_postback_url',
+                   side_effect=PostbackURLResolutionError('could not be resolved')), \
+             patch('leadgen.postback_delivery.requests.post') as mock_post:
+            try:
+                deliver_affiliate_postback(delivery.pk)
+            except Exception:
+                pass
+        delivery.refresh_from_db()
+        mock_post.assert_not_called()
+        assert delivery.status == PostbackDelivery.STATUS_PENDING
+        assert delivery.attempts == 1
+        assert delivery.next_retry_at is not None
+        assert 'could not be resolved' in delivery.last_error
+
+    def test_unresolvable_host_still_fails_after_max_retries(self, affiliate_user, offer):
+        delivery = self._delivery(affiliate_user, offer, attempts=2)
+        with patch('leadgen.postback_delivery.validate_postback_url',
+                   side_effect=PostbackURLResolutionError('could not be resolved')):
+            try:
+                deliver_affiliate_postback(delivery.pk)
+            except Exception:
+                pass
+        delivery.refresh_from_db()
+        assert delivery.status == PostbackDelivery.STATUS_FAILED

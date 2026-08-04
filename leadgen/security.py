@@ -25,6 +25,17 @@ class UnsafePostbackURLError(ValueError):
     pass
 
 
+class PostbackURLResolutionError(UnsafePostbackURLError):
+    """DNS gave no answer for the host, so we can't say whether the target is
+    safe. Distinct from its parent because the two mean different things to a
+    caller: a private-address verdict is about the destination and is
+    permanent, while a resolver that didn't answer is a network condition that
+    may well answer next time. Save-time callers catch the parent and reject
+    both alike (an affiliate saving a URL we can't resolve should be told so);
+    delivery retries this one instead of burning the delivery. See
+    leadgen.postback_delivery.deliver_affiliate_postback."""
+
+
 def _is_unsafe_ip(ip_str):
     ip = ipaddress.ip_address(ip_str)
     return (
@@ -45,7 +56,7 @@ def validate_postback_url(url):
     try:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror:
-        raise UnsafePostbackURLError('Postback URL host could not be resolved.')
+        raise PostbackURLResolutionError('Postback URL host could not be resolved.')
     for info in infos:
         ip_str = info[4][0]
         if _is_unsafe_ip(ip_str):

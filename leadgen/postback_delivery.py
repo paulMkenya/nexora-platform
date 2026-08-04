@@ -20,7 +20,11 @@ from django.utils import timezone
 
 from project._celery import _celery
 
-from .security import UnsafePostbackURLError, validate_postback_url
+from .security import (
+    PostbackURLResolutionError,
+    UnsafePostbackURLError,
+    validate_postback_url,
+)
 
 
 def _sign(secret: str, payload_bytes: bytes) -> str:
@@ -101,20 +105,27 @@ def deliver_affiliate_postback(self, delivery_id: int):
     delivery.attempts += 1
     attempt = delivery.attempts
 
-    # Re-validate right before the request, not just at save time -- DNS can
-    # be repointed between when an affiliate saves a postback URL and when a
-    # lead status later fires it (rebinding past a save-time-only check).
-    # Unsafe here is a permanent failure, never a retry: the destination
-    # itself is the problem, not a transient network blip.
     try:
-        validate_postback_url(delivery.url)
-    except UnsafePostbackURLError as exc:
-        delivery.status = PostbackDelivery.STATUS_FAILED
-        delivery.last_error = str(exc)
-        delivery.save(update_fields=['attempts', 'status', 'last_error'])
-        return
+        # Re-validate right before the request, not just at save time -- DNS
+        # can be repointed between when an affiliate saves a postback URL and
+        # when a lead status later fires it (rebinding past a save-time-only
+        # check).
+        try:
+            validate_postback_url(delivery.url)
+        except PostbackURLResolutionError:
+            # The resolver didn't answer, which is a network condition rather
+            # than a verdict about the destination -- a flaky resolver must
+            # not silently drop an affiliate's postbacks. Fall through to the
+            # shared retry/backoff path below, same as a failed request.
+            raise
+        except UnsafePostbackURLError as exc:
+            # The destination itself is the problem, so retrying can only
+            # produce the same answer: fail permanently and don't retry.
+            delivery.status = PostbackDelivery.STATUS_FAILED
+            delivery.last_error = str(exc)
+            delivery.save(update_fields=['attempts', 'status', 'last_error'])
+            return
 
-    try:
         resp = requests.post(
             delivery.url, data=payload_bytes,
             headers={
