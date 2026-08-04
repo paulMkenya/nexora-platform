@@ -12,9 +12,26 @@ from brands.models import Brand
 from user_profile.models import Profile
 
 
+def _test_brand():
+    """The brand these tests' affiliates and offers share.
+
+    Under Paul's brand-only ruling an affiliate sees ONLY their own brand's
+    offers, and an unbranded offer reaches nobody — so a test offer must carry
+    a brand and the affiliate must belong to it. These tests previously left
+    both unset and relied on the removed "unbranded is visible to everyone"
+    fallback.
+    """
+    return Brand.objects.get_or_create(
+        slug='test-brand-offers',
+        defaults=dict(name='Offers Test Brand', primary_domain='offers.test',
+                      tracking_domain='t.offers.test', is_default=False),
+    )[0]
+
+
 def _approve(user):
     user.profile.affiliate_status = Profile.AffiliateStatus.APPROVED
     user.profile.email_verified = True
+    user.profile.brand = _test_brand()
     user.profile.save()
 
 
@@ -34,19 +51,22 @@ class OfferListViewTest(TestCase):
         self.goal = Goal.objects.create(name='Test Goal')
 
         self.offer1 = Offer.objects.create(
-            title='Credit Card Offer', description='Financial offer', status=ACTIVE_STATUS)
+            title='Credit Card Offer', description='Financial offer', status=ACTIVE_STATUS,
+            brand=_test_brand())
         self.offer1.categories.add(self.category1)
         Payout.objects.create(
             offer=self.offer1, revenue=10, payout=5, currency=self.currency, goal=self.goal)
 
         self.offer2 = Offer.objects.create(
-            title='Online Store Discount', description='Retail offer', status=ACTIVE_STATUS)
+            title='Online Store Discount', description='Retail offer', status=ACTIVE_STATUS,
+            brand=_test_brand())
         self.offer2.categories.add(self.category2)
         Payout.objects.create(
             offer=self.offer2, revenue=20, payout=10, currency=self.currency, goal=self.goal)
 
         self.offer3 = Offer.objects.create(
-            title='Inactive Offer', description='Should not be visible', status=PAUSED_STATUS)
+            title='Inactive Offer', description='Should not be visible', status=PAUSED_STATUS,
+            brand=_test_brand())
 
     def test_offer_list_view_login_required(self):
         response = self.client.get(self.offers_url)
@@ -92,11 +112,13 @@ class OfferBrowseFilterTest(TestCase):
         self.seo = TrafficSource.objects.create(name='SEO')
         self.push = TrafficSource.objects.create(name='Push')
 
-        self.cpa = Offer.objects.create(title='CPA Offer', status=ACTIVE_STATUS, revenue_model=CPA)
+        self.cpa = Offer.objects.create(
+            title='CPA Offer', status=ACTIVE_STATUS, revenue_model=CPA, brand=_test_brand())
         Payout.objects.create(offer=self.cpa, revenue=10, payout=5, currency=self.currency)
         OfferTrafficSource.objects.create(offer=self.cpa, traffic_source=self.seo, allowed=True)
 
-        self.cpl = Offer.objects.create(title='CPL Offer', status=ACTIVE_STATUS, revenue_model=CPL)
+        self.cpl = Offer.objects.create(
+            title='CPL Offer', status=ACTIVE_STATUS, revenue_model=CPL, brand=_test_brand())
         Payout.objects.create(offer=self.cpl, revenue=80, payout=50, currency=self.currency)
         OfferTrafficSource.objects.create(offer=self.cpl, traffic_source=self.push, allowed=True)
 
@@ -160,7 +182,8 @@ class OfferDetailViewTest(TestCase):
         self.offer = Offer.objects.create(
             title='Detailed Offer',
             description_html='<p>Test Description</p>',
-            status=ACTIVE_STATUS
+            status=ACTIVE_STATUS,
+            brand=_test_brand(),
         )
         Payout.objects.create(offer=self.offer, revenue=15, payout=7.5, currency=self.currency, goal=self.goal)
         self.offer_detail_url = reverse('affiliate_ui:offer_detail', args=[self.offer.id])
@@ -188,6 +211,11 @@ class OfferDetailViewTest(TestCase):
         )
         self.offer.brand = ccs
         self.offer.save(update_fields=['brand'])
+        # The affiliate must belong to CCS too: offer visibility is brand-only
+        # now, so moving the offer to another brand would otherwise 404 it for
+        # this affiliate before the tracking-domain assertion is ever reached.
+        self.user.profile.brand = ccs
+        self.user.profile.save(update_fields=['brand'])
 
         self.client.login(username=self.username, password=self.password)
         response = self.client.get(

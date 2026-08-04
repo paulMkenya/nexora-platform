@@ -32,11 +32,14 @@ def approved_advertiser(db):
 
 
 @pytest.fixture
-def doc_offer(db, approved_advertiser):
-    """brand=None (platform-wide), so eligibility doesn't depend on
-    Host-based brand resolution that RequestFactory can't perform."""
+def doc_offer(db, approved_advertiser, brand):
+    """Branded to the affiliate's own brand. It used to be brand=None so that
+    eligibility wouldn't depend on Host-based resolution RequestFactory can't
+    perform; scoping now keys off profile.brand, so the host is irrelevant and
+    an unbranded offer would be visible to nobody."""
     return Offer.objects.create(
-        title='Doc Offer', tracking_link='https://t.test/doc', advertiser=approved_advertiser)
+        title='Doc Offer', tracking_link='https://t.test/doc',
+        brand=brand, advertiser=approved_advertiser)
 
 
 def _doc(affiliate_user):

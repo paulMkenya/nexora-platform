@@ -28,10 +28,13 @@ def _client_with_key(key):
 
 
 @pytest.fixture
-def eligible_offer(db):
+def eligible_offer(db, brand):
     """Standalone Offer with an APPROVED+verified advertiser — mirrors
     test_api_views.py's own fixture of the same name exactly (the shared
-    `offer` fixture's advertiser starts PENDING, which fails eligibility)."""
+    `offer` fixture's advertiser starts PENDING, which fails eligibility).
+
+    Branded to the affiliate's own brand: under the brand-only ruling an
+    unbranded offer is visible to no affiliate at all."""
     from django.contrib.auth import get_user_model
 
     from offer.models import Advertiser, Offer
@@ -44,7 +47,7 @@ def eligible_offer(db):
     )
     return Offer.objects.create(
         title='Acceptance Flow Offer', tracking_link='https://t.accflow.test/click',
-        brand=None, advertiser=advertiser,
+        brand=brand, advertiser=advertiser,
     )
 
 

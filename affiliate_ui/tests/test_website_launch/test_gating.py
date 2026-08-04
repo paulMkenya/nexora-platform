@@ -43,8 +43,11 @@ class PendingAffiliateGatingTest(TestCase):
     def setUp(self):
         self.pending = _make_affiliate('pending_aff')
         self.approved = _make_approved('approved_aff')
-        self.offer = Offer.objects.create(title='Live Offer', status=ACTIVE_STATUS)
-        _make_brand()
+        # Branded to the same brand the affiliates belong to: offer visibility
+        # is brand-only now, so an unbranded offer would 404 for everyone and
+        # the gating assertion would pass for the wrong reason.
+        self.offer = Offer.objects.create(
+            title='Live Offer', status=ACTIVE_STATUS, brand=_make_brand())
 
     def test_pending_can_access_dashboard(self):
         self.client.force_login(self.pending)

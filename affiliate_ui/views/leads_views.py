@@ -18,6 +18,27 @@ from leadgen.status_sync import attach_affiliate_phase
 
 
 def _available_buyers(request):
+    """Buyers a lead may be injected to.
+
+    The `Q(brand=b) | Q(brand__isnull=True)` shape here looks identical to the
+    offer-scoping fallback that was removed in favour of offers_for_affiliate,
+    and it is deliberately NOT the same thing. The two models point in
+    opposite directions:
+
+      * `Brand` is an INBOUND tenant — its affiliates, its offers, its domain.
+        A brandless *offer* reaching an affiliate exposes another tenant's
+        inventory, so there is no fallback there: strict isolation.
+      * `LeadBuyer` is an OUTBOUND destination — somewhere the routing engine
+        sends leads. A brandless *buyer* plausibly means "a platform-level
+        destination any inbound brand may route to", which is a routing
+        decision, not a tenant leak.
+
+    Same query pattern, opposite meaning, because inbound visibility and
+    outbound routing are governed by different rules. Left exactly as-is
+    pending Paul's separate ruling on outbound buyer scoping: is a brandless
+    buyer reachable by ANY brand, or only by the platform brand? Until that is
+    decided this is intentional, not a copied fallback.
+    """
     brand = getattr(request, 'brand', None)
     return LeadBuyer.objects.filter(is_active=True).filter(
         Q(brand=brand) | Q(brand__isnull=True)).order_by('name')

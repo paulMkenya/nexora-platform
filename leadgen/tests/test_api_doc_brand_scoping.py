@@ -135,23 +135,30 @@ class TestDocFollowsTheAffiliatesOwnBrand:
         assert 'CCS ONLY OFFER' not in blob
         assert str(offers['nexora'].pk) not in [str(o['id']) for o in doc['offers']]
 
-    def test_unbranded_offers_still_reach_everyone(self, brands, advertiser):
-        """Brand isolation must not break the legacy/network-wide case."""
+    def test_unbranded_offers_reach_nobody(self, brands, advertiser):
+        """REVERSED by Paul's brand-only ruling (2026-08-04). This previously
+        asserted that a network-wide offer stayed visible to everyone; the
+        ruling is that there is no platform fallback at all — an unbranded
+        offer is not "available to everyone", it is available to no one."""
         Offer.objects.create(
             title='NETWORK WIDE OFFER', tracking_link='https://t.test/nw',
             brand=None, advertiser=advertiser)
         affiliate = _affiliate('thika_aff4', brands['thika'])
         doc = _doc_reached_via(affiliate, 'cpa.nexora.test', brands['nexora'])
 
-        assert 'NETWORK WIDE OFFER' in [o['title'] for o in doc['offers']]
+        assert 'NETWORK WIDE OFFER' not in [o['title'] for o in doc['offers']]
 
-    def test_affiliate_without_a_brand_falls_back_to_the_request_host(self, brands, offers):
-        """A profile with no brand (legacy rows) must still produce a usable
-        doc rather than crashing — the same fallback admin_views uses."""
+    def test_affiliate_without_a_brand_gets_no_offers(self, brands, offers):
+        """REVERSED by the ruling, option (a): a brandless profile no longer
+        falls through to anything. The doc must still render (not crash), and
+        the host still supplies the base URL since there is no brand domain to
+        use — but the offer list is empty rather than the unbranded set, which
+        is exactly what a brandless affiliate would otherwise have matched."""
         affiliate = _affiliate('brandless_aff', None)
         doc = _doc_reached_via(affiliate, 'cpa.nexora.test', brands['nexora'])
 
         assert doc['base_url'] == 'http://cpa.nexora.test'
+        assert doc['offers'] == []
 
 
 @pytest.mark.django_db

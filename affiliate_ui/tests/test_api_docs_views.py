@@ -5,6 +5,7 @@ affiliates, and every mutation is ownership-scoped."""
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
+from brands.models import Brand
 from leadgen.api_doc import build_doc_context
 from public_api.models import APIKey
 from user_profile.models import Profile
@@ -138,8 +139,16 @@ class AllThreeFormatsShareOneSourceTest(TestCase):
         advertiser = Advertiser.objects.create(
             user=adv_user, company='FmtAdv', email='fmt@test.com',
             advertiser_status=Advertiser.AdvertiserStatus.APPROVED, email_verified=True)
+        # The affiliate and the offer must share a brand — offer visibility is
+        # brand-only, with no unbranded fallback.
+        brand = Brand.objects.create(
+            name='Fmt Brand', slug='fmt-brand', primary_domain='fmt.example',
+            tracking_domain='t.fmt.example', is_default=False)
+        self.user.profile.brand = brand
+        self.user.profile.save(update_fields=['brand'])
         live_offer = Offer.objects.create(
-            title='Fmt Live Offer', tracking_link='https://t.test/f', advertiser=advertiser)
+            title='Fmt Live Offer', tracking_link='https://t.test/f',
+            brand=brand, advertiser=advertiser)
         AffiliateOfferLink.objects.create(
             affiliate=self.user, offer=live_offer, phase=AffiliateOfferLink.PHASE_LIVE)
 

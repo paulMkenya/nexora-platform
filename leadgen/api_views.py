@@ -54,13 +54,20 @@ class IsAffiliate(BasePermission):
 
 def _resolve_offer(request, offer_id):
     """The Offer `offer_id` refers to, only if it's one this affiliate can
-    actually send to — same eligibility rule the affiliate offer-browse page
-    uses (brand scoping + advertiser approval/verification), reused rather
-    than reimplemented. None if it doesn't resolve or isn't eligible; the
-    caller treats that as a validation failure, never a 500."""
-    from affiliate_ui.views.general_views import _eligible_offers
+    actually send to — the same single rule every other affiliate surface
+    uses (offers_for_affiliate), reused rather than reimplemented. None if it
+    doesn't resolve or isn't eligible; the caller treats that as a validation
+    failure, never a 500.
 
-    return _eligible_offers(request).filter(pk=offer_id).first()
+    Scoped to the SUBMITTING AFFILIATE, not the request host: posting to
+    another brand's domain must not widen what you may submit to. An offer_id
+    belonging to another brand — or an unbranded one — resolves to None here
+    and comes back as the documented "offer_id does not resolve to an offer
+    you can send to" error.
+    """
+    from affiliate_ui.views.general_views import offers_for_affiliate
+
+    return offers_for_affiliate(request.user).filter(pk=offer_id).first()
 
 
 def _find_duplicate_lead(user, data):

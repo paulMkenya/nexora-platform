@@ -25,17 +25,23 @@ def _client_with_key(key):
 
 
 @pytest.fixture
-def eligible_offer(db):
+def eligible_offer(db, brand):
     """A standalone Offer with an APPROVED+verified advertiser — the `offer`
     fixture's advertiser starts PENDING/unverified (the real onboarding
     default — see brands/tests/test_advertiser_onboarding.py) so it does NOT
-    pass affiliate_ui._eligible_offers' gating out of the box. Deliberately
-    NOT built on top of the shared `offer`/`advertiser` fixtures — a few
-    tests need both a genuinely-eligible AND a genuinely-ineligible offer in
-    the same test, and mutating the shared one in place would make both
-    fixtures resolve to the same row (pytest caches fixtures per test).
-    brand=None (platform-wide) sidesteps request.brand-detection entirely —
-    a bare APIClient() test call has no real Host-based brand resolution."""
+    pass offers_for_affiliate' gating out of the box. Deliberately NOT built
+    on top of the shared `offer`/`advertiser` fixtures — a few tests need both
+    a genuinely-eligible AND a genuinely-ineligible offer in the same test,
+    and mutating the shared one in place would make both fixtures resolve to
+    the same row (pytest caches fixtures per test).
+
+    Carries the same `brand` the `affiliate_user` fixture belongs to. It used
+    to be brand=None to sidestep Host-based brand detection, which worked only
+    while an unbranded offer was visible to everyone. Under Paul's brand-only
+    ruling an unbranded offer reaches nobody, and scoping keys off
+    profile.brand rather than the host — so branding it is both required and
+    sufficient, and the bare APIClient() call still needs no real Host.
+    """
     from django.contrib.auth import get_user_model
 
     from offer.models import Advertiser, Offer
@@ -48,7 +54,7 @@ def eligible_offer(db):
     )
     return Offer.objects.create(
         title='Eligible Test Offer', tracking_link='https://t.leadgen.test/eligible-click',
-        brand=None, advertiser=advertiser,
+        brand=brand, advertiser=advertiser,
     )
 
 

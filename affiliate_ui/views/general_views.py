@@ -46,36 +46,43 @@ def dashboard(request):
     return render(request, 'affiliate_ui/dashboard.html', context)
 
 
-def _eligible_offers(request):
-    """Active offers the affiliate may browse, scoped to the brand of the
-    domain this request arrived on. Browsing is host-driven by design: the
-    page you are looking at belongs to the domain you typed.
+def offers_for_affiliate(affiliate):
+    """THE single source of truth for which offers an affiliate may see or
+    send to. Every affiliate-facing surface calls this — the offers page,
+    offer detail, the generated API doc and its curl example, the reports
+    filter, and the inbound API's offer_id validation — so none of them can
+    drift from the others.
 
-    Anything that must be scoped to the affiliate *themselves* rather than to
-    the current host — the generated API doc, for one — should call
-    eligible_offers_for_brand() with the affiliate's own brand instead. See
-    leadgen.api_doc.build_doc_context.
+    Paul's ruling (2026-08-04): an affiliate belongs to exactly ONE brand and
+    may see, browse, submit to, and be documented for ONLY that brand's
+    offers.
+
+    Two consequences worth stating, because both are deliberate:
+
+    1. Scoping keys off ``affiliate.profile.brand`` — never the request host.
+       BrandMiddleware resolves request.brand from the Host header and falls
+       back to the default brand, and affiliate login is not brand-gated, so
+       host-driven scoping let a brand-A affiliate reaching brand-B's domain
+       see (and submit to) brand-B's offers. Host is now irrelevant here.
+
+    2. An unbranded/shared offer is returned to NOBODY. There is no platform
+       fallback: a null-brand offer is not "available to everyone", it is
+       simply not an offer any affiliate may use. An affiliate with no brand
+       therefore gets nothing at all, rather than matching the shared set.
+
+    Advertiser gating is unchanged: an advertiser's offers appear only once
+    that advertiser is APPROVED and email-verified and not archived; offers
+    with no advertiser link stay visible within the brand.
     """
-    return eligible_offers_for_brand(getattr(request, 'brand', None))
+    brand = getattr(getattr(affiliate, 'profile', None), 'brand', None)
+    if brand is None:
+        return Offer.objects.none()
 
-
-def eligible_offers_for_brand(brand):
-    """Active offers a given brand's affiliates may send to.
-
-    Unbranded (legacy / network-wide) offers stay visible to everyone; another
-    brand's offers are never shown — preserving brand isolation.
-
-    Offers owned by an advertiser are only shown once that advertiser is
-    APPROVED **and** email-verified: a pending advertiser's offers (and a
-    suspended/rejected advertiser's offers) are hidden from affiliates. Offers
-    with no advertiser link (legacy / network-wide) stay visible. An *archived*
-    advertiser's offers are likewise hidden.
-    """
     approved = Advertiser.AdvertiserStatus.APPROVED
     return (
         Offer.objects
         .filter(status=ACTIVE_STATUS)
-        .filter(Q(brand=brand) | Q(brand__isnull=True))
+        .filter(brand=brand)
         .filter(
             Q(advertiser__isnull=True)
             | Q(
@@ -104,7 +111,7 @@ def offer_list(request):
     payout_min = _parse_decimal(request.GET.get('payout_min'))
     payout_max = _parse_decimal(request.GET.get('payout_max'))
 
-    offers = _eligible_offers(request).prefetch_related(
+    offers = offers_for_affiliate(request.user).prefetch_related(
         Prefetch('payouts', queryset=Payout.objects.order_by('-payout')),
         'categories',
     )
@@ -165,7 +172,7 @@ def affiliate_logout(request):
 
 @require_approved_affiliate
 def offer_detail(request, offer_id):
-    offer = get_object_or_404(_eligible_offers(request), pk=offer_id)
+    offer = get_object_or_404(offers_for_affiliate(request.user), pk=offer_id)
     tracking_link = generate_tracking_link(offer, request.user.id, request=request)
     context = {
         'offer': offer,

@@ -139,14 +139,15 @@ def _affiliate_brand(affiliate_user):
     return getattr(getattr(affiliate_user, 'profile', None), 'brand', None)
 
 
-def _offer_rows(brand, affiliate_user):
+def _offer_rows(affiliate_user):
     """The offers this affiliate may send to, each with its current
-    testing/live phase. Scoped to the affiliate's OWN brand (see
-    _affiliate_brand), never the request's. An offer with no
-    AffiliateOfferLink row yet reads as TESTING and not-yet-started, which is
-    exactly what would happen on first submission — spec §2.1: a new
-    integration is never born live."""
-    from affiliate_ui.views.general_views import eligible_offers_for_brand
+    testing/live phase. Delegates to offers_for_affiliate — the one scoping
+    rule every affiliate surface shares — so the doc lists exactly what the
+    offers page shows and exactly what the inbound API will accept, and never
+    an unbranded/shared offer. An offer with no AffiliateOfferLink row yet
+    reads as TESTING and not-yet-started, which is exactly what would happen
+    on first submission — spec §2.1: a new integration is never born live."""
+    from affiliate_ui.views.general_views import offers_for_affiliate
 
     from .models import AffiliateOfferLink
 
@@ -157,7 +158,7 @@ def _offer_rows(brand, affiliate_user):
     )
     labels = dict(AffiliateOfferLink.PHASE_CHOICES)
     rows = []
-    for offer in eligible_offers_for_brand(brand).order_by('title'):
+    for offer in offers_for_affiliate(affiliate_user).order_by('title'):
         phase = phases.get(offer.pk, AffiliateOfferLink.PHASE_TESTING)
         rows.append({
             'id': offer.pk,
@@ -257,7 +258,7 @@ def build_doc_context(request, affiliate_user):
     scheme = 'https' if request.is_secure() else 'http'
     base_url = f'{scheme}://{host}'.rstrip('/')
 
-    offers = _offer_rows(brand, affiliate_user)
+    offers = _offer_rows(affiliate_user)
     keys = APIKey.objects.filter(user=affiliate_user, is_active=True).order_by('-created_at')
     postback_configs = AffiliatePostbackConfig.objects.filter(affiliate=affiliate_user, is_active=True)
 

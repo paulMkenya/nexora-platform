@@ -35,9 +35,23 @@ GOAL_URL = '/partner/reports/goal/'
 ZERO = Decimal('0.00')
 
 
+def _reports_brand():
+    """Shared brand for these tests' affiliates and offers. The reports offer
+    filter is now intersected with offers_for_affiliate (brand-only, no
+    unbranded fallback), so both sides must carry a brand."""
+    from brands.models import Brand
+
+    return Brand.objects.get_or_create(
+        slug='test-brand-reports',
+        defaults=dict(name='Reports Test Brand', primary_domain='reports.test',
+                      tracking_domain='t.reports.test', is_default=False),
+    )[0]
+
+
 def _affiliate(username, approved=True):
     user = User.objects.create_user(username=username, password='pass')
     user.profile.role = Profile.Role.AFFILIATE
+    user.profile.brand = _reports_brand()
     if approved:
         user.profile.affiliate_status = Profile.AffiliateStatus.APPROVED
         user.profile.email_verified = True
@@ -48,15 +62,23 @@ def _affiliate(username, approved=True):
 @pytest.fixture
 def offer(db):
     adv_user = User.objects.create_user(username='rep_adv', password='pass', email='ra@test.com')
-    advertiser = Advertiser.objects.create(user=adv_user, company='RepAdv', email='ra@test.com')
+    # APPROVED + verified: the reports filter is now intersected with
+    # offers_for_affiliate, which carries the advertiser gating as well as the
+    # brand rule, so a PENDING advertiser's offer no longer appears in the
+    # dropdown even when the affiliate has traffic to it.
+    advertiser = Advertiser.objects.create(
+        user=adv_user, company='RepAdv', email='ra@test.com',
+        advertiser_status=Advertiser.AdvertiserStatus.APPROVED, email_verified=True)
     return Offer.objects.create(
-        title='Report Offer', tracking_link='https://t.test/r', advertiser=advertiser)
+        title='Report Offer', tracking_link='https://t.test/r', advertiser=advertiser,
+        brand=_reports_brand())
 
 
 @pytest.fixture
 def other_offer(db, offer):
     return Offer.objects.create(
-        title='Other Offer', tracking_link='https://t.test/o', advertiser=offer.advertiser)
+        title='Other Offer', tracking_link='https://t.test/o', advertiser=offer.advertiser,
+        brand=_reports_brand())
 
 
 @pytest.fixture

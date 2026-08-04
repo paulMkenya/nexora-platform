@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.shortcuts import render
 
 from affiliate_ui.gates import require_approved_affiliate
-from offer.models import Offer
+from affiliate_ui.views.general_views import offers_for_affiliate
 from affiliate.dao import daily_report, offer_report, goal_report
 
 
@@ -37,7 +37,12 @@ def daily_report_view(request):
     # OR conversions: keying off conversions alone made the filter unusable
     # for anyone who has sent traffic but not yet converted — which is every
     # affiliate on day one, i.e. exactly when they go looking for the filter.
-    offers = Offer.objects.filter(
+    #
+    # Intersected with offers_for_affiliate so the filter obeys the same
+    # brand-only rule as every other surface: historical traffic to an offer
+    # that is no longer theirs (or was never branded to them) must not put
+    # another brand's offer title in this dropdown.
+    offers = offers_for_affiliate(request.user).filter(
         Q(conversions__affiliate=request.user) | Q(clicks__affiliate=request.user)
     ).distinct()
 

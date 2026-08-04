@@ -93,7 +93,9 @@ def _text_fields_and_offers(doc):
             started = '' if o['started'] else ' (not started yet)'
             lines.append(f'  offer_id={o["id"]}: {o["title"]} — {o["phase_label"]}{started}')
     else:
-        lines.append('  No offers available to send to right now.')
+        lines.append('  No offers assigned yet — contact your manager. Until an offer is assigned')
+        lines.append('  to you, submissions will be rejected with "offer_id does not resolve to an')
+        lines.append('  offer you can send to".')
 
     lines += ['', 'TESTING -> LIVE', '']
     lines += _wrap(doc['narrative']['testing_live'])
