@@ -62,13 +62,13 @@ def _affiliate(username, approved=True):
 @pytest.fixture
 def offer(db):
     adv_user = User.objects.create_user(username='rep_adv', password='pass', email='ra@test.com')
-    # APPROVED + verified: the reports filter is now intersected with
-    # offers_for_affiliate, which carries the advertiser gating as well as the
-    # brand rule, so a PENDING advertiser's offer no longer appears in the
-    # dropdown even when the affiliate has traffic to it.
-    advertiser = Advertiser.objects.create(
-        user=adv_user, company='RepAdv', email='ra@test.com',
-        advertiser_status=Advertiser.AdvertiserStatus.APPROVED, email_verified=True)
+    # Advertiser left at its onboarding default (PENDING/unverified) on
+    # purpose: the reports filter uses offers_for_affiliate(historical=True),
+    # which keeps the brand rule but drops the availability gate, so an
+    # affiliate's own traffic stays filterable regardless of what later
+    # happened to the advertiser. If that ever regresses, this fixture is what
+    # catches it.
+    advertiser = Advertiser.objects.create(user=adv_user, company='RepAdv', email='ra@test.com')
     return Offer.objects.create(
         title='Report Offer', tracking_link='https://t.test/r', advertiser=advertiser,
         brand=_reports_brand())

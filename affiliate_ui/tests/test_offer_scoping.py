@@ -15,6 +15,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
 from rest_framework.test import APIClient
 
+from affiliate_ui.views.general_views import offers_for_affiliate
 from brands.models import Brand
 from offer.models import Advertiser, Offer
 from public_api.models import APIKey
@@ -134,8 +135,6 @@ class BrandOnlyOfferScopingTest(TestCase):
 
     def test_shared_offer_reaches_nobody(self):
         """Not 'available to everyone' — available to no one, on any surface."""
-        from affiliate_ui.views.general_views import offers_for_affiliate
-
         for host in (OWN_HOST, OTHER_HOST):
             for surface, body in self._surface_bodies(host).items():
                 assert 'SHARED PLATFORM OFFER' not in body, f'{surface} via {host}'
@@ -148,6 +147,28 @@ class BrandOnlyOfferScopingTest(TestCase):
             for offer in (self.offer_b, self.offer_shared):
                 r = c.get(f'/partner/offers/{offer.pk}/', HTTP_HOST=host)
                 assert r.status_code == 404, f'offer {offer.pk} reachable via {host}'
+
+    def test_reports_filter_keeps_history_when_an_advertiser_goes_away(self):
+        """Reporting looks backwards. Suspending the advertiser must not erase
+        an affiliate's own earnings history from the filter — availability
+        governs what you may newly send to, not what you already sent. Brand
+        isolation still applies, which the sibling assertions below prove."""
+        _click(self.affiliate, self.offer_a)
+        advertiser = self.offer_a.advertiser
+        advertiser.advertiser_status = Advertiser.AdvertiserStatus.SUSPENDED
+        advertiser.save(update_fields=['advertiser_status'])
+
+        c = Client()
+        c.force_login(self.affiliate)
+        reports = c.get(REPORT_URL, HTTP_HOST=OWN_HOST).content.decode()
+        assert 'BRAND A OFFER' in reports, 'own history vanished from the reports filter'
+        assert 'BRAND B OFFER' not in reports, 'other brand leaked into reports'
+        assert 'SHARED PLATFORM OFFER' not in reports, 'shared offer leaked into reports'
+
+        # ...while the forward-looking surfaces DO drop it, because a
+        # suspended advertiser's offer is no longer one you may send to.
+        assert self.offer_a not in offers_for_affiliate(self.affiliate)
+        assert self._submit(self.offer_a.pk, OWN_HOST, tag='suspended').status_code == 400
 
     def test_curl_example_uses_a_brand_owned_offer(self):
         from django.test import RequestFactory
@@ -192,8 +213,6 @@ class ZeroOfferAffiliateTest(TestCase):
     def test_brandless_affiliate_gets_nothing(self):
         """Paul's option (a): a brandless affiliate matches no brand, and must
         NOT fall through to the unbranded set."""
-        from affiliate_ui.views.general_views import offers_for_affiliate
-
         brandless = _affiliate('brandless_aff', None)
         assert list(offers_for_affiliate(brandless)) == []
         body = self._doc_for(brandless)

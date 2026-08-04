@@ -46,7 +46,7 @@ def dashboard(request):
     return render(request, 'affiliate_ui/dashboard.html', context)
 
 
-def offers_for_affiliate(affiliate):
+def offers_for_affiliate(affiliate, *, historical=False):
     """THE single source of truth for which offers an affiliate may see or
     send to. Every affiliate-facing surface calls this — the offers page,
     offer detail, the generated API doc and its curl example, the reports
@@ -70,19 +70,33 @@ def offers_for_affiliate(affiliate):
        simply not an offer any affiliate may use. An affiliate with no brand
        therefore gets nothing at all, rather than matching the shared set.
 
-    Advertiser gating is unchanged: an advertiser's offers appear only once
-    that advertiser is APPROVED and email-verified and not archived; offers
-    with no advertiser link stay visible within the brand.
+    Advertiser gating is unchanged for everything an affiliate may act on: an
+    advertiser's offers appear only once that advertiser is APPROVED and
+    email-verified and not archived; offers with no advertiser link stay
+    visible within the brand.
+
+    ``historical=True`` keeps the brand rule and the null-brand exclusion but
+    drops that availability gate, and exists for ONE caller: the reports offer
+    filter. Reporting looks backwards. An affiliate who drove real traffic to
+    an offer whose advertiser was later suspended, archived or un-verified
+    still has those clicks and conversions, and their own earnings history
+    must stay filterable — availability governs what you may newly send to,
+    not what you already sent. Brand isolation still applies in full, so this
+    can never surface another brand's offer; it only keeps your own history
+    from silently disappearing.
     """
     brand = getattr(getattr(affiliate, 'profile', None), 'brand', None)
     if brand is None:
         return Offer.objects.none()
 
+    qs = Offer.objects.filter(brand=brand)
+    if historical:
+        return qs
+
     approved = Advertiser.AdvertiserStatus.APPROVED
     return (
-        Offer.objects
+        qs
         .filter(status=ACTIVE_STATUS)
-        .filter(brand=brand)
         .filter(
             Q(advertiser__isnull=True)
             | Q(

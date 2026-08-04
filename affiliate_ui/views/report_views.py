@@ -42,7 +42,12 @@ def daily_report_view(request):
     # brand-only rule as every other surface: historical traffic to an offer
     # that is no longer theirs (or was never branded to them) must not put
     # another brand's offer title in this dropdown.
-    offers = offers_for_affiliate(request.user).filter(
+    #
+    # historical=True because this is the one backward-looking surface: an
+    # offer whose advertiser was later suspended or archived must still be
+    # filterable by the affiliate who already drove traffic to it. Brand
+    # isolation is unaffected — only the availability gate is relaxed.
+    offers = offers_for_affiliate(request.user, historical=True).filter(
         Q(conversions__affiliate=request.user) | Q(clicks__affiliate=request.user)
     ).distinct()
 
