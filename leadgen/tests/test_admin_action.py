@@ -66,7 +66,7 @@ class TestInjectToBuyerAction:
         client = Client()
         client.force_login(superuser)
         lead = self._lead()
-        r = client.post('/admin/leadgen/lead/', {
+        client.post('/admin/leadgen/lead/', {
             'action': 'inject_to_buyer',
             helpers.ACTION_CHECKBOX_NAME: [str(lead.pk)],
             'apply': '1',
@@ -79,9 +79,9 @@ class TestInjectToBuyerAction:
         client = Client()
         client.force_login(superuser)
         leads = [self._lead() for _ in range(3)]
-        r = client.post('/admin/leadgen/lead/', {
+        client.post('/admin/leadgen/lead/', {
             'action': 'inject_to_buyer',
-            helpers.ACTION_CHECKBOX_NAME: [str(l.pk) for l in leads],
+            helpers.ACTION_CHECKBOX_NAME: [str(lead.pk) for lead in leads],
             'apply': '1',
             'buyer_id': str(buyer.pk),
         }, follow=True)

@@ -4,7 +4,7 @@ supports_batch property, Lead's full_name/__str__, and Phase 4's Box
 Registry (BoxType / get_effective_field_mapping)."""
 import pytest
 
-from leadgen.models import BoxType, Lead, LeadBuyer
+from leadgen.models import Lead, LeadBuyer
 
 
 @pytest.mark.django_db

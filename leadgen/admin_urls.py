@@ -17,6 +17,8 @@ urlpatterns = [
     path('routing-rules/<int:pk>/edit/', admin_views.routing_rule_form, name='routing_rule_edit'),
     # Affiliate Inbound API spec Phase 6 — operator mirror controls
     path('affiliate-links/', admin_views.affiliate_offer_links_list, name='affiliate_offer_links'),
-    path('affiliate-links/<int:pk>/go-live/', admin_views.affiliate_offer_link_go_live, name='affiliate_offer_link_go_live'),
-    path('affiliate-links/<int:pk>/revert/', admin_views.affiliate_offer_link_revert, name='affiliate_offer_link_revert'),
+    path('affiliate-links/<int:pk>/go-live/', admin_views.affiliate_offer_link_go_live,
+         name='affiliate_offer_link_go_live'),
+    path('affiliate-links/<int:pk>/revert/', admin_views.affiliate_offer_link_revert,
+         name='affiliate_offer_link_revert'),
 ]

@@ -202,7 +202,7 @@ class TestChainManagedInjection:
             base_url='https://second.test', box_type=buyer.box_type)
 
     def test_accept_first_buyer_never_touches_second(self, buyer):
-        second = self._second_buyer(buyer)
+        self._second_buyer(buyer)  # exists as a chain candidate; must stay untouched
         lead = _lead()
         injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=True)
         with patch('leadgen.connectors.requests.request', return_value=_delivered_resp()) as mock_req:

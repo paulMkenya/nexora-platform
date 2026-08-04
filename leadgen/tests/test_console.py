@@ -136,7 +136,7 @@ class ConsoleBrandScopingTest(TestCase):
     # --- buyers ---
 
     def test_operator_sees_only_own_brand_and_platform_wide_buyers(self):
-        platform_buyer = LeadBuyer.objects.create(
+        LeadBuyer.objects.create(
             box_type=self.box_type,
             name='Platform Buyer', slug='console-platform-buyer', is_active=True, base_url='https://p.test')
         self.client.force_login(self._operator(self.brand_a))

@@ -6,7 +6,6 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
 from leadgen.api_doc import build_doc_context
-from leadgen.models import Lead
 from public_api.models import APIKey
 from user_profile.models import Profile
 
@@ -57,7 +56,7 @@ class ApiDocsPageTest(TestCase):
         self.assertContains(r, '/api/leads/statuses')
 
     def test_shows_own_active_key_not_others(self):
-        mine = APIKey.generate(user=self.user, name='Mine')
+        APIKey.generate(user=self.user, name='Mine')
         other_user = User.objects.create_user(username='docs_other', password='pass')
         APIKey.generate(user=other_user, name='Not mine')
         r = self.client.get(DOCS_URL)

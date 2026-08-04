@@ -110,7 +110,7 @@ class AdminDashboardLeadsSectionTest(TestCase):
     def test_operator_cannot_inject_other_brands_lead(self):
         user = self._operator(self.brand_a)
         self.client.force_login(user)
-        r = self.client.post('/admin/dashboard/inject-leads/', {
+        self.client.post('/admin/dashboard/inject-leads/', {
             'buyer_id': str(self.buyer_a.pk), 'lead_ids': [str(self.lead_b.pk)],
         }, follow=True)
         self.assertFalse(LeadInjection.objects.filter(lead=self.lead_b).exists())

@@ -59,7 +59,7 @@ class MyLeadsViewTest(TestCase):
         self.assertContains(r, str(lead.pk))
 
     def test_shows_lead_deposit_status_column(self):
-        lead = Lead.objects.create(
+        Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
             email='mine-status@test.com', phone='+15551234567',
             buyer_status='Did not pick call',

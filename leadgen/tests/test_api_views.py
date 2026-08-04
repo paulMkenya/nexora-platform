@@ -125,7 +125,8 @@ class TestSubmitValidation:
         }, format='json')
         assert resp.status_code == 400
 
-    def test_valid_submission_creates_lead_with_correct_channel(self, affiliate_api_key, affiliate_user, eligible_offer):
+    def test_valid_submission_creates_lead_with_correct_channel(
+            self, affiliate_api_key, affiliate_user, eligible_offer):
         client = _client_with_key(affiliate_api_key)
         with patch('leadgen.api_views.maybe_auto_inject'):
             resp = client.post(SUBMIT_URL, {
@@ -283,7 +284,7 @@ class TestListLeads:
         client = _client_with_key(affiliate_api_key)
         resp = client.get(LIST_URL)
         assert resp.status_code == 200
-        emails = [l['email'] for l in resp.data['results']]
+        emails = [row['email'] for row in resp.data['results']]
         assert 'mine@test.com' in emails
         assert 'not-mine@test.com' not in emails
 
@@ -311,7 +312,7 @@ class TestListLeads:
         )
         client = _client_with_key(affiliate_api_key)
         resp = client.get(LIST_URL, {'source_id': 'wanted'})
-        emails = [l['email'] for l in resp.data['results']]
+        emails = [row['email'] for row in resp.data['results']]
         assert emails == ['a@test.com']
 
     def test_filter_by_status(self, affiliate_api_key, affiliate_user):
@@ -326,7 +327,7 @@ class TestListLeads:
         )
         client = _client_with_key(affiliate_api_key)
         resp = client.get(LIST_URL, {'status': canonical_status.FTD})
-        emails = [l['email'] for l in resp.data['results']]
+        emails = [row['email'] for row in resp.data['results']]
         assert emails == ['ftd@test.com']
 
     def test_filter_by_updated_since(self, affiliate_api_key, affiliate_user):
@@ -342,7 +343,7 @@ class TestListLeads:
         cutoff = (timezone.now() - timedelta(hours=1)).isoformat()
         client = _client_with_key(affiliate_api_key)
         resp = client.get(LIST_URL, {'updated_since': cutoff})
-        emails = [l['email'] for l in resp.data['results']]
+        emails = [row['email'] for row in resp.data['results']]
         assert 'fresh@test.com' in emails
         assert 'old@test.com' not in emails
 
@@ -394,7 +395,7 @@ class TestLeadDetail:
 
     def test_status_timeline_shows_only_applied_events_in_order(self, affiliate_api_key, affiliate_user, offer):
         from leadgen.status_sync import apply_status_change
-        from leadgen.models import LeadStatusEvent, AffiliateOfferLink
+        from leadgen.models import LeadStatusEvent
 
         lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=affiliate_user, offer=offer,

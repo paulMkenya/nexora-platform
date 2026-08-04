@@ -109,8 +109,9 @@ class TestAdvanceChain:
         lead = _lead(brand=brand)
         _rule(brand, buyer)
         with patch('leadgen.services.start_injection') as mock_start:
-            mock_start.side_effect = lambda l, b, **kw: LeadInjection.objects.create(
-                lead=l, buyer=b, chain_managed=True)
+            mock_start.side_effect = lambda started_lead, started_buyer, **kw: (
+                LeadInjection.objects.create(
+                    lead=started_lead, buyer=started_buyer, chain_managed=True))
             advance_chain(lead.pk)
             advance_chain(lead.pk)  # second call — buyer now has an injection, must be skipped
         assert mock_start.call_count == 1

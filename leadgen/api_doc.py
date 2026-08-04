@@ -50,8 +50,10 @@ def build_doc_context(request, affiliate_user):
         'base_url': base_url,
         'endpoints': [
             {'method': 'POST', 'path': '/api/leads/submit', 'purpose': 'Submit one lead.'},
-            {'method': 'POST', 'path': '/api/leads/submit/batch', 'purpose': 'Submit up to 200 leads; partial success.'},
-            {'method': 'GET', 'path': '/api/leads', 'purpose': "Pull your leads — filter by status, source_id, ids, updated_since."},
+            {'method': 'POST', 'path': '/api/leads/submit/batch',
+             'purpose': 'Submit up to 200 leads; partial success.'},
+            {'method': 'GET', 'path': '/api/leads',
+             'purpose': 'Pull your leads — filter by status, source_id, ids, updated_since.'},
             {'method': 'GET', 'path': '/api/leads/<id>', 'purpose': 'One lead, including its full status timeline.'},
             {'method': 'GET', 'path': '/api/leads/statuses', 'purpose': 'The canonical status list below, as JSON.'},
         ],

@@ -7,8 +7,6 @@ affiliate_offer_link_go_live, affiliate_offer_link_revert).
 
 Brand scoping conventions mirror test_console.py exactly — this is a
 sibling surface on the same console."""
-from unittest.mock import patch
-
 import pytest
 from django.contrib.auth import get_user_model
 
