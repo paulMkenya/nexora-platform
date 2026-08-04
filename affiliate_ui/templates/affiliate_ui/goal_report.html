@@ -52,14 +52,14 @@
                     {% for row in data %}
                     <tr>
                         <td>{{ row.goal_name }}</td>
-                        <td>{{ row.total_qty }}</td>
-                        <td>{{ row.approved_qty }}</td>
-                        <td>{{ row.hold_qty }}</td>
-                        <td>{{ row.rejected_qty }}</td>
-                        <td>{{ row.total_payout }}</td>
-                        <td>{{ row.approved_payout }}</td>
-                        <td>{{ row.hold_payout }}</td>
-                        <td>{{ row.rejected_payout }}</td>
+                        <td class="ds-num">{{ row.total_qty }}</td>
+                        <td class="ds-num ds-approved">{{ row.approved_qty }}</td>
+                        <td class="ds-num ds-hold">{{ row.hold_qty }}</td>
+                        <td class="ds-num ds-rejected">{{ row.rejected_qty }}</td>
+                        <td class="ds-money">{{ row.total_payout }}</td>
+                        <td class="ds-num ds-approved">{{ row.approved_payout }}</td>
+                        <td class="ds-num ds-hold">{{ row.hold_payout }}</td>
+                        <td class="ds-num ds-rejected">{{ row.rejected_payout }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

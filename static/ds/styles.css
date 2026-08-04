@@ -1,0 +1,13 @@
+/* ============================================================
+   Nexora design system — global entry point.
+   Consumers link THIS one file. Keep it as @import lines only;
+   everything reachable here ships to consumers.
+   ============================================================ */
+@import url("tokens/typography.css");
+@import url("tokens/colors.css");
+@import url("tokens/brands.css");
+@import url("tokens/spacing.css");
+@import url("tokens/radius.css");
+@import url("tokens/base.css");
+/* repo-owned: override DS sample 'nexora' (indigo) with confirmed blue->teal. Must come last. */
+@import url("tokens/brand-nexora.css");

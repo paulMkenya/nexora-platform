@@ -1,0 +1,35 @@
+/* ============================================================
+   Nexora — Radius & elevation
+   Restrained corners (4–10px) for app chrome; pills are fully
+   round; marketing cards round a little more (16–18px).
+   Shadows are soft and low — fintech reads "solid", not floaty.
+   ============================================================ */
+:root {
+  /* Radius */
+  --radius-xs:   3px;    /* checkboxes, tiny chips */
+  --radius-sm:   6px;    /* buttons, inputs, controls */
+  --radius-md:   8px;    /* cards, panels, tables */
+  --radius-lg:   12px;   /* large cards, modals */
+  --radius-xl:   18px;   /* marketing panels */
+  --radius-full: 9999px; /* status pills, avatars */
+
+  /* Elevation — light theme */
+  --shadow-xs:  0 1px 2px 0 rgba(17,24,39,.05);
+  --shadow-sm:  0 1px 3px 0 rgba(17,24,39,.08), 0 1px 2px -1px rgba(17,24,39,.06);
+  --shadow-md:  0 4px 12px -2px rgba(17,24,39,.10), 0 2px 6px -2px rgba(17,24,39,.06);
+  --shadow-lg:  0 12px 28px -6px rgba(17,24,39,.16), 0 4px 10px -4px rgba(17,24,39,.08);
+  --shadow-xl:  0 24px 48px -12px rgba(17,24,39,.22);
+
+  /* Focus ring (paired with --ring-focus color) */
+  --ring-width: 3px;
+  --ring-alpha: 0.32; /* @kind other */
+}
+
+/* Dark theme shadows ride deeper & cooler */
+.theme-dark, [data-theme="dark"] {
+  --shadow-xs:  0 1px 2px 0 rgba(0,0,0,.4);
+  --shadow-sm:  0 1px 3px 0 rgba(0,0,0,.5), 0 1px 2px -1px rgba(0,0,0,.4);
+  --shadow-md:  0 4px 12px -2px rgba(0,0,0,.55), 0 2px 6px -2px rgba(0,0,0,.4);
+  --shadow-lg:  0 12px 28px -6px rgba(0,0,0,.6), 0 4px 10px -4px rgba(0,0,0,.45);
+  --shadow-xl:  0 24px 48px -12px rgba(0,0,0,.7);
+}

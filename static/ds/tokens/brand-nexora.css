@@ -1,0 +1,33 @@
+/* ============================================================================
+   Nexora brand mapping for the CloudTrade Design System  (repo-owned)
+   ----------------------------------------------------------------------------
+   The DS ships tokens/brands.css with a SAMPLE "nexora" scope in indigo
+   (#6366f1/#4f46e5). That indigo is the design-system demo palette — it is
+   NOT the product's real identity. This file overrides [data-brand="nexora"]
+   with Nexora's CONFIRMED blue->teal, sourced from the repo's own
+   static/css/tokens.css (--brand-blue / --brand-teal), so the DS layer and the
+   native token layer agree on one identity.
+
+   Loaded AFTER styles.css (the DS entry) so it wins the cascade.
+   Per project rule: keep Nexora's identity separate from CloudTrade — we do
+   NOT touch the DS cloudtrade/sunset scopes, and we do not import their tokens.
+   Tints are the brand hue at low alpha (same convention as the repo's
+   --side-active: rgba(46,143,240,.18)) — no new hues invented.
+   ============================================================================ */
+
+[data-brand="nexora"] {
+  --brand-primary:     #2E8FF0;   /* repo --brand-blue (primary action / links / active nav) */
+  --brand-secondary:   #16D9A3;   /* repo --brand-teal (hover / gradients / emphasis)        */
+  --brand-primary-fg:  #ffffff;
+  --brand-tint:        rgba(46,143,240,.10);
+  --brand-tint-border: rgba(46,143,240,.30);
+  --brand-tint-fg:     #2E8FF0;
+}
+
+/* Dark theme: soften the tint set (brand hue itself is identical across themes). */
+[data-brand="nexora"].theme-dark,
+[data-brand="nexora"][data-theme="dark"] {
+  --brand-tint:        rgba(46,143,240,.16);
+  --brand-tint-border: rgba(46,143,240,.36);
+  --brand-tint-fg:     #8FC4F7;
+}

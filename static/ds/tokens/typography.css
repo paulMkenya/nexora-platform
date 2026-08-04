@@ -1,0 +1,51 @@
+/* ============================================================
+   Nexora — Typography
+   Family: IBM Plex Sans (UI + display) — a clean, trustworthy
+   grotesk with a faintly technical edge; reads as serious
+   fintech without the Inter ubiquity.
+   Mono:   IBM Plex Mono — used for MONEY, IDs, hashes, wallet
+   addresses and any tabular figure that must align & audit.
+   Loaded from Google Fonts CDN (see note in README — swap to
+   self-hosted .woff2 for production / offline).
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* Families */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Weights */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* Type scale (rem, 16px base) — tight enterprise rhythm */
+  --text-xs:   0.75rem;   /* 12px — table heads, pills, captions */
+  --text-sm:   0.8125rem; /* 13px — dense table cells, controls */
+  --text-base: 0.875rem;  /* 14px — default app body */
+  --text-md:   1rem;      /* 16px — comfortable body / marketing */
+  --text-lg:   1.125rem;  /* 18px — card titles, section heads */
+  --text-xl:   1.375rem;  /* 22px — page titles */
+  --text-2xl:  1.75rem;   /* 28px — big stat numbers */
+  --text-3xl:  2.25rem;   /* 36px — marketing sub-hero */
+  --text-4xl:  3rem;      /* 48px — marketing hero */
+  --text-5xl:  3.75rem;   /* 60px — landing hero display */
+
+  /* Line heights */
+  --leading-tight:   1.15;  /* display & numbers */
+  --leading-snug:    1.3;   /* headings */
+  --leading-normal:  1.5;   /* body */
+  --leading-relaxed: 1.65;  /* long-form prose */
+
+  /* Letter spacing */
+  --tracking-tight:  -0.02em; /* large display */
+  --tracking-normal: 0;
+  --tracking-wide:   0.04em;  /* small uppercase labels */
+  --tracking-wider:  0.08em;  /* eyebrow / stat labels */
+
+  /* Numeric — money & metrics always use tabular figures */
+  --numeric-tabular: "tnum" 1, "lnum" 1; /* @kind other */
+}
