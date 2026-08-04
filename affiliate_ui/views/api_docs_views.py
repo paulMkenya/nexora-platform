@@ -4,6 +4,8 @@ leadgen.api_doc.build_doc_context() (the single doc data source),
 public_api.APIKey (the existing key model + generate/regenerate/revoke),
 and WeasyPrint (already a dependency, already used the same way by
 billing/tasks/invoice.py for a live-rendered-to-PDF document)."""
+import textwrap
+
 from django.contrib import messages
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -40,50 +42,105 @@ def api_docs_pdf(request):
     return response
 
 
-@require_approved_affiliate
-def api_docs_text(request):
-    doc = build_doc_context(request, request.user)
+def _wrap(paragraphs, indent='  '):
+    """Narrative paragraphs as indented, wrapped lines. The words come from
+    api_doc.NARRATIVE — the same ones HTML and PDF render — so this format can
+    differ in layout but never in what it claims."""
+    lines = []
+    for para in paragraphs:
+        lines.extend(textwrap.wrap(para, width=96, initial_indent=indent, subsequent_indent=indent))
+        lines.append('')
+    return lines
+
+
+def _block(code):
+    """A fenced example, indented into the surrounding text flow."""
+    return [f'  {line}' for line in code.splitlines()]
+
+
+def _text_header(doc):
     lines = [
         'NEXORA AFFILIATE INBOUND API', '=' * 29, '',
-        f'Base URL: {doc["base_url"]}', '',
+        f'Prepared for: {doc["affiliate_name"]}',
+        f'Base URL:     {doc["base_url"]}', '',
         'ENDPOINTS',
     ]
-    for ep in doc['endpoints']:
-        lines.append(f'  {ep["method"]:6s} {doc["base_url"]}{ep["path"]} — {ep["purpose"]}')
-    lines += ['', 'AUTH', '  Header: Authorization: ApiKey YOUR_API_KEY_HERE']
+    lines += [f'  {ep["method"]:6s} {doc["base_url"]}{ep["path"]} — {ep["purpose"]}'
+              for ep in doc['endpoints']]
+    return lines
+
+
+def _text_auth(doc):
+    lines = ['', 'AUTH', f'  {doc["auth_header"]}', '']
+    lines += _wrap(doc['narrative']['auth'])
     if doc['keys']:
         lines.append('  Your keys:')
-        for k in doc['keys']:
-            lines.append(f'    {k["name"]} ({k["client_id"]}) — {k["requests_per_hour"]}/hour')
-    lines += ['', 'SUBMIT FIELDS']
+        lines += [f'    {k["name"]} ({k["client_id"]}) — {k["requests_per_hour"]}/hour'
+                  for k in doc['keys']]
+        lines.append('')
+    return lines
+
+
+def _text_fields_and_offers(doc):
+    lines = ['SUBMIT FIELDS']
     for f in doc['fields']:
         req = 'required' if f['required'] else 'optional'
         lines.append(f'  {f["name"]} ({req}, {f["type"]}){": " + f["help_text"] if f["help_text"] else ""}')
-    lines += ['', 'YOUR AVAILABLE OFFERS']
-    for o in doc['offers']:
-        lines.append(f'  offer_id={o["id"]}: {o["title"]}')
+
+    lines += ['', 'YOUR OFFERS']
+    if doc['offers']:
+        for o in doc['offers']:
+            started = '' if o['started'] else ' (not started yet)'
+            lines.append(f'  offer_id={o["id"]}: {o["title"]} — {o["phase_label"]}{started}')
+    else:
+        lines.append('  No offers available to send to right now.')
+
+    lines += ['', 'TESTING -> LIVE', '']
+    lines += _wrap(doc['narrative']['testing_live'])
+    lines += ['EXAMPLE REQUEST (SINGLE LEAD)', ''] + _block(doc['examples']['single_curl'])
+    lines += ['', 'EXAMPLE REQUEST (BATCH)', ''] + _block(doc['examples']['batch_curl'])
     lines += ['', 'CANONICAL STATUSES']
-    for s in doc['statuses']:
-        lines.append(f'  {s["value"]} — {s["label"]}')
+    lines += [f'  {s["value"]} — {s["label"]}' for s in doc['statuses']]
+    return lines
+
+
+def _text_delivery(doc):
+    lines = ['', 'POSTBACKS (push)', '',
+             '  Macros: ' + ' '.join('{' + m + '}' for m in doc['postback_macros']), '']
+    lines += _wrap(doc['narrative']['postbacks'])
+    if doc['postback_configs']:
+        lines += [f'  Configured: {c["url"]} (statuses: {", ".join(c["subscribed_statuses"])})'
+                  for c in doc['postback_configs']]
+        lines.append('')
+
+    lines += ['PULL (safety net)', '']
+    lines += _wrap(doc['narrative']['pull'])
+    lines += _block(doc['examples']['pull_curl'])
+    lines += ['', 'RATE LIMITS', '']
+    lines += _wrap(doc['narrative']['rate_limits'])
+    return lines
+
+
+def _text_errors(doc):
+    lines = ['ERRORS']
+    for e in doc['errors']:
+        lines.append(f'  {e["status"]} — {e["when"]}')
+        lines.append(f'        {e["body"]}')
     lines += [
-        '', 'TESTING -> LIVE',
-        '  Every offer starts in TESTING: Nexora sets your leads\' statuses manually so you can',
-        '  confirm your own source receives them correctly. Once confirmed, the offer goes LIVE',
-        '  and the buyer\'s own reported status flows to you verbatim.',
-        '', 'POSTBACKS (push)',
-        '  Macros: ' + ' '.join('{' + m + '}' for m in doc['postback_macros']),
-        '  Signed: X-Nexora-Signature: sha256=<hmac over the raw JSON body, your postback secret>',
-        '  Carries a per-lead status_seq — ignore a delivery whose seq is lower than one you already saw.',
-    ]
-    for c in doc['postback_configs']:
-        lines.append(f'  Configured: {c["url"]} (statuses: {", ".join(c["subscribed_statuses"])})')
-    lines += [
-        '', 'PULL (safety net)',
-        f'  GET {doc["base_url"]}/api/leads?updated_since=<ISO datetime>',
         '', 'FULL API REFERENCE (OpenAPI)',
         f'  Interactive: {doc["openapi_swagger_url"]}',
         f'  Raw schema: {doc["openapi_schema_url"]}',
     ]
+    return lines
+
+
+@require_approved_affiliate
+def api_docs_text(request):
+    doc = build_doc_context(request, request.user)
+    lines = (
+        _text_header(doc) + _text_auth(doc) + _text_fields_and_offers(doc)
+        + _text_delivery(doc) + _text_errors(doc)
+    )
     response = HttpResponse('\n'.join(lines), content_type='text/plain; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="nexora-affiliate-api-docs.txt"'
     return response

@@ -130,6 +130,12 @@ def _submit_one(request, data):
 class LeadSubmitView(APIView):
     """POST /api/leads/submit — one lead."""
 
+    # doc_purpose is what puts an endpoint in the generated affiliate doc.
+    # leadgen.api_doc walks this app's URL conf for views carrying it, so a
+    # newly routed endpoint documents itself and the doc cannot list a path
+    # that isn't really wired (spec §6.3's anti-drift rule). Omit it on
+    # anything affiliates shouldn't be told about.
+    doc_purpose = 'Submit one lead.'
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsAuthenticated, IsAffiliate]
     throttle_classes = [APIKeyThrottle]
@@ -151,6 +157,7 @@ class LeadSubmitView(APIView):
 class LeadBatchSubmitView(APIView):
     """POST /api/leads/submit/batch — up to 200 leads, partial success."""
 
+    doc_purpose = f'Submit up to {MAX_BATCH_SIZE} leads in one call; partial success.'
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsAuthenticated, IsAffiliate]
     throttle_classes = [APIKeyThrottle]
@@ -194,6 +201,7 @@ class LeadListView(APIView):
     ownership scoping (affiliate=request.user) as every other view here, the
     same rule that keeps affiliate B from ever seeing affiliate A's leads."""
 
+    doc_purpose = 'Pull your own leads — filter by status, source_id, ids, updated_since.'
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsAuthenticated, IsAffiliate]
     throttle_classes = [APIKeyThrottle]
@@ -230,6 +238,7 @@ class LeadDetailView(APIView):
     404s (never a 403) for another affiliate's lead — existence isn't
     revealed either, same posture as every other ownership-scoped lookup."""
 
+    doc_purpose = 'One lead, including its full status timeline.'
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsAuthenticated, IsAffiliate]
     throttle_classes = [APIKeyThrottle]
@@ -246,6 +255,7 @@ class LeadStatusListView(APIView):
     §4.1's optional endpoint), so a source can display/localize the
     statuses it'll see without hand-copying leadgen/canonical_status.py."""
 
+    doc_purpose = 'The canonical status vocabulary, as JSON.'
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsAuthenticated, IsAffiliate]
     throttle_classes = [APIKeyThrottle]

@@ -78,6 +78,90 @@ class ApiDocsPageTest(TestCase):
         assert 'POSTBACKS' in text
 
 
+class AllThreeFormatsShareOneSourceTest(TestCase):
+    """Part B's real acceptance test. Each renderer is allowed its own
+    layout, but none may hold its own copy of the content — before this, the
+    testing→live explainer existed twice and the two copies had already
+    drifted ("Every offer starts in TESTING" vs "Every offer you send to
+    starts in TESTING")."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='fmt_aff', password='pass')
+        _approve(self.user)
+        self.client.force_login(self.user)
+
+    def _all_formats(self):
+        from django.test import RequestFactory
+
+        from affiliate_ui.views.api_docs_views import api_docs_pdf
+
+        html = self.client.get(DOCS_URL).content.decode()
+        text = self.client.get(TEXT_URL).content.decode()
+        # Render the PDF's own source template rather than the binary, so the
+        # assertion is about content rather than PDF internals.
+        request = RequestFactory().get(PDF_URL)
+        request.user = self.user
+        from django.template.loader import render_to_string
+
+        from leadgen.api_doc import build_doc_context
+        pdf_source = render_to_string(
+            'affiliate_ui/api_docs_pdf.html', {'doc': build_doc_context(request, self.user)})
+        assert api_docs_pdf  # imported to assert the view exists alongside its template
+        return html, text, pdf_source
+
+    def test_narrative_appears_in_every_format(self):
+        from leadgen.api_doc import NARRATIVE
+
+        html, text, pdf_source = self._all_formats()
+        # One representative sentence per narrative section, checked in all
+        # three renderings. A renderer that reintroduces its own wording fails
+        # here rather than quietly disagreeing in production.
+        for section, paragraphs in NARRATIVE.items():
+            probe = paragraphs[0][:60]
+            for name, body in (('html', html), ('text', text), ('pdf', pdf_source)):
+                assert probe in body or probe.replace("'", '&#x27;') in body, \
+                    f'{section} narrative missing from {name} rendering'
+
+    def test_error_contract_appears_in_every_format(self):
+        html, text, pdf_source = self._all_formats()
+        for body in (html, text, pdf_source):
+            assert '401' in body and '429' in body
+            assert 'Invalid or inactive API key.' in body
+
+    def test_offer_phase_appears_in_html_and_text(self):
+        from offer.models import Advertiser, Offer
+
+        from leadgen.models import AffiliateOfferLink
+
+        adv_user = User.objects.create_user(username='fmt_adv', password='pass')
+        advertiser = Advertiser.objects.create(
+            user=adv_user, company='FmtAdv', email='fmt@test.com',
+            advertiser_status=Advertiser.AdvertiserStatus.APPROVED, email_verified=True)
+        live_offer = Offer.objects.create(
+            title='Fmt Live Offer', tracking_link='https://t.test/f', advertiser=advertiser)
+        AffiliateOfferLink.objects.create(
+            affiliate=self.user, offer=live_offer, phase=AffiliateOfferLink.PHASE_LIVE)
+
+        html, text, _pdf = self._all_formats()
+        for body in (html, text):
+            assert 'Fmt Live Offer' in body
+            assert 'buyer postback sets status' in body
+
+    def test_text_export_carries_the_curl_examples(self):
+        """These used to exist only in HTML, so the file an affiliate forwards
+        to a traffic source had no copy-paste example in it at all."""
+        _html, text, _pdf = self._all_formats()
+        assert 'curl -X POST' in text
+        assert '/api/leads/submit/batch' in text
+        assert 'EXAMPLE REQUEST (BATCH)' in text
+
+    def test_no_format_leaks_a_live_secret(self):
+        key = APIKey.generate(user=self.user, name='Fmt key')
+        for body in self._all_formats():
+            assert key.secret not in body
+
+
 class BuildDocContextTest(TestCase):
     """Anti-drift proof: the field table is introspected off the real
     serializer, not hand-copied — spec §6.3."""
