@@ -1,0 +1,75 @@
+{% load static %}<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ offer.title }}{% if brand %} — {{ brand.name }}{% endif %}</title>
+    {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" type="image/svg+xml" href="{% static 'img/nexora-mark.svg' %}">{% endif %}
+    <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+    <style>
+        body { font-family: var(--font-sans); background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+        .card { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-card); }
+        .title { font-size: 22px; font-weight: 700; margin: 0 0 var(--space-2); }
+        .subtitle { color: var(--text-dim); font-size: 14px; margin: 0 0 var(--space-4); }
+        label { display: block; font-size: 13px; font-weight: 500; color: var(--text-dim); margin-bottom: 4px; }
+        input[type="text"], input[type="email"], input[type="tel"] {
+            width: 100%; box-sizing: border-box; padding: 10px 12px; margin-bottom: var(--space-3);
+            background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+            color: var(--text); font-size: 14px; font-family: inherit;
+        }
+        input:focus { outline: 2px solid var(--brand-blue); outline-offset: 1px; }
+        button { width: 100%; padding: 12px; background: var(--brand-blue); color: var(--on-accent); border: none; border-radius: var(--radius-sm); font-size: 15px; font-weight: 600; cursor: pointer; }
+        button:hover { filter: brightness(1.08); }
+        .errors { background: var(--neg-bg); color: var(--neg); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); font-size: 13px; }
+        .success { text-align: center; }
+        .success h2 { font-size: 20px; margin-bottom: var(--space-2); }
+        .success p { color: var(--text-dim); }
+        /* Honeypot — visually and structurally hidden, never shown to a real visitor. */
+        .hp-field { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+    </style>
+</head>
+<body>
+<div class="card">
+    {% if submitted %}
+        <div class="success">
+            <h2>Thanks{% if post.first_name %}, {{ post.first_name }}{% endif %}!</h2>
+            <p>We've got your details for <strong>{{ offer.title }}</strong> — someone will be in touch shortly.</p>
+        </div>
+    {% else %}
+        <div class="title">{{ offer.title }}</div>
+        <div class="subtitle">Enter your details below to get started.</div>
+
+        {% if rate_limited %}
+            <div class="errors">Too many submissions from this connection — please try again later.</div>
+        {% endif %}
+        {% if errors %}
+            <div class="errors">
+                {% for field, msgs in errors.items %}{% for msg in msgs %}{{ field }}: {{ msg }}<br>{% endfor %}{% endfor %}
+            </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <div class="hp-field" aria-hidden="true">
+                <label for="hp_check">Leave this field empty</label>
+                <input type="text" id="hp_check" name="hp_check" tabindex="-1" autocomplete="off">
+            </div>
+
+            <label for="first_name">First name</label>
+            <input type="text" id="first_name" name="first_name" value="{{ post.first_name|default:'' }}">
+
+            <label for="last_name">Last name</label>
+            <input type="text" id="last_name" name="last_name" value="{{ post.last_name|default:'' }}">
+
+            <label for="email">Email *</label>
+            <input type="email" id="email" name="email" value="{{ post.email|default:'' }}" required>
+
+            <label for="phone">Phone *</label>
+            <input type="tel" id="phone" name="phone" value="{{ post.phone|default:'' }}" required>
+
+            <button type="submit">Get Started</button>
+        </form>
+    {% endif %}
+</div>
+</body>
+</html>

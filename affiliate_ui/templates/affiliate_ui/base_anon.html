@@ -1,0 +1,60 @@
+{% load static %}{% comment %}
+  Unauthenticated page frame for affiliate_ui — login, register, password
+  reset, verify-email, and the pending-approval/403 pages, all of which can
+  render before (or without) a session. Deliberately NOT the shared shell:
+  no sidebar, no account chrome, just brand + theme toggle + auth actions.
+
+  affiliate_ui/base.html dynamically extends this OR _shell/base_shell.html
+  depending on request.user.is_authenticated, so every template that already
+  extends affiliate_ui/base.html keeps working unchanged regardless of which
+  of the 14 call sites render logged-in vs. logged-out.
+{% endcomment %}<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}{{ brand.name|default:"Nexora" }}{% endblock %}</title>
+    {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" type="image/svg+xml" href="{% static 'img/nexora-mark.svg' %}">{% endif %}
+    <!-- Nexora theme — no-flash: apply the stored theme before first paint -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('nx-theme');
+          if (t === 'light' || t === 'dark') {
+            document.documentElement.setAttribute('data-theme', t);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
+    <link rel="stylesheet" href="{% static 'css/shell.css' %}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<header class="nx-topbar">
+    <a class="nx-brand" href="{% url 'affiliate_ui:login' %}" style="color:var(--text)">
+        {# Top bar can be light or dark depending on theme — use the background-agnostic mark. #}
+        <span class="nx-brand__mark">{% include 'partials/brand_logo.html' with variant='mark' cls='nx-brand__markimg' %}</span>
+        <span class="nx-brand__name">{{ brand.name|default:"Nexora" }}</span>
+    </a>
+    <span class="nx-topbar__spacer"></span>
+    <button class="nx-iconbtn" type="button" data-theme-toggle aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'affiliate_ui:login' %}">Log in</a>
+    <a class="btn btn-primary btn-sm" href="{% url 'affiliate_ui:register' %}">Register</a>
+</header>
+<main class="container nx-content" style="margin-left:0">
+    {% block content %} {% endblock %}
+</main>
+{% block footer %}
+<footer class="container mt-4 text-center" style="color:var(--text-faint);font-size:13px">
+    <p>&copy; {% now "Y" %} {{ brand.name|default:"Nexora" }}
+      {% if brand.support_email %} &middot; <a href="mailto:{{ brand.support_email }}">{{ brand.support_email }}</a>{% endif %}
+    </p>
+</footer>
+{% endblock %}
+
+<script src="{% static 'js/shell.js' %}"></script>
+<script src="{% static 'js/theme.js' %}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

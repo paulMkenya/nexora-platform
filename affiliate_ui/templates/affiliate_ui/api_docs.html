@@ -1,0 +1,91 @@
+{% extends 'affiliate_ui/base.html' %}
+
+{% block title %}API & Docs - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center my-4">
+    <h1>API &amp; Docs</h1>
+    <div>
+      <a class="btn btn-outline-secondary" href="{% url 'affiliate_ui:api_docs_pdf' %}">Download PDF</a>
+      <a class="btn btn-outline-secondary" href="{% url 'affiliate_ui:api_docs_text' %}">Download text</a>
+      <button type="button" class="btn btn-outline-secondary" id="copy-doc-text">Copy as text</button>
+      <a class="btn btn-outline-secondary" href="{% url 'affiliate_ui:api_keys' %}">Manage API keys</a>
+    </div>
+  </div>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="api-docs-content">
+    {% include 'affiliate_ui/_api_docs_content.html' with doc=doc %}
+  </div>
+</div>
+
+<script>
+// Copy affordances live here, in the HTML shell, never in the shared partial:
+// the PDF renders that same partial and must not sprout buttons. The examples
+// are marked [data-copy] there; the buttons are attached at runtime.
+(function () {
+  function copy(text, btn, label) {
+    var done = function () {
+      var original = btn.textContent;
+      btn.textContent = label;
+      setTimeout(function () { btn.textContent = original; }, 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done);
+      return;
+    }
+    // Fallback for non-HTTPS contexts, same execCommand path offer_details uses.
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    done();
+  }
+
+  document.querySelectorAll('.api-docs-content pre[data-copy]').forEach(function (pre) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-outline-secondary nx-copy-btn';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', function () { copy(pre.textContent, btn, 'Copied'); });
+    var wrap = document.createElement('div');
+    wrap.className = 'nx-copy-wrap';
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(btn);
+    wrap.appendChild(pre);
+  });
+
+  var docBtn = document.getElementById('copy-doc-text');
+  if (docBtn) {
+    docBtn.addEventListener('click', function () {
+      // Same bytes as the .txt download — one renderer, so the clipboard and
+      // the file can't disagree.
+      fetch('{% url "affiliate_ui:api_docs_text" %}', { credentials: 'same-origin' })
+        .then(function (r) { return r.text(); })
+        .then(function (text) { copy(text, docBtn, 'Copied'); });
+    });
+  }
+})();
+</script>
+
+<style>
+  .api-docs-content .nx-copy-wrap { position: relative; }
+  .api-docs-content .nx-copy-wrap .nx-copy-btn { position: absolute; top: 0.4rem; right: 0.4rem; z-index: 1; }
+  .api-docs-content table { width: 100%; margin-bottom: 1.5rem; border-collapse: collapse; }
+  .api-docs-content th, .api-docs-content td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 0.9rem; }
+  .api-docs-content th { background: #f8f9fa; }
+  .api-docs-content pre { background: #f8f9fa; padding: 0.75rem 1rem; border-radius: 0.375rem; overflow-x: auto; font-size: 0.85rem; }
+  .api-docs-content .note { color: #6c757d; font-size: 0.9rem; }
+  .api-docs-content code { background: #f1f3f5; padding: 0.1rem 0.35rem; border-radius: 0.25rem; }
+</style>
+{% endblock %}

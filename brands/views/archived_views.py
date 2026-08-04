@@ -110,6 +110,8 @@ def archived_home(request):
 
     return render(request, 'admin_shared/archived.html', {
         'active': 'archived',
+        'shell_role': 'admin',
+        'page_title': 'Archived',
         'affiliates': affiliates,
         'advertisers': advertisers,
         'brands': brands,

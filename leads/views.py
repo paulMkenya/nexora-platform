@@ -74,6 +74,8 @@ def lead_list(request):
 
     return render(request, 'leads/admin/lead_list.html', {
         'active': 'leads',
+        'shell_role': 'admin',
+        'page_title': 'Leads',
         'leads': qs,
         'stage_counts': stage_counts,
         'total_count': sum(c['count'] for c in stage_counts),

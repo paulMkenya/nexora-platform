@@ -1,5 +1,6 @@
 """Tests for offer reference data (seeds) and country-targeting logic."""
-from django.test import TestCase
+from django.contrib.auth import get_user_model
+from django.test import Client, TestCase, override_settings
 
 from countries_plus.models import Country
 
@@ -7,6 +8,8 @@ from offer.models import (
     ALLOW_ALL, ALLOW_LIST, BLOCK_LIST, Category, Offer, TrafficSource,
 )
 from offer.reference import STANDARD_CATEGORIES, STANDARD_TRAFFIC_SOURCES
+
+User = get_user_model()
 
 
 class ReferenceSeedTests(TestCase):
@@ -69,3 +72,26 @@ class CountryTargetingTests(TestCase):
         offer = Offer.objects.create(title='Empty block', country_mode=BLOCK_LIST)
         self.assertTrue(offer.accepts_country('KE'))
         self.assertEqual(offer.targeting_display(), 'Global')
+
+
+@override_settings(PLATFORM_ADMIN_HOSTS=['testserver'])
+class AdvertiserAdminCountryDropdownTest(TestCase):
+    """Advertiser.country gets its choices from user_profile.geo.
+    country_choices (a plain function reference on the model field) —
+    Django admin's default form picks it up automatically, no admin.py
+    changes needed. advertiser_ui's own self-service settings form already
+    had a dropdown independently; this closes the Django admin gap."""
+
+    def setUp(self):
+        Country.objects.get_or_create(
+            iso='KE', defaults={'name': 'Kenya', 'iso3': 'KEN', 'iso_numeric': 404})
+        self.superuser = User.objects.create_superuser(
+            username='offeradmin', email='offeradmin@test.com', password='pass')
+
+    def test_add_form_renders_country_as_dropdown(self):
+        client = Client()
+        client.force_login(self.superuser)
+        r = client.get('/admin/offer/advertiser/add/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b'<select name="country"', r.content)
+        self.assertIn(b'Kenya (KE)', r.content)

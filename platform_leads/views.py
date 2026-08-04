@@ -173,6 +173,8 @@ def pipeline(request):
 
     return render(request, 'platform_leads/admin/pipeline.html', {
         'active': 'platform_leads',
+        'shell_role': 'admin',
+        'page_title': 'Sales Funnel',
         'leads': qs,
         'stage_counts': stage_counts,
         'total_count': sum(c['count'] for c in stage_counts),
@@ -193,6 +195,8 @@ def lead_detail(request, pk):
         'active': 'platform_leads',
         'lead': lead,
         'stage_choices': PlatformLead.Stage.choices,
+        'shell_role': 'admin',
+        'page_title': lead.name or lead.email,
     })
 
 
@@ -252,6 +256,8 @@ def settings_view(request):
         'brand': brand,
         'current': brand.owner_sales_notification_email if brand else '',
         'resolved': Brand.owner_sales_recipient(),
+        'shell_role': 'admin',
+        'page_title': 'Sales Notifications',
     })
 
 

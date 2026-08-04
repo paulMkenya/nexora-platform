@@ -103,6 +103,8 @@ def affiliate_list(request):
         'can_moderate': can_moderate,
         'is_manager_view': is_affiliate_manager(request.user),
         'managers': managers,
+        'shell_role': 'admin',
+        'page_title': 'Affiliates',
     })
 
 
@@ -125,6 +127,8 @@ def affiliate_detail(request, pk):
         'payouts': payouts,
         'can_moderate': can_moderate,
         'managers': managers,
+        'shell_role': 'admin',
+        'page_title': profile.user.get_full_name() or profile.user.username,
     })
 
 

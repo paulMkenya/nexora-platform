@@ -61,7 +61,11 @@ def roles_home(request):
     """Role console. Platform owner manages brand admins; brand admin manages
     its own affiliate managers."""
     owner = is_platform_owner(request.user)
-    ctx = {'active': 'roles', 'is_platform_owner': owner}
+    ctx = {
+        'active': 'roles', 'is_platform_owner': owner,
+        'shell_role': 'admin',
+        'page_title': 'Roles & Admins' if owner else 'Managers',
+    }
 
     if owner:
         ctx['brands'] = Brand.objects.all()

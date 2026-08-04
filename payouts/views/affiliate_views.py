@@ -1,4 +1,5 @@
 """Affiliate-facing payout views at /partner/payouts/."""
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest, JsonResponse
@@ -27,12 +28,18 @@ def payouts_home(request):
     paid_through = ps.paid_through or date(2000, 1, 1)
     pending_earnings = get_unpaid_earnings(request.user, paid_through + timedelta(days=1), today)
 
+    # Crypto rides the same money-safety kill-switch as dispatch: never offer an
+    # affiliate a payout method that would silently stall instead of paying out.
+    method_choices = METHOD_CHOICES
+    if not getattr(settings, 'CRYPTO_DISPATCH_ENABLED', False):
+        method_choices = [(k, v) for k, v in METHOD_CHOICES if k != METHOD_CRYPTO]
+
     ctx = {
         'methods': methods,
         'payout_requests': requests_qs,
         'settings': ps,
         'pending_earnings': pending_earnings,
-        'method_choices': METHOD_CHOICES,
+        'method_choices': method_choices,
         'schedule_choices': SCHEDULE_CHOICES,
         'supported_networks': SUPPORTED_NETWORKS,
     }
@@ -47,6 +54,11 @@ def add_payout_method(request):
     valid_methods = {k for k, _ in METHOD_CHOICES}
     if method not in valid_methods:
         return HttpResponseBadRequest('Invalid method')
+    if method == METHOD_CRYPTO and not getattr(settings, 'CRYPTO_DISPATCH_ENABLED', False):
+        # Defense in depth: the UI already hides this option, but a direct POST
+        # must not be able to add a crypto payout method while the money-safety
+        # kill-switch is off.
+        return HttpResponseBadRequest('Crypto payouts are not yet available')
 
     details = {}
     if method == METHOD_CRYPTO:

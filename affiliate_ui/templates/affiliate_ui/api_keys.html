@@ -1,0 +1,64 @@
+{% extends 'affiliate_ui/base.html' %}
+
+{% block title %}API Keys - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center my-4">
+    <h1>API Keys</h1>
+    <a class="btn btn-outline-secondary" href="{% url 'affiliate_ui:api_docs' %}">Back to API &amp; Docs</a>
+  </div>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="alert alert-{{ msg.tags }}">{{ msg|safe }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <table class="table">
+    <thead><tr><th>Name</th><th>Client ID</th><th>Rate limit</th><th>Status</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+    <tbody>
+      {% for key in keys %}
+      <tr>
+        <td>{{ key.name }}</td>
+        <td><code>{{ key.client_id }}</code></td>
+        <td>{{ key.requests_per_hour }}/hour</td>
+        <td>{% if key.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Revoked</span>{% endif %}</td>
+        <td>{{ key.created_at|date:"Y-m-d" }}</td>
+        <td>{{ key.last_used_at|date:"Y-m-d H:i"|default:"Never" }}</td>
+        <td>
+          {% if key.is_active %}
+          <form method="post" action="{% url 'affiliate_ui:api_key_regenerate' key.pk %}" class="d-inline"
+                onsubmit="return confirm('Regenerating breaks any integration still using the CURRENT secret. Continue?');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-warning">Regenerate</button>
+          </form>
+          <form method="post" action="{% url 'affiliate_ui:api_key_revoke' key.pk %}" class="d-inline"
+                onsubmit="return confirm('This immediately stops this key from working. Continue?');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7">No API keys yet — create one below.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2 class="mt-4">Create a new key</h2>
+  <p class="text-muted">Multiple active keys are supported — issue a new one, migrate your integration, then revoke
+    the old one, with no downtime in between.</p>
+  <form method="post" action="{% url 'affiliate_ui:api_key_create' %}" class="row g-2 align-items-end">
+    {% csrf_token %}
+    <div class="col-auto">
+      <label class="form-label">Name</label>
+      <input type="text" name="name" class="form-control" placeholder="e.g. Production" required maxlength="64">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Create key</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

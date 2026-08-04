@@ -70,6 +70,8 @@ def advertiser_list(request):
 
     return render(request, 'admin_shared/advertisers.html', {
         'active': 'advertisers',
+        'shell_role': 'admin',
+        'page_title': 'Advertisers',
         'advertisers': qs,
         'status_filter': status_filter,
         'status_choices': Advertiser.AdvertiserStatus.choices,

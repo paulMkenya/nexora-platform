@@ -1,0 +1,84 @@
+{% extends '_shell/base_shell.html' %}
+
+{% block title %}{{ page_title }} — Nexora{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.tailwindcss.com"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-8">
+
+  <div class="mb-6 flex items-center gap-3">
+    <a href="{% url 'leadgen_console:routing_rules' %}" class="text-gray-400 hover:text-gray-600">←</a>
+    <h1 class="text-2xl font-semibold text-gray-800">{{ page_title }}</h1>
+  </div>
+
+  {% if not instance %}
+    <div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 p-3 text-sm">
+      New rules save as <span class="font-medium">inactive</span> by default — flip
+      "Is active" on once you're happy with the match criteria.
+    </div>
+  {% endif %}
+
+  {% if form.non_field_errors %}
+    <div class="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-700 p-3 text-sm">
+      {{ form.non_field_errors }}
+    </div>
+  {% endif %}
+
+  <form method="post" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-5">
+    {% csrf_token %}
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      {% for field in form %}
+        {% if field.name in "brand,name,buyer,priority,is_active" %}
+          <div {% if field.name == 'name' %}class="sm:col-span-2"{% endif %}>
+            <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+              {{ field.label }}{% if field.field.required %} <span class="text-red-500">*</span>{% endif %}
+            </label>
+            {{ field }}
+            {% if field.help_text %}<p class="text-xs text-gray-500 mt-1">{{ field.help_text }}</p>{% endif %}
+            {% if field.errors %}<p class="text-xs text-red-600 mt-1">{{ field.errors|striptags }}</p>{% endif %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="pt-4 border-t border-gray-100">
+      <h2 class="text-sm font-semibold text-gray-700 mb-1">Match criteria</h2>
+      <p class="text-xs text-gray-500 mb-4">Leave any of these blank to match any lead on that dimension.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        {% for field in form %}
+          {% if field.name in "offer,country_iso2,affiliate,vertical,source_channel" %}
+            <div>
+              <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">{{ field.label }}</label>
+              {{ field }}
+              {% if field.help_text %}<p class="text-xs text-gray-500 mt-1">{{ field.help_text }}</p>{% endif %}
+              {% if field.errors %}<p class="text-xs text-red-600 mt-1">{{ field.errors|striptags }}</p>{% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3 pt-4 border-t border-gray-100">
+      <button type="submit" class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition">
+        Save
+      </button>
+      <a href="{% url 'leadgen_console:routing_rules' %}" class="text-sm text-gray-500 hover:text-gray-700">Cancel</a>
+      {% if instance %}
+        <a href="/admin/leadgen/routingrule/{{ instance.pk }}/change/" class="ml-auto text-sm text-indigo-600 hover:underline">Open in Django admin →</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<style>
+  input[type=text], input[type=number], select {
+    width: 100%; border: 1px solid #d1d5db; border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem; font-size: 0.875rem;
+  }
+  input[type=checkbox] { width: 1rem; height: 1rem; }
+</style>
+{% endblock %}

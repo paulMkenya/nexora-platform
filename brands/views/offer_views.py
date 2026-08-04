@@ -93,6 +93,8 @@ def offer_list(request):
 
     return render(request, 'admin_shared/offers.html', {
         'active': 'offers',
+        'shell_role': 'admin',
+        'page_title': 'Offers',
         'offers': qs,
         'status_filter': status_filter,
         'advertiser_filter': advertiser_filter,
@@ -123,6 +125,8 @@ def _form_ctx(request, offer=None):
         'active': 'offers',
         'advertisers': _scoped_advertisers(request),
         'selected_advertiser': selected_advertiser,
+        'shell_role': 'admin',
+        'page_title': 'Edit Offer' if offer is not None else 'New Offer',
     })
     return ctx
 

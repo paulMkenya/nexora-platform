@@ -1,0 +1,19 @@
+{% comment %}
+  Renders one role's resolved nav (a list of {label, items, quiet} groups, as
+  produced by nexora.navigation.resolve_nav_for_request). Shared by every
+  role in _shell/sidebar.html — include with `nav_groups` set via {% with %}.
+{% endcomment %}
+{% for group in nav_groups %}
+{% if group.label %}<div class="nx-nav__label{% if group.quiet %} nx-nav__label--quiet{% endif %}">{{ group.label }}</div>{% endif %}
+{% for item in group.items %}
+  {% if item.href %}
+  <a class="nx-nav__item{% if group.quiet %} is-quiet{% endif %} {% if item.is_active %}is-active{% endif %}" href="{{ item.href }}">
+    {% include 'partials/icon.html' with name=item.icon cls='nx-nav__icon' %}<span class="nx-nav__text">{{ item.label }}</span>{% if item.badge %}<span class="nx-soon">{{ item.badge }}</span>{% endif %}
+  </a>
+  {% else %}
+  <span class="nx-nav__item is-disabled">
+    {% include 'partials/icon.html' with name=item.icon cls='nx-nav__icon' %}<span class="nx-nav__text">{{ item.label }}</span><span class="nx-soon">{{ item.badge|default:"Soon" }}</span>
+  </span>
+  {% endif %}
+{% endfor %}
+{% endfor %}

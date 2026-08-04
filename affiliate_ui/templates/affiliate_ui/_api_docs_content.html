@@ -1,0 +1,141 @@
+{% comment %}
+Shared doc BODY content — included by BOTH the live HTML page
+(affiliate_ui/api_docs.html, inside the shared shell) and the PDF source
+(affiliate_ui/api_docs_pdf.html, standalone). One partial, two shells, so
+the actual doc content can never drift between formats — Affiliate Inbound
+API spec §6.3.
+
+Everything here comes out of leadgen.api_doc.build_doc_context(). Do NOT
+write API facts or explanatory prose into this template: a sentence written
+here exists only in HTML and PDF, and the text export will quietly disagree
+with it. Narrative belongs in api_doc.NARRATIVE, which all three formats read.
+
+Format-neutral by design — no buttons or scripts. The HTML shell attaches
+copy buttons at runtime to [data-copy] blocks; the PDF simply never runs it.
+{% endcomment %}
+<h2>Nexora Affiliate Inbound API</h2>
+<p class="subtitle">Prepared for {{ doc.affiliate_name }} — always reflects your current keys, offers, and the
+  live API contract.</p>
+
+<h3>Base URL</h3>
+<pre>{{ doc.base_url }}</pre>
+
+<h3>Endpoints</h3>
+<table>
+  <thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead>
+  <tbody>
+    {% for ep in doc.endpoints %}
+    <tr><td>{{ ep.method }}</td><td>{{ doc.base_url }}{{ ep.path }}</td><td>{{ ep.purpose }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Authentication</h3>
+<pre>{{ doc.auth_header }}</pre>
+{% for para in doc.narrative.auth %}<p>{{ para }}</p>{% endfor %}
+{% if doc.keys %}
+<table>
+  <thead><tr><th>Key name</th><th>Client ID</th><th>Rate limit</th><th>Created</th></tr></thead>
+  <tbody>
+    {% for key in doc.keys %}
+    <tr><td>{{ key.name }}</td><td>{{ key.client_id }}</td><td>{{ key.requests_per_hour }}/hour</td><td>{{ key.created_at|date:"Y-m-d" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note">You have no active API key yet — create one on the API &amp; Docs page before integrating.</p>
+{% endif %}
+
+<h3>Submit fields</h3>
+<table>
+  <thead><tr><th>Field</th><th>Required</th><th>Type</th><th>Max length</th><th>Notes</th></tr></thead>
+  <tbody>
+    {% for f in doc.fields %}
+    <tr>
+      <td><code>{{ f.name }}</code></td>
+      <td>{% if f.required %}Yes{% else %}No{% endif %}</td>
+      <td>{{ f.type }}</td>
+      <td>{{ f.max_length|default:"—" }}</td>
+      <td>{{ f.help_text|default:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Your offers</h3>
+{% if doc.offers %}
+<table>
+  <thead><tr><th>offer_id</th><th>Title</th><th>Phase</th></tr></thead>
+  <tbody>
+    {% for o in doc.offers %}
+    <tr>
+      <td><code>{{ o.id }}</code></td>
+      <td>{{ o.title }}</td>
+      <td>
+        {{ o.phase_label }}
+        {% if not o.started %}<span class="note">— not started yet</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note">No offers available to send to right now.</p>
+{% endif %}
+
+<h3>Testing → Live workflow</h3>
+{% for para in doc.narrative.testing_live %}<p>{{ para }}</p>{% endfor %}
+
+<h3>Example request (single lead)</h3>
+<pre data-copy>{{ doc.examples.single_curl }}</pre>
+
+<h3>Example request (batch)</h3>
+<pre data-copy>{{ doc.examples.batch_curl }}</pre>
+
+<h3>Canonical status vocabulary</h3>
+<table>
+  <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+  <tbody>
+    {% for s in doc.statuses %}
+    <tr><td><code>{{ s.value }}</code></td><td>{{ s.label }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Postbacks (push)</h3>
+<p>Macros, resolved fresh on every delivery:
+  {% for m in doc.postback_macros %}<code>{{ '{' }}{{ m }}{{ '}' }}</code>{% if not forloop.last %} {% endif %}{% endfor %}</p>
+{% for para in doc.narrative.postbacks %}<p>{{ para }}</p>{% endfor %}
+{% if doc.postback_configs %}
+<table>
+  <thead><tr><th>URL</th><th>Subscribed statuses</th></tr></thead>
+  <tbody>
+    {% for c in doc.postback_configs %}
+    <tr><td>{{ c.url }}</td><td>{{ c.subscribed_statuses|join:", " }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="note">No postback URL configured yet.</p>
+{% endif %}
+
+<h3>Pull (polling, the safety net)</h3>
+{% for para in doc.narrative.pull %}<p>{{ para }}</p>{% endfor %}
+<pre data-copy>{{ doc.examples.pull_curl }}</pre>
+
+<h3>Rate limits</h3>
+{% for para in doc.narrative.rate_limits %}<p>{{ para }}</p>{% endfor %}
+
+<h3>Errors</h3>
+<table>
+  <thead><tr><th>Status</th><th>When</th><th>Response</th></tr></thead>
+  <tbody>
+    {% for e in doc.errors %}
+    <tr><td><code>{{ e.status }}</code></td><td>{{ e.when }}</td><td><code>{{ e.body }}</code></td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>Full API reference (OpenAPI)</h3>
+<p>Interactive: <a href="{{ doc.openapi_swagger_url }}">{{ doc.openapi_swagger_url }}</a></p>
+<p>Raw schema (for codegen): <a href="{{ doc.openapi_schema_url }}">{{ doc.openapi_schema_url }}</a></p>

@@ -1,0 +1,100 @@
+{% extends '_shell/base_shell.html' %}
+
+{% block title %}Affiliate Integrations — {{ brand.name|default:"Nexora" }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.tailwindcss.com"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+  <div class="mb-6 flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-800">
+        Affiliate Integrations
+        {% if show_all_brands %}
+          <span class="ml-2 inline-flex items-center rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-medium text-white align-middle">All brands</span>
+        {% endif %}
+      </h1>
+      <p class="text-gray-500 text-sm mt-1">
+        Every affiliate × offer pair's status authority. New pairs always start
+        <span class="font-medium">TESTING</span> — you set their leads' statuses manually until you're
+        confident, then flip <span class="font-medium">Go live</span> so the buyer's own reported status
+        takes over.
+      </p>
+    </div>
+    <a href="/admin/leadgen/postbackdelivery/" class="text-sm text-indigo-600 hover:underline">Postback delivery log →</a>
+  </div>
+
+  {% if messages %}
+    <div class="mb-6 space-y-2">
+      {% for msg in messages %}
+        <div class="rounded-lg border p-3 text-sm bg-emerald-50 border-emerald-200 text-emerald-700">{{ msg }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not links %}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+      <p class="text-gray-600 font-medium">No affiliate integrations yet.</p>
+      <p class="text-gray-500 text-sm mt-1 max-w-md mx-auto">
+        A row appears here the first time a status is set for one of an affiliate's leads — see the
+        <a href="{% url 'leadgen_console:leads' %}" class="text-indigo-600 hover:underline">Leads console</a>'s
+        "Affiliate Status" column.
+      </p>
+    </div>
+  {% else %}
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-500 border-b border-gray-200">
+            <th class="py-2 pl-4 pr-3">Affiliate</th>
+            <th class="py-2 pr-3">Offer</th>
+            <th class="py-2 pr-3">Phase</th>
+            <th class="py-2 pr-3">Last changed</th>
+            <th class="py-2 pr-3 pr-4"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for link in links %}
+            <tr class="border-b border-gray-100">
+              <td class="py-2 pl-4 pr-3 font-medium text-gray-800">{{ link.affiliate }}</td>
+              <td class="py-2 pr-3 text-gray-500">{{ link.offer }}</td>
+              <td class="py-2 pr-3">
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                            {% if link.phase == 'live' %}bg-emerald-100 text-emerald-700{% else %}bg-amber-100 text-amber-700{% endif %}">
+                  {{ link.get_phase_display }}
+                </span>
+              </td>
+              <td class="py-2 pr-3 text-gray-500 text-xs">
+                {% if link.phase_changed_at %}
+                  {{ link.phase_changed_at|date:"Y-m-d H:i" }} by {{ link.phase_changed_by|default:"—" }}
+                {% else %}
+                  <span class="text-gray-400">never (still the default)</span>
+                {% endif %}
+              </td>
+              <td class="py-2 pr-3 pr-4 text-right">
+                {% if link.phase == 'live' %}
+                  <form method="post" action="{% url 'leadgen_console:affiliate_offer_link_revert' link.pk %}" class="inline"
+                        onsubmit="return confirm('Revert {{ link.affiliate }} × {{ link.offer }} to TESTING? Operator flips become authoritative again immediately.');">
+                    {% csrf_token %}
+                    <button type="submit" class="text-amber-600 hover:underline">Revert to testing</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="{% url 'leadgen_console:affiliate_offer_link_go_live' link.pk %}" class="inline"
+                        onsubmit="return confirm('Go LIVE for {{ link.affiliate }} × {{ link.offer }}? The buyer\'s own reported status becomes authoritative immediately — only do this once you\'ve confirmed testing.');">
+                    {% csrf_token %}
+                    <button type="submit" class="text-emerald-600 hover:underline">Go live</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -94,6 +94,8 @@ def dashboard(request):
         'auto_rejected': auto_rejected,
         'whitelist': whitelist,
         'show_all_brands': show_all_brands,
+        'shell_role': 'admin',
+        'page_title': 'Fraud Review',
     }
     return render(request, 'fraud/dashboard.html', ctx)
 

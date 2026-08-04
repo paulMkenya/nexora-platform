@@ -1,98 +1,47 @@
-<!doctype html>
-<html lang="en" data-brand="nexora" data-theme="{% if user.is_authenticated %}{{ request.user.profile.theme_preference|default:'dark' }}{% else %}dark{% endif %}">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        {% load static %}
-        <title>{% block title %}{{ brand.name|default:"Nexora" }}{% endblock %}</title>
-        {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" type="image/svg+xml" href="{% static 'img/nexora-mark.svg' %}">{% endif %}
-        <!-- Nexora theme — no-flash: apply the stored theme before first paint -->
-        <script>
-          (function () {
-            try {
-              var t = localStorage.getItem('nx-theme');
-              if (t === 'light' || t === 'dark') {
-                document.documentElement.setAttribute('data-theme', t);
-              }
-            } catch (e) {}
-          })();
-        </script>
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-        <link rel="stylesheet" href="{% static 'css/tokens.css' %}">
-        <link rel="stylesheet" href="{% static 'css/shell.css' %}">
-        <!-- CloudTrade Design System tokens (isolated namespace; brand-nexora.css maps blue->teal) -->
-        <link rel="stylesheet" href="{% static 'ds/styles.css' %}">
-        <link
-            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-            rel="stylesheet"
-            integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-            crossorigin="anonymous"
-        />
-        <link rel="stylesheet" href="{% static 'affiliate_ui/css/style.css' %}">
-    </head>
-    <body>
-        {% if user.is_authenticated %}
-        {% with url_name=request.resolver_match.url_name %}
-        <div class="nx-shell">
+{% extends request.user.is_authenticated|yesno:'_shell/base_shell.html,affiliate_ui/base_anon.html' %}
+{% comment %}
+  Dynamic parent: authenticated affiliate pages get the shared shell
+  (sidebar, top strip, registry-driven nav); the 14 templates that can
+  render logged-out (login, register, password reset x4, verify-email,
+  403, gated/pending-approval) get affiliate_ui/base_anon.html instead —
+  same file, same {% extends %} line, whichever parent fits the request.
+  Content markup for every extending page is untouched.
+{% endcomment %}
+{% load static %}
 
-            {% include '_shell/sidebar.html' with role='affiliate' %}
+{% block title %}{{ page_title|default:brand.name|default:"Nexora" }}{% endblock %}
 
-            <div class="nx-main">
-                <header class="nx-topbar">
-                    <button class="nx-iconbtn nx-hamburger" id="nx-hamburger" type="button" aria-label="Open menu">&#9776;</button>
-                    <span class="nx-topbar__spacer"></span>
-                    <span class="nx-topbar__user">{{ request.user.get_full_name|default:request.user.username }}</span>
-                    <button class="nx-iconbtn" type="button" data-theme-toggle data-theme-url="{% url 'user_profile:set_theme' %}" aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>
-                </header>
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+/>
+<link rel="stylesheet" href="{% static 'affiliate_ui/css/style.css' %}">
+{% endblock %}
 
-                <main class="nx-content">
-        {% endwith %}
-        {% else %}
-        <header class="nx-topbar">
-            <a class="nx-brand" href="{% url 'affiliate_ui:login' %}" style="color:var(--text)">
-                {# Top bar can be light or dark depending on theme — use the background-agnostic mark. #}
-                <span class="nx-brand__mark">{% include 'partials/brand_logo.html' with variant='mark' cls='nx-brand__markimg' %}</span>
-                <span class="nx-brand__name">{{ brand.name|default:"Nexora" }}</span>
-            </a>
-            <span class="nx-topbar__spacer"></span>
-            <button class="nx-iconbtn" type="button" data-theme-toggle aria-label="Toggle theme"><span data-theme-icon>&#9728;</span></button>
-            <a class="btn btn-outline-secondary btn-sm" href="{% url 'affiliate_ui:login' %}">Log in</a>
-            <a class="btn btn-primary btn-sm" href="{% url 'affiliate_ui:register' %}">Register</a>
-        </header>
-        <main class="container nx-content" style="margin-left:0">
-        {% endif %}
+{% block footer %}
+{% if user.is_authenticated %}
+<footer class="nx-content" style="padding-top:0;color:var(--text-faint);font-size:13px;text-align:center">
+    <p>&copy; {% now "Y" %} {{ brand.name|default:"Nexora" }}
+      {% if brand.support_email %} &middot; <a href="mailto:{{ brand.support_email }}">{{ brand.support_email }}</a>{% endif %}
+      {% if brand.terms_url %} &middot; <a href="{{ brand.terms_url }}">Terms</a>{% endif %}
+      {% if brand.privacy_url %} &middot; <a href="{{ brand.privacy_url }}">Privacy</a>{% endif %}
+    </p>
+</footer>
+{% else %}
+{{ block.super }}
+{% endif %}
+{% endblock %}
 
-                    {% block content %} {% endblock %}
-
-        {% if user.is_authenticated %}
-                </main>
-                <footer class="nx-content" style="padding-top:0;color:var(--text-faint);font-size:13px;text-align:center">
-                    <p>&copy; {% now "Y" %} {{ brand.name|default:"Nexora" }}
-                      {% if brand.support_email %} &middot; <a href="mailto:{{ brand.support_email }}">{{ brand.support_email }}</a>{% endif %}
-                      {% if brand.terms_url %} &middot; <a href="{{ brand.terms_url }}">Terms</a>{% endif %}
-                      {% if brand.privacy_url %} &middot; <a href="{{ brand.privacy_url }}">Privacy</a>{% endif %}
-                    </p>
-                </footer>
-            </div>
-        </div>
-        {% else %}
-        </main>
-        <footer class="container mt-4 text-center" style="color:var(--text-faint);font-size:13px">
-            <p>&copy; {% now "Y" %} {{ brand.name|default:"Nexora" }}
-              {% if brand.support_email %} &middot; <a href="mailto:{{ brand.support_email }}">{{ brand.support_email }}</a>{% endif %}
-            </p>
-        </footer>
-        {% endif %}
-
-        <script
-            src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-            integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-            crossorigin="anonymous"
-        ></script>
-        <script src="{% static 'js/shell.js' %}"></script>
-        <script src="{% static 'js/theme.js' %}"></script>
-        {% block extra_js %}{% endblock %}
-    </body>
-</html>
+{% block extra_js %}
+<script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+    crossorigin="anonymous"
+></script>
+{% endblock %}

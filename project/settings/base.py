@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'impersonation',
     'leads',
     'platform_leads',
+    'leadgen',
 ]
 
 # CRM lead pipeline: ACTIVATED leads idle beyond this many days are flagged
@@ -105,6 +106,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'brands.context_processors.brand_context',
                 'brands.context_processors.operator_roles',
+                'nexora.navigation.navigation_context',
             ],
         },
     },

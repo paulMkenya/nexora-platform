@@ -1,13 +1,12 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Impersonation log — {{ brand.name|default:"Nexora" }} Admin</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-{% include 'admin_shared/nav.html' with active='impersonation' %}
+{% extends '_shell/base_shell.html' %}
+
+{% block title %}Impersonation log — {{ brand.name|default:"Nexora" }} Admin{% endblock %}
+
+{% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
 <div class="container-fluid py-4">
 
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -35,8 +34,8 @@
       <tbody>
         {% for log in logs %}
         <tr>
-          <td>{{ log.impersonator.get_full_name|default:log.impersonator.username|default:"(deleted)" }}</td>
-          <td>{{ log.target.get_full_name|default:log.target.username|default:"(deleted)" }}</td>
+          <td>{% if log.impersonator %}{{ log.impersonator.get_full_name|default:log.impersonator.username }}{% else %}(deleted){% endif %}</td>
+          <td>{% if log.target %}{{ log.target.get_full_name|default:log.target.username }}{% else %}(deleted){% endif %}</td>
           <td>{{ log.brand.name|default:"—" }}</td>
           <td class="font-monospace small">{{ log.impersonator_ip|default:"—" }}</td>
           <td class="small">{{ log.started_at|date:"Y-m-d H:i:s" }}</td>
@@ -56,5 +55,4 @@
     </table>
   </div>
 </div>
-</body>
-</html>
+{% endblock %}

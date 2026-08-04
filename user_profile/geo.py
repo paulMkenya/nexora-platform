@@ -4,6 +4,11 @@ The single source of country data is the ``countries_plus`` app (252 countries
 already loaded). We standardise on the ISO-3166-1 alpha-2 ``iso`` code as the
 stored value everywhere.
 """
+from functools import partial
+
+from django import forms
+from django.db import OperationalError, ProgrammingError
+
 from countries_plus.models import Country
 
 
@@ -11,12 +16,25 @@ def country_choices(include_blank=True):
     """Return [(iso, 'Name (ISO)'), ...] sorted alphabetically by name.
 
     Sourced exclusively from ``countries_plus``. Safe to call when the table is
-    empty (returns just the blank option).
+    empty (returns just the blank option), and safe to call before the table
+    exists at all.
+
+    That last case is not theoretical: ``choices=country_choices`` on the model
+    fields means Django's system checks evaluate this during ``migrate``, i.e.
+    on a database whose tables are precisely what the command is about to
+    create. Raising there makes an empty database unmigratable — the command
+    that would create the table can't run until the table exists. Degrading to
+    "no countries to choose from" is right for what this returns (display data
+    for a dropdown) and only ever applies to a database that isn't migrated
+    yet; once countries_plus is migrated in, the query succeeds normally.
     """
-    choices = [
-        (c.iso, f'{c.name} ({c.iso})')
-        for c in Country.objects.order_by('name').only('iso', 'name')
-    ]
+    try:
+        choices = [
+            (c.iso, f'{c.name} ({c.iso})')
+            for c in Country.objects.order_by('name').only('iso', 'name')
+        ]
+    except (ProgrammingError, OperationalError):
+        choices = []
     if include_blank:
         return [('', '— Select country —')] + choices
     return choices
@@ -48,3 +66,32 @@ def country_display(code):
     flag = iso_to_flag(code)
     name = country_name(code)
     return f'{flag} {name}'.strip()
+
+
+class CountryListField(forms.MultipleChoiceField):
+    """A multi-select country field for a CharField column that stores its
+    value as a comma-separated ISO-alpha-2 string (e.g.
+    smartlinks.RoutingRule.countries — "US,GB") rather than a real M2M
+    relation. Renders a <select multiple> sourced from country_choices();
+    converts to/from the CSV string on the ModelForm's behalf so the field
+    can be dropped straight onto a CharField with no other model changes."""
+
+    def __init__(self, *, required=False, **kwargs):
+        # A callable, not a list: ChoiceField wraps it in CallableChoiceIterator
+        # and re-evaluates per render. Building the list here instead would run
+        # a query whenever a form class is *defined* — and these fields are
+        # declared in class bodies (smartlinks.admin.RoutingRuleInlineForm), so
+        # that query fires at import time, before the app registry is even
+        # ready. It also froze the country list for the life of the process.
+        kwargs.setdefault('choices', partial(country_choices, include_blank=False))
+        kwargs.setdefault('widget', forms.SelectMultiple(attrs={'size': 8}))
+        super().__init__(required=required, **kwargs)
+
+    def prepare_value(self, value):
+        if isinstance(value, str):
+            value = [v for v in value.split(',') if v]
+        return super().prepare_value(value)
+
+    def clean(self, value):
+        codes = super().clean(value)
+        return ','.join(codes)

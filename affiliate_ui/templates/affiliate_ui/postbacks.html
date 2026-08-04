@@ -1,0 +1,117 @@
+{% extends 'affiliate_ui/base.html' %}
+
+{% block title %}Postbacks - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1 class="my-4">Postbacks</h1>
+  <p class="text-muted small">
+    Get a push notification the instant one of your leads' statuses changes, instead of only polling
+    <code>GET /api/leads</code>. Every delivery is HMAC-signed (<code>X-Nexora-Signature</code>) so you can verify it
+    really came from Nexora — see the <a href="{% url 'affiliate_ui:api_docs' %}">API &amp; Docs</a> page for the
+    macro list and verification method.
+  </p>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="alert alert-{{ msg.tags|default:'info' }} alert-dismissible fade show" role="alert">
+        {{ msg|safe }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  {% for config in configs %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <code>{{ config.url }}</code>
+          {% if config.is_active %}<span class="badge bg-success ms-2">Active</span>{% else %}<span class="badge bg-secondary ms-2">Disabled</span>{% endif %}
+        </div>
+        <form method="post" action="{% url 'affiliate_ui:postback_toggle_active' config.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-secondary">
+            {% if config.is_active %}Disable{% else %}Enable{% endif %}
+          </button>
+        </form>
+      </div>
+      <p class="text-muted small mb-2 mt-2">
+        Subscribed to:
+        {% if config.subscribed_statuses %}{{ config.subscribed_statuses|join:", " }}{% else %}all statuses{% endif %}
+      </p>
+
+      <details>
+        <summary class="small">Edit</summary>
+        <form method="post" action="{% url 'affiliate_ui:postback_update' config.pk %}" class="mt-2">
+          {% csrf_token %}
+          <div class="mb-2">
+            <label class="form-label small">URL</label>
+            <input type="url" name="url" class="form-control form-control-sm" value="{{ config.url }}" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Subscribed statuses (none checked = all)</label>
+            <div class="d-flex flex-wrap gap-2">
+              {% for value, label in all_statuses %}
+              <label class="form-check form-check-inline small">
+                <input type="checkbox" class="form-check-input" name="subscribed_statuses" value="{{ value }}"
+                       {% if value in config.subscribed_statuses %}checked{% endif %}>
+                {{ label }}
+              </label>
+              {% endfor %}
+            </div>
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary">Save</button>
+        </form>
+      </details>
+
+      {% if config.recent_deliveries %}
+      <details class="mt-2">
+        <summary class="small">Recent deliveries ({{ config.recent_deliveries|length }})</summary>
+        <table class="table table-sm mt-2">
+          <thead><tr><th>Status</th><th>Attempts</th><th>Response</th><th>When</th></tr></thead>
+          <tbody>
+            {% for d in config.recent_deliveries %}
+            <tr>
+              <td>
+                <span class="badge bg-{% if d.status == 'delivered' %}success{% elif d.status == 'failed' %}danger{% else %}secondary{% endif %}">
+                  {{ d.get_status_display }}
+                </span>
+              </td>
+              <td>{{ d.attempts }}</td>
+              <td>{{ d.response_status_code|default:"—" }}</td>
+              <td class="small text-muted">{{ d.created_at|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-muted">No postback URLs configured yet.</p>
+  {% endfor %}
+
+  <h2 class="mt-4">Add a postback URL</h2>
+  <form method="post" action="{% url 'affiliate_ui:postback_create' %}">
+    {% csrf_token %}
+    <div class="mb-2">
+      <label class="form-label">URL</label>
+      <input type="url" name="url" class="form-control" placeholder="https://your-system.example/nexora-callback" required>
+    </div>
+    <div class="mb-2">
+      <label class="form-label">Subscribed statuses (leave all unchecked for every status)</label>
+      <div class="d-flex flex-wrap gap-2">
+        {% for value, label in all_statuses %}
+        <label class="form-check form-check-inline small">
+          <input type="checkbox" class="form-check-input" name="subscribed_statuses" value="{{ value }}">
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Add postback</button>
+  </form>
+</div>
+{% endblock %}

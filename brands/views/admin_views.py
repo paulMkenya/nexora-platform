@@ -61,6 +61,9 @@ def dashboard(request):
     from payouts.models import PayoutRequest, STATUS_PENDING
     from tracker.models import Conversion
     from brands.scoping import scope_brand, sees_all_brands
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+    from leadgen.models import Lead, LeadBuyer
 
     show_all_brands = sees_all_brands(request.user)
     brand = scope_brand(request)
@@ -70,11 +73,15 @@ def dashboard(request):
     payout_qs = PayoutRequest.objects.filter(status=STATUS_PENDING)
     since = timezone.now() - datetime.timedelta(hours=24)
     conv_qs = Conversion.objects.filter(created_at__gte=since, fraud_score__gt=0)
+    lead_qs = Lead.objects.all()
+    buyer_qs = LeadBuyer.objects.filter(is_active=True)
 
     if not show_all_brands:
         affiliate_qs = affiliate_qs.filter(brand=brand)
         payout_qs = payout_qs.filter(affiliate__profile__brand=brand)
         conv_qs = conv_qs.filter(brand=brand)
+        lead_qs = lead_qs.filter(brand=brand)
+        buyer_qs = buyer_qs.filter(Q(brand=brand) | Q(brand__isnull=True))
 
     pending_affiliates = affiliate_qs.filter(
         affiliate_status=Profile.AffiliateStatus.PENDING
@@ -82,21 +89,90 @@ def dashboard(request):
     pending_payouts = payout_qs.count()
     flagged_conversions = conv_qs.count()
 
+    # Affiliates who've actually submitted a lead in scope — lets the
+    # operator narrow the leads table down to one affiliate before deciding
+    # what to inject, instead of scrolling the raw recent-25 list.
+    lead_affiliates = get_user_model().objects.filter(
+        pk__in=lead_qs.exclude(affiliate__isnull=True).values_list('affiliate_id', flat=True).distinct()
+    ).order_by('username')
+
+    selected_affiliate_id = request.GET.get('affiliate_id') or ''
+    if selected_affiliate_id.isdigit():
+        lead_qs = lead_qs.filter(affiliate_id=selected_affiliate_id)
+    else:
+        selected_affiliate_id = ''
+
+    from leadgen.services import attach_latest_injections
+
+    recent_leads = list(lead_qs.select_related('offer', 'affiliate').order_by('-created_at')[:25])
+    attach_latest_injections(recent_leads)
+
     ctx = {
         'active': 'dashboard',
+        'shell_role': 'admin',
+        'page_title': 'Dashboard',
         'pending_affiliates': pending_affiliates,
         'pending_payouts': pending_payouts,
         'flagged_conversions': flagged_conversions,
         'show_all_brands': show_all_brands,
+        'recent_leads': recent_leads,
+        'lead_buyers': buyer_qs.order_by('name'),
+        'lead_affiliates': lead_affiliates,
+        'selected_affiliate_id': selected_affiliate_id,
     }
     return render(request, 'admin_shared/dashboard.html', ctx)
+
+
+@staff_member_required
+@require_http_methods(['POST'])
+def inject_consumer_leads(request):
+    """Operator-facing counterpart to the affiliate My Leads inject action and
+    the Django admin bulk action — same shared helper (leadgen.services),
+    reachable directly from the dashboard so an operator never has to leave
+    it to manually route a lead to a buyer."""
+    from django.db.models import Q
+    from leadgen.models import Lead, LeadBuyer, LeadInjection
+    from leadgen.services import inject_leads_to_buyer, summarize_injection_results
+    from brands.scoping import scope_brand, sees_all_brands
+
+    show_all_brands = sees_all_brands(request.user)
+    brand = scope_brand(request)
+
+    buyer_qs = LeadBuyer.objects.filter(is_active=True)
+    if not show_all_brands:
+        buyer_qs = buyer_qs.filter(Q(brand=brand) | Q(brand__isnull=True))
+    buyer = get_object_or_404(buyer_qs, pk=request.POST.get('buyer_id'))
+
+    lead_qs = Lead.objects.all()
+    if not show_all_brands:
+        lead_qs = lead_qs.filter(brand=brand)
+    leads = list(lead_qs.filter(pk__in=request.POST.getlist('lead_ids')))
+
+    if not leads:
+        messages.error(request, 'Select at least one lead.')
+        return redirect('admin_dashboard')
+
+    results = inject_leads_to_buyer(leads, buyer)
+    delivered, duplicate, failed = summarize_injection_results(results)
+    for lead, injection in results:
+        if injection.status not in (LeadInjection.STATUS_DELIVERED, LeadInjection.STATUS_DUPLICATE):
+            messages.warning(
+                request, f'Lead #{lead.pk} ({lead.email}): {injection.failure_reason or injection.status}')
+
+    level = messages.SUCCESS if not failed else messages.WARNING
+    messages.add_message(
+        request, level,
+        f'Injected to {buyer.name}: {delivered} delivered, {duplicate} duplicate, {failed} failed.')
+    return redirect('admin_dashboard')
 
 
 @platform_owner_required
 def brand_list(request):
     # Active brands only; archived brands live in the Archived home.
     brands = Brand.objects.filter(is_archived=False)
-    return render(request, 'brands/admin/brand_list.html', {'brands': brands})
+    return render(request, 'brands/admin/brand_list.html', {
+        'brands': brands, 'shell_role': 'admin', 'page_title': 'Brands',
+    })
 
 
 def _validate_new_brand(slug, name, primary_domain, tracking_domain):
@@ -202,6 +278,7 @@ def brand_create(request):
             return render(request, 'brands/admin/brand_form.html', {
                 'action': 'Create', 'post': _form_data(request),
                 'convert_lead': lead,
+                'shell_role': 'admin', 'page_title': 'Create Brand',
             })
         brand = Brand.objects.create(
             slug=slug,
@@ -226,6 +303,7 @@ def brand_create(request):
     return render(request, 'brands/admin/brand_form.html', {
         'action': 'Create', 'post': _form_data(request, seed=seed),
         'convert_lead': lead,
+        'shell_role': 'admin', 'page_title': 'Create Brand',
     })
 
 
@@ -251,6 +329,7 @@ def brand_edit(request, pk):
 
     return render(request, 'brands/admin/brand_form.html', {
         'action': 'Edit', 'post': _form_data(request, brand),
+        'shell_role': 'admin', 'page_title': 'Edit Brand',
     })
 
 
@@ -290,7 +369,9 @@ def brand_delete(request, pk):
 def brand_setup(request, pk):
     """Show operator setup instructions after brand creation."""
     brand = get_object_or_404(Brand, pk=pk)
-    return render(request, 'brands/admin/brand_setup.html', {'brand': brand})
+    return render(request, 'brands/admin/brand_setup.html', {
+        'brand': brand, 'shell_role': 'admin', 'page_title': 'Brand Setup',
+    })
 
 
 @brand_admin_required
@@ -339,4 +420,6 @@ def brand_email_settings(request):
         'brand': brand,
         'active': 'email_settings',
         'has_password': bool(brand.smtp_password_encrypted),
+        'shell_role': 'admin',
+        'page_title': 'Email',
     })
