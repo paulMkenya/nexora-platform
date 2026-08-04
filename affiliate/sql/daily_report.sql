@@ -7,8 +7,10 @@
     COALESCE(cv.rejected_qty, 0),
     COALESCE(
         case cl.clicks
-            when 0 then 0  -- avoid divizion by zero
-            else (100 * cv.total_qty / cl.clicks)
+            when 0 then 0  -- avoid division by zero
+            -- ::numeric before dividing: both operands are integers, so plain
+            -- division truncates and 2 conversions on 300 clicks reads as 0%.
+            else round(100.0 * cv.total_qty / cl.clicks, 2)
         end
         , 0) AS cr,
     COALESCE(cv.total_payout, 0),
@@ -47,5 +49,9 @@ FULL OUTER JOIN
         GROUP BY day
     ) AS cv
 ON cl.day = cv.day
-ORDER BY cl.day DESC)
+-- Order on the same COALESCE the SELECT displays. This is a FULL OUTER JOIN,
+-- so a day with conversions but no clicks has cl.day = NULL, and ordering by
+-- cl.day alone sorted those rows to the top (NULLS FIRST on DESC) regardless
+-- of their real date.
+ORDER BY COALESCE(cl.day, cv.day) DESC)
 ;

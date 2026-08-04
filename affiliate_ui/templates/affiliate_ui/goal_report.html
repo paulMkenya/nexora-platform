@@ -66,7 +66,7 @@
             </table>
         </div>
         {% else %}
-        <p>No data found for the selected criteria.</p>
+        {% include 'affiliate_ui/_report_empty_state.html' with what='goal conversions' %}
         {% endif %}
     </div>
 </div>

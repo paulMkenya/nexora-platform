@@ -79,7 +79,7 @@
             </table>
         </div>
         {% else %}
-        <p>No data found for the selected criteria.</p>
+        {% include 'affiliate_ui/_report_empty_state.html' with what='daily performance' %}
         {% endif %}
     </div>
 </div>

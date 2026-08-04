@@ -8,7 +8,7 @@
     COALESCE(
         case cl.clicks
             when 0 then 0  -- avoid divizion by zero
-            else (100 * cv.total_qty / cl.clicks)
+            else round(100.0 * cv.total_qty / cl.clicks, 2)
         end
         , 0) AS cr,
     COALESCE(cv.total_payout, 0),

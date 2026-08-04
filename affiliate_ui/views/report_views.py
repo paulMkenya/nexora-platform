@@ -1,13 +1,14 @@
 import iso8601
 from datetime import datetime, time, timedelta, date
-from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.shortcuts import render
 
+from affiliate_ui.gates import require_approved_affiliate
 from offer.models import Offer
 from affiliate.dao import daily_report, offer_report, goal_report
 
 
-@login_required
+@require_approved_affiliate
 def daily_report_view(request):
     start_date_arg = request.GET.get('start_date')
     end_date_arg = request.GET.get('end_date')
@@ -32,8 +33,12 @@ def daily_report_view(request):
     else:
         data = []
 
+    # Offers this affiliate has actually driven traffic to. Keyed off clicks
+    # OR conversions: keying off conversions alone made the filter unusable
+    # for anyone who has sent traffic but not yet converted — which is every
+    # affiliate on day one, i.e. exactly when they go looking for the filter.
     offers = Offer.objects.filter(
-        conversions__affiliate=request.user
+        Q(conversions__affiliate=request.user) | Q(clicks__affiliate=request.user)
     ).distinct()
 
     context = {
@@ -46,7 +51,7 @@ def daily_report_view(request):
     return render(request, 'affiliate_ui/daily_report.html', context)
 
 
-@login_required
+@require_approved_affiliate
 def offer_report_view(request):
     start_date_arg = request.GET.get('start_date')
     end_date_arg = request.GET.get('end_date')
@@ -77,7 +82,7 @@ def offer_report_view(request):
     return render(request, 'affiliate_ui/offer_report.html', context)
 
 
-@login_required
+@require_approved_affiliate
 def goal_report_view(request):
     start_date_arg = request.GET.get('start_date')
     end_date_arg = request.GET.get('end_date')

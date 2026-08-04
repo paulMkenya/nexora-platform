@@ -70,7 +70,7 @@
             </table>
         </div>
         {% else %}
-        <p>No data found for the selected criteria.</p>
+        {% include 'affiliate_ui/_report_empty_state.html' with what='per-offer performance' %}
         {% endif %}
     </div>
 </div>

@@ -1,6 +1,7 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from user_profile.models import Profile
 from unittest.mock import patch
 from datetime import date, timedelta
 
@@ -11,6 +12,12 @@ class ReportViewsTest(TestCase):
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='testuser', password='testpassword')
+        # The report pages are gated by require_approved_affiliate, same as the
+        # rest of the portal, so the fixture user has to actually be one.
+        self.user.profile.role = Profile.Role.AFFILIATE
+        self.user.profile.affiliate_status = Profile.AffiliateStatus.APPROVED
+        self.user.profile.email_verified = True
+        self.user.profile.save()
         self.client.login(username='testuser', password='testpassword')
 
     def test_daily_report_view_login_required(self):
