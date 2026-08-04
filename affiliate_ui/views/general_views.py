@@ -47,7 +47,20 @@ def dashboard(request):
 
 
 def _eligible_offers(request):
-    """Active offers the affiliate may browse: scoped to their brand.
+    """Active offers the affiliate may browse, scoped to the brand of the
+    domain this request arrived on. Browsing is host-driven by design: the
+    page you are looking at belongs to the domain you typed.
+
+    Anything that must be scoped to the affiliate *themselves* rather than to
+    the current host — the generated API doc, for one — should call
+    eligible_offers_for_brand() with the affiliate's own brand instead. See
+    leadgen.api_doc.build_doc_context.
+    """
+    return eligible_offers_for_brand(getattr(request, 'brand', None))
+
+
+def eligible_offers_for_brand(brand):
+    """Active offers a given brand's affiliates may send to.
 
     Unbranded (legacy / network-wide) offers stay visible to everyone; another
     brand's offers are never shown — preserving brand isolation.
@@ -58,7 +71,6 @@ def _eligible_offers(request):
     with no advertiser link (legacy / network-wide) stay visible. An *archived*
     advertiser's offers are likewise hidden.
     """
-    brand = getattr(request, 'brand', None)
     approved = Advertiser.AdvertiserStatus.APPROVED
     return (
         Offer.objects

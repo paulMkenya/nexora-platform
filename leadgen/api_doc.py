@@ -124,12 +124,29 @@ def _field_rows():
     return rows
 
 
-def _offer_rows(request, affiliate_user):
+def _affiliate_brand(affiliate_user):
+    """The brand the affiliate BELONGS to — not the brand of whatever domain
+    they happened to reach the portal through.
+
+    This distinction is the whole point of sourcing the doc from the affiliate.
+    BrandMiddleware resolves request.brand from the Host header and falls back
+    to the default brand when it doesn't match, and login is not brand-gated,
+    so a Thika affiliate who reaches the Nexora domain has request.brand =
+    Nexora. A doc built from that would hand them Nexora's host AND Nexora's
+    offer_ids — another tenant's data, embedded in a document they forward to
+    their traffic source.
+    """
+    return getattr(getattr(affiliate_user, 'profile', None), 'brand', None)
+
+
+def _offer_rows(brand, affiliate_user):
     """The offers this affiliate may send to, each with its current
-    testing/live phase. An offer with no AffiliateOfferLink row yet reads as
-    TESTING and not-yet-started, which is exactly what would happen on first
-    submission — spec §2.1: a new integration is never born live."""
-    from affiliate_ui.views.general_views import _eligible_offers
+    testing/live phase. Scoped to the affiliate's OWN brand (see
+    _affiliate_brand), never the request's. An offer with no
+    AffiliateOfferLink row yet reads as TESTING and not-yet-started, which is
+    exactly what would happen on first submission — spec §2.1: a new
+    integration is never born live."""
+    from affiliate_ui.views.general_views import eligible_offers_for_brand
 
     from .models import AffiliateOfferLink
 
@@ -140,7 +157,7 @@ def _offer_rows(request, affiliate_user):
     )
     labels = dict(AffiliateOfferLink.PHASE_CHOICES)
     rows = []
-    for offer in _eligible_offers(request).order_by('title'):
+    for offer in eligible_offers_for_brand(brand).order_by('title'):
         phase = phases.get(offer.pk, AffiliateOfferLink.PHASE_TESTING)
         rows.append({
             'id': offer.pk,
@@ -221,18 +238,26 @@ def _examples(base_url, offer_rows):
 
 
 def build_doc_context(request, affiliate_user):
-    """Everything one affiliate's personalized doc needs. `request` supplies
-    the live base URL (no hardcoded domain — this works correctly in every
-    environment, dev/staging/prod alike) and brand-scoping for their
-    available offers (affiliate_ui._eligible_offers, reused, not
-    reimplemented)."""
+    """Everything one affiliate's personalized doc needs.
+
+    Host and offers both come from the affiliate's OWN brand, not from the
+    request — mirroring the pattern in affiliate_ui.views.admin_views and
+    registration_views. `request` still supplies the scheme and the host
+    fallback, so there is no hardcoded domain and this stays correct in every
+    environment; but a doc is a durable artifact the affiliate forwards to a
+    traffic source, so it must describe *their* integration regardless of
+    which domain they were looking at when they generated it.
+    """
     from public_api.models import APIKey
 
     from .models import AffiliatePostbackConfig
 
-    base_url = request.build_absolute_uri('/').rstrip('/')
+    brand = _affiliate_brand(affiliate_user)
+    host = (brand.primary_domain if brand else None) or request.get_host()
+    scheme = 'https' if request.is_secure() else 'http'
+    base_url = f'{scheme}://{host}'.rstrip('/')
 
-    offers = _offer_rows(request, affiliate_user)
+    offers = _offer_rows(brand, affiliate_user)
     keys = APIKey.objects.filter(user=affiliate_user, is_active=True).order_by('-created_at')
     postback_configs = AffiliatePostbackConfig.objects.filter(affiliate=affiliate_user, is_active=True)
 
