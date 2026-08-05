@@ -161,11 +161,10 @@ class LeadBuyer(models.Model):
     # --- end legacy fields ---
 
     brand = models.ForeignKey(
-        'brands.Brand', on_delete=models.CASCADE, related_name='lead_buyers',
-        null=True, blank=True,
-        help_text='The brand this buyer belongs to. A buyer left blank is reachable '
-                  'by NO lead — the platform-wide fallback it used to provide is gone '
-                  '(the column is required as of migration 0011).',
+        'brands.Brand', on_delete=models.PROTECT, related_name='lead_buyers',
+        help_text='Every buyer belongs to exactly one brand — there are no platform-wide '
+                  'buyers. A brand routes only to its own buyers and owns the payout '
+                  'relationship with them.',
     )
     name = models.CharField(max_length=120)
     slug = models.SlugField(max_length=60, unique=True)

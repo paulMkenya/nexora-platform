@@ -189,3 +189,29 @@ class TestNoBuyerIsVisibleNotSilent:
         maybe_auto_inject(lead)
         lead.refresh_from_db()
         assert lead.status == Lead.STATUS_INJECTED
+
+
+@pytest.mark.django_db
+class TestBuyerBrandIsRequired:
+    def test_a_buyer_cannot_exist_without_a_brand(self, box):
+        """The nullable FK and its "platform-wide buyer" fallback are gone."""
+        from django.db.utils import IntegrityError
+
+        with pytest.raises(IntegrityError):
+            LeadBuyer.objects.create(
+                name='Orphan', slug='orphan', brand=None, box_type=box,
+                base_url='https://x.test')
+
+
+@pytest.mark.django_db
+class TestBrandDeletionIsProtected:
+    def test_deleting_a_brand_with_buyers_is_refused(self, two_brands, box):
+        """on_delete=PROTECT: a brand delete must not silently destroy its
+        buyers and their injection history. brands/lifecycle.py orphans rather
+        than destroys, and this keeps that promise for buyers too."""
+        from django.db.models import ProtectedError
+
+        brand_a, _ = two_brands
+        _buyer(brand_a, box, 'Buyer A')
+        with pytest.raises(ProtectedError):
+            brand_a.delete()
