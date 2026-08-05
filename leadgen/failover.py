@@ -84,7 +84,7 @@ def advance_chain(lead_id):
     if next_buyer is None:
         Lead.objects.filter(pk=lead.pk).exclude(
             status__in=(Lead.STATUS_INJECTED, Lead.STATUS_DEPOSIT),
-        ).update(status=Lead.STATUS_UNROUTED)
+        ).touch(status=Lead.STATUS_UNROUTED)
         return
 
     start_injection(lead, next_buyer, synchronous=False, chain_managed=True)
