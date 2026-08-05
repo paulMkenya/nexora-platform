@@ -104,14 +104,14 @@ def inject_lead_task(self, injection_id: int):
         if status == 'delivered':
             injection.status = LeadInjection.STATUS_DELIVERED
             injection.delivered_at = timezone.now()
-            Lead.objects.filter(pk=lead.pk).update(status=Lead.STATUS_INJECTED)
+            Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_INJECTED)
         elif status == 'duplicate':
             injection.status = LeadInjection.STATUS_DUPLICATE
-            Lead.objects.filter(pk=lead.pk).update(status=Lead.STATUS_DUPLICATE)
+            Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_DUPLICATE)
             reached_terminal_outcome = True
         else:
             injection.status = LeadInjection.STATUS_FAILED
-            Lead.objects.filter(pk=lead.pk).update(status=Lead.STATUS_REJECTED)
+            Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_REJECTED)
             # A buyer-side validation rejection (bad phone, etc.) is terminal —
             # retrying the exact same payload would fail identically, unlike a
             # transport/5xx error below.
@@ -135,7 +135,7 @@ def inject_lead_task(self, injection_id: int):
             ])
             raise self.retry(exc=exc, countdown=backoffs[attempt - 1])
         injection.status = LeadInjection.STATUS_FAILED
-        Lead.objects.filter(pk=lead.pk).update(status=Lead.STATUS_FAILED)
+        Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_FAILED)
         logger.error('Lead injection #%s to %s failed after %s attempts: %s',
                      injection.pk, buyer.name, attempt, exc)
         reached_terminal_outcome = True
@@ -186,7 +186,7 @@ def geolocate_lead(lead_id: int):
 
     code = (result.country_code or '')[:2]
     if code:
-        Lead.objects.filter(pk=lead_id, country_iso2='').update(country_iso2=code)
+        Lead.objects.filter(pk=lead_id, country_iso2='').touch(country_iso2=code)
 
 
 def _parse_buyer_timestamp(raw):
@@ -253,18 +253,18 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
             if result['deposit']:
                 lead_updates['deposit'] = True
                 lead_updates['status'] = Lead.STATUS_DEPOSIT
-            Lead.objects.filter(pk=injection.lead_id).update(**lead_updates)
+            Lead.objects.filter(pk=injection.lead_id).touch(**lead_updates)
 
             # Free byproduct of this same call — backfill country_iso2 for
             # any lead geolocate_lead didn't already resolve (no IPSTACK
             # token, private/bad IP, etc). Never overwrites an existing value.
             if result.get('country_iso2'):
-                Lead.objects.filter(pk=injection.lead_id, country_iso2='').update(
+                Lead.objects.filter(pk=injection.lead_id, country_iso2='').touch(
                     country_iso2=result['country_iso2'])
 
             canonical, needs_review = map_buyer_status(buyer, result['buyer_status'])
             if needs_review:
-                Lead.objects.filter(pk=injection.lead_id).update(canonical_status_needs_review=True)
+                Lead.objects.filter(pk=injection.lead_id).touch(canonical_status_needs_review=True)
                 logger.warning(
                     'sync_buyer_statuses: buyer %s status %r has no status_mapping entry (lead #%s)',
                     buyer.slug, result['buyer_status'], injection.lead_id)

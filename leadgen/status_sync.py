@@ -89,7 +89,7 @@ def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None
     )
 
     if applies:
-        Lead.objects.filter(pk=lead.pk).update(canonical_status=to_status)
+        Lead.objects.filter(pk=lead.pk).touch(canonical_status=to_status)
         lead.canonical_status = to_status
         # Return path §5.1 — only an event that actually changed the
         # affiliate-visible status should ever reach the affiliate's

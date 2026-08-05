@@ -232,8 +232,35 @@ class LeadBuyer(models.Model):
         return self.box_type.batch_max_size > 1 and bool(self.box_type.batch_endpoint_path)
 
 
+class LeadQuerySet(models.QuerySet):
+    def touch(self, **fields):
+        """update() the given fields AND advance updated_at.
+
+        Use this instead of .update() for any change to a lead's state.
+        Django applies `auto_now` in Model.save(), NOT in QuerySet.update() —
+        which issues raw SQL and skips field pre_save entirely. Every lead
+        mutation in this app goes through .update() (deliberately: the caller
+        often holds a possibly-stale in-memory Lead and must not write its
+        other fields back), so before this existed `updated_at` never moved
+        after creation and was effectively a second created_at.
+
+        That silently broke the pull API's whole reconcile contract:
+        `GET /api/leads?updated_since=...` (spec §5.2, "poll for what changed
+        since your last check", the documented safety net when a postback
+        delivery fails) could never return a lead whose status had changed —
+        including a conversion to FTD, the one event an affiliate most needs
+        to reconcile. Callers got an empty page and concluded nothing had
+        happened.
+        """
+        from django.utils import timezone
+
+        return self.update(updated_at=timezone.now(), **fields)
+
+
 class Lead(models.Model):
     """One captured consumer lead, regardless of intake channel."""
+
+    objects = LeadQuerySet.as_manager()
 
     CHANNEL_AFFILIATE_API = 'affiliate_api'
     CHANNEL_LANDING_PAGE = 'landing_page'
