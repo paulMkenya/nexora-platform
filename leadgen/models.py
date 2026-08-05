@@ -163,7 +163,9 @@ class LeadBuyer(models.Model):
     brand = models.ForeignKey(
         'brands.Brand', on_delete=models.CASCADE, related_name='lead_buyers',
         null=True, blank=True,
-        help_text='Leave blank for a platform-wide buyer used when a brand has no dedicated one.',
+        help_text='The brand this buyer belongs to. A buyer left blank is reachable '
+                  'by NO lead — the platform-wide fallback it used to provide is gone '
+                  '(the column is required as of migration 0011).',
     )
     name = models.CharField(max_length=120)
     slug = models.SlugField(max_length=60, unique=True)
@@ -510,6 +512,23 @@ class RoutingRule(models.Model):
 
     class Meta:
         ordering = ('priority', 'id')
+
+    def clean(self):
+        """Layer 1 of the cross-brand guard: a rule may only point at a buyer
+        of its OWN brand. Without this, a brand's rule could name another
+        brand's buyer and route that brand's leads — and the money — across
+        the boundary. leadgen.routing.resolve_buyer_chain re-filters on the
+        same condition (layer 2) and leadgen.services.start_injection refuses
+        at the wire (layer 3), so a rule created outside this validation —
+        raw SQL, a fixture, a shell — still cannot deliver across brands."""
+        if self.buyer_id and self.brand_id and self.buyer.brand_id != self.brand_id:
+            raise ValidationError({
+                'buyer': (
+                    f'"{self.buyer.name}" belongs to '
+                    f'{self.buyer.brand.name if self.buyer.brand_id else "no brand"}, not to '
+                    f'{self.brand.name}. A brand routes only to its own buyers.'
+                ),
+            })
 
     def __str__(self):
         return self.name or f'Rule #{self.pk} -> {self.buyer.name}'

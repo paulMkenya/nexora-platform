@@ -19,7 +19,7 @@ def _lead(**kwargs):
 
 @pytest.mark.django_db
 class TestResolveBuyerForLead:
-    def test_brand_scoped_buyer_preferred_over_platform_wide(self, brand, buyer):
+    def test_resolves_an_active_buyer_in_the_leads_own_brand(self, brand, buyer):
         brand_buyer = LeadBuyer.objects.create(
             brand=brand, name='Brand Buyer', slug='brand-buyer', is_active=True,
             base_url='https://brandbuyer.test',
@@ -27,9 +27,19 @@ class TestResolveBuyerForLead:
         lead = _lead(brand=brand)
         assert resolve_buyer_for_lead(lead) == brand_buyer
 
-    def test_falls_back_to_platform_wide_buyer(self, brand, buyer):
-        lead = _lead(brand=brand)  # no brand-scoped buyer configured
-        assert resolve_buyer_for_lead(lead) == buyer
+    def test_never_borrows_another_brands_buyer(self, brand, buyer):
+        """REVERSED by Paul's ruling (2026-08-05): this used to assert a
+        fallback to a brandless platform-wide buyer. Another brand has a
+        perfectly good active buyer, and this lead must still resolve to
+        None — pending is recoverable, delivering to the wrong counterparty
+        is not."""
+        from brands.models import Brand
+
+        other_brand = Brand.objects.create(
+            slug='resolve-other', name='Other', primary_domain='resolve-other.test',
+            tracking_domain='t.resolve-other.test')
+        lead = _lead(brand=other_brand)  # no buyer in THIS lead's brand
+        assert resolve_buyer_for_lead(lead) is None
 
     def test_inactive_buyer_is_not_resolved(self, buyer):
         buyer.is_active = False
@@ -58,7 +68,7 @@ class TestMaybeAutoInject:
     def test_buyer_with_auto_inject_on_enqueues(self, buyer):
         buyer.auto_inject = True
         buyer.save(update_fields=['auto_inject'])
-        lead = _lead()
+        lead = _lead(brand=buyer.brand)
         with patch('leadgen.tasks.inject_lead_task.delay') as mock_delay:
             injection = maybe_auto_inject(lead)
         assert injection is not None
@@ -199,7 +209,7 @@ class TestChainManagedInjection:
     def _second_buyer(self, buyer):
         return LeadBuyer.objects.create(
             name='Second', slug='chain-second-buyer', is_active=True,
-            base_url='https://second.test', box_type=buyer.box_type)
+            base_url='https://second.test', box_type=buyer.box_type, brand=buyer.brand)
 
     def test_accept_first_buyer_never_touches_second(self, buyer):
         self._second_buyer(buyer)  # exists as a chain candidate; must stay untouched

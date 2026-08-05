@@ -62,7 +62,6 @@ def dashboard(request):
     from tracker.models import Conversion
     from brands.scoping import scope_brand, sees_all_brands
     from django.contrib.auth import get_user_model
-    from django.db.models import Q
     from leadgen.models import Lead, LeadBuyer
 
     show_all_brands = sees_all_brands(request.user)
@@ -81,7 +80,7 @@ def dashboard(request):
         payout_qs = payout_qs.filter(affiliate__profile__brand=brand)
         conv_qs = conv_qs.filter(brand=brand)
         lead_qs = lead_qs.filter(brand=brand)
-        buyer_qs = buyer_qs.filter(Q(brand=brand) | Q(brand__isnull=True))
+        buyer_qs = buyer_qs.filter(brand=brand)
 
     pending_affiliates = affiliate_qs.filter(
         affiliate_status=Profile.AffiliateStatus.PENDING
@@ -130,7 +129,6 @@ def inject_consumer_leads(request):
     the Django admin bulk action — same shared helper (leadgen.services),
     reachable directly from the dashboard so an operator never has to leave
     it to manually route a lead to a buyer."""
-    from django.db.models import Q
     from leadgen.models import Lead, LeadBuyer, LeadInjection
     from leadgen.services import inject_leads_to_buyer, summarize_injection_results
     from brands.scoping import scope_brand, sees_all_brands
@@ -140,7 +138,7 @@ def inject_consumer_leads(request):
 
     buyer_qs = LeadBuyer.objects.filter(is_active=True)
     if not show_all_brands:
-        buyer_qs = buyer_qs.filter(Q(brand=brand) | Q(brand__isnull=True))
+        buyer_qs = buyer_qs.filter(brand=brand)
     buyer = get_object_or_404(buyer_qs, pk=request.POST.get('buyer_id'))
 
     lead_qs = Lead.objects.all()

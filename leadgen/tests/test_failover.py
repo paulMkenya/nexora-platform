@@ -26,12 +26,16 @@ def _rule(brand, buyer, **kwargs):
 @pytest.mark.django_db
 class TestNextUntriedBuyer:
     def test_returns_first_buyer_when_none_tried(self, buyer):
-        other = LeadBuyer.objects.create(name='O', slug='fo-other1', is_active=True, base_url='https://o.test')
+        other = LeadBuyer.objects.create(
+            name='O', slug='fo-other1', is_active=True, base_url='https://o.test',
+            brand=buyer.brand)
         lead = _lead()
         assert _next_untried_buyer(lead, [buyer, other]) == buyer
 
     def test_skips_buyer_with_an_existing_injection(self, buyer):
-        other = LeadBuyer.objects.create(name='O2', slug='fo-other2', is_active=True, base_url='https://o2.test')
+        other = LeadBuyer.objects.create(
+            name='O2', slug='fo-other2', is_active=True, base_url='https://o2.test',
+            brand=buyer.brand)
         lead = _lead()
         LeadInjection.objects.create(lead=lead, buyer=buyer)
         assert _next_untried_buyer(lead, [buyer, other]) == other
@@ -78,7 +82,9 @@ class TestAdvanceChain:
         mock_start.assert_called_once_with(lead, buyer, synchronous=False, chain_managed=True)
 
     def test_advances_past_an_already_tried_buyer(self, brand, buyer):
-        other = LeadBuyer.objects.create(name='O3', slug='fo-other3', is_active=True, base_url='https://o3.test')
+        other = LeadBuyer.objects.create(
+            name='O3', slug='fo-other3', is_active=True, base_url='https://o3.test',
+            brand=brand)
         lead = _lead(brand=brand)
         _rule(brand, buyer, priority=1)
         _rule(brand, other, priority=2)

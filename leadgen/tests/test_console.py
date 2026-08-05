@@ -135,14 +135,15 @@ class ConsoleBrandScopingTest(TestCase):
 
     # --- buyers ---
 
-    def test_operator_sees_only_own_brand_and_platform_wide_buyers(self):
-        LeadBuyer.objects.create(
-            box_type=self.box_type,
-            name='Platform Buyer', slug='console-platform-buyer', is_active=True, base_url='https://p.test')
+    def test_operator_sees_only_their_own_brands_buyers(self):
+        """REVERSED by Paul's ruling (2026-08-05). This used to assert that a
+        brandless "Platform Buyer" was visible to every brand's operator
+        alongside their own. Buyers are now brand-owned outright: there is no
+        platform-wide buyer to see, and the console shows strictly one
+        brand's roster."""
         self.client.force_login(self._operator(self.brand_a))
         r = self.client.get('/admin/distribution/buyers/')
         self.assertContains(r, 'Buyer A')
-        self.assertContains(r, 'Platform Buyer')
         self.assertNotContains(r, 'Buyer B')
 
     def test_operator_cannot_edit_other_brands_buyer(self):

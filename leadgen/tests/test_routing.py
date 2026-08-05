@@ -113,8 +113,10 @@ class TestMatchCriteria:
 @pytest.mark.django_db
 class TestPriorityAndPrecedence:
     def test_lower_priority_number_tried_first(self, brand):
-        buyer_a = LeadBuyer.objects.create(name='A', slug='route-a', is_active=True, base_url='https://a.test')
-        buyer_b = LeadBuyer.objects.create(name='B', slug='route-b', is_active=True, base_url='https://b.test')
+        buyer_a = LeadBuyer.objects.create(
+            name='A', slug='route-a', is_active=True, base_url='https://a.test', brand=brand)
+        buyer_b = LeadBuyer.objects.create(
+            name='B', slug='route-b', is_active=True, base_url='https://b.test', brand=brand)
         lead = _lead(brand=brand)
         _rule(brand, buyer_b, priority=50)
         _rule(brand, buyer_a, priority=10)
@@ -126,16 +128,17 @@ class TestPriorityAndPrecedence:
         lower priority number still gets tried before a highly-specific
         rule at a higher one. The operator controls order explicitly."""
         wildcard_buyer = LeadBuyer.objects.create(
-            name='Wildcard', slug='route-wild', is_active=True, base_url='https://w.test')
+            name='Wildcard', slug='route-wild', is_active=True, base_url='https://w.test', brand=brand)
         specific_buyer = LeadBuyer.objects.create(
-            name='Specific', slug='route-specific', is_active=True, base_url='https://s.test')
+            name='Specific', slug='route-specific', is_active=True, base_url='https://s.test', brand=brand)
         lead = _lead(brand=brand, country_iso2='FR', vertical='crypto')
         _rule(brand, wildcard_buyer, priority=1)  # no criteria — matches everything, tried first
         _rule(brand, specific_buyer, priority=99, country_iso2='FR', vertical='crypto')
         assert resolve_buyer_chain(lead) == [wildcard_buyer, specific_buyer]
 
     def test_same_priority_breaks_tie_by_id_for_determinism(self, brand, buyer):
-        other = LeadBuyer.objects.create(name='Other', slug='route-tie', is_active=True, base_url='https://o.test')
+        other = LeadBuyer.objects.create(
+            name='Other', slug='route-tie', is_active=True, base_url='https://o.test', brand=brand)
         lead = _lead(brand=brand)
         rule1 = _rule(brand, buyer, priority=10)
         rule2 = _rule(brand, other, priority=10)
@@ -154,7 +157,8 @@ class TestDeduplication:
         assert resolve_buyer_chain(lead) == [buyer]
 
     def test_buyer_appears_at_its_first_highest_priority_position(self, brand, buyer):
-        other = LeadBuyer.objects.create(name='Other2', slug='route-dedup2', is_active=True, base_url='https://o2.test')
+        other = LeadBuyer.objects.create(
+            name='Other2', slug='route-dedup2', is_active=True, base_url='https://o2.test', brand=brand)
         lead = _lead(brand=brand)
         _rule(brand, other, priority=5)
         _rule(brand, buyer, priority=10)
@@ -162,7 +166,8 @@ class TestDeduplication:
         assert resolve_buyer_chain(lead) == [other, buyer]
 
     def test_two_different_buyers_both_appear(self, brand, buyer):
-        other = LeadBuyer.objects.create(name='Other3', slug='route-multi', is_active=True, base_url='https://o3.test')
+        other = LeadBuyer.objects.create(
+            name='Other3', slug='route-multi', is_active=True, base_url='https://o3.test', brand=brand)
         lead = _lead(brand=brand)
         _rule(brand, buyer, priority=1)
         _rule(brand, other, priority=2)
@@ -184,7 +189,8 @@ class TestExclusions:
         assert resolve_buyer_chain(lead) == []
 
     def test_mix_of_active_and_inactive_only_returns_active(self, brand, buyer):
-        other = LeadBuyer.objects.create(name='Other4', slug='route-excl', is_active=True, base_url='https://o4.test')
+        other = LeadBuyer.objects.create(
+            name='Other4', slug='route-excl', is_active=True, base_url='https://o4.test', brand=brand)
         lead = _lead(brand=brand)
         _rule(brand, buyer, priority=1, is_active=False)  # excluded
         _rule(brand, other, priority=2, is_active=True)   # included
@@ -210,7 +216,8 @@ class TestBrandIsolation:
             primary_domain='route-b.example.com', tracking_domain='t.route-b.example.com',
         )
         other_buyer = LeadBuyer.objects.create(
-            name='BrandB Buyer', slug='route-brandb-buyer', is_active=True, base_url='https://bb.test')
+            name='BrandB Buyer', slug='route-brandb-buyer', is_active=True,
+            base_url='https://bb.test', brand=other_brand)
 
         _rule(brand, buyer)
         _rule(other_brand, other_buyer)

@@ -13,10 +13,24 @@ User = get_user_model()
 CACHES_DUMMY = {'default': {'BACKEND': 'django.core.cache.backends.dummy.DummyCache'}}
 
 
+def _leads_brand():
+    """The brand these tests' affiliate and buyer share. Buyers are
+    brand-owned now (Paul's ruling, 2026-08-05) and _available_buyers scopes
+    to the affiliate's own brand, so both sides must carry one."""
+    from brands.models import Brand
+
+    return Brand.objects.get_or_create(
+        slug='test-brand-leadsview',
+        defaults=dict(name='Leads View Brand', primary_domain='leadsview.test',
+                      tracking_domain='t.leadsview.test', is_default=False),
+    )[0]
+
+
 def _approve(user):
     user.profile.role = Profile.Role.AFFILIATE
     user.profile.affiliate_status = Profile.AffiliateStatus.APPROVED
     user.profile.email_verified = True
+    user.profile.brand = _leads_brand()
     user.profile.save()
 
 
@@ -29,7 +43,7 @@ class MyLeadsViewTest(TestCase):
         self.client.force_login(self.user)
         self.buyer = LeadBuyer.objects.create(
             name='Test Buyer', slug='test-buyer-affui', is_active=True,
-            base_url='https://buyer.test',
+            base_url='https://buyer.test', brand=_leads_brand(),
         )
 
     def test_leads_page_200(self):
@@ -53,8 +67,7 @@ class MyLeadsViewTest(TestCase):
     def test_own_leads_listed(self):
         lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
-            email='mine@test.com', phone='+15551234567',
-        )
+            email='mine@test.com', phone='+15551234567', brand=_leads_brand())
         r = self.client.get('/partner/leads/')
         self.assertContains(r, str(lead.pk))
 
@@ -62,8 +75,7 @@ class MyLeadsViewTest(TestCase):
         Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
             email='mine-status@test.com', phone='+15551234567',
-            buyer_status='Did not pick call',
-        )
+            buyer_status='Did not pick call', brand=_leads_brand())
         r = self.client.get('/partner/leads/')
         self.assertContains(r, 'Lead Deposit Status')
         self.assertContains(r, 'Did not pick call')
@@ -71,8 +83,7 @@ class MyLeadsViewTest(TestCase):
     def test_shows_failure_reason_for_failed_injection(self):
         lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
-            email='mine-failed@test.com', phone='+15551234567',
-        )
+            email='mine-failed@test.com', phone='+15551234567', brand=_leads_brand())
         LeadInjection.objects.create(
             lead=lead, buyer=self.buyer, status=LeadInjection.STATUS_FAILED,
             failure_reason='[401] POST /public/v1/leads -> <empty response body>',
@@ -84,8 +95,7 @@ class MyLeadsViewTest(TestCase):
     def test_inject_own_lead_creates_injection(self, mock_task):
         lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
-            email='mine@test.com', phone='+15551234567',
-        )
+            email='mine@test.com', phone='+15551234567', brand=_leads_brand())
         r = self.client.post('/partner/leads/inject/', {
             'buyer_id': str(self.buyer.pk), 'lead_ids': [str(lead.pk)],
         })
@@ -100,8 +110,7 @@ class MyLeadsViewTest(TestCase):
         other.profile.save()
         other_lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=other,
-            email='not-mine@test.com', phone='+15551234567',
-        )
+            email='not-mine@test.com', phone='+15551234567', brand=_leads_brand())
         r = self.client.post('/partner/leads/inject/', {
             'buyer_id': str(self.buyer.pk), 'lead_ids': [str(other_lead.pk)],
         })
@@ -116,12 +125,10 @@ class MyLeadsViewTest(TestCase):
         other.profile.save()
         my_lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
-            email='mine2@test.com', phone='+15551234567',
-        )
+            email='mine2@test.com', phone='+15551234567', brand=_leads_brand())
         other_lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=other,
-            email='not-mine2@test.com', phone='+15551234567',
-        )
+            email='not-mine2@test.com', phone='+15551234567', brand=_leads_brand())
         self.client.post('/partner/leads/inject/', {
             'buyer_id': str(self.buyer.pk), 'lead_ids': [str(my_lead.pk), str(other_lead.pk)],
         })
@@ -140,8 +147,7 @@ class MyLeadsViewTest(TestCase):
     def test_inject_invalid_buyer_404s(self):
         lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
-            email='mine3@test.com', phone='+15551234567',
-        )
+            email='mine3@test.com', phone='+15551234567', brand=_leads_brand())
         r = self.client.post('/partner/leads/inject/', {
             'buyer_id': '999999', 'lead_ids': [str(lead.pk)],
         })
@@ -159,8 +165,7 @@ class MyLeadsViewTest(TestCase):
         )
         lead = Lead.objects.create(
             intake_channel=Lead.CHANNEL_AFFILIATE_API, affiliate=self.user,
-            email='mine4@test.com', phone='+15551234567',
-        )
+            email='mine4@test.com', phone='+15551234567', brand=_leads_brand())
         r = self.client.post('/partner/leads/inject/', {
             'buyer_id': str(scoped_buyer.pk), 'lead_ids': [str(lead.pk)],
         })

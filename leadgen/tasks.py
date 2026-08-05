@@ -37,17 +37,21 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_buyer_for_lead(lead):
-    """The LeadBuyer a lead should be injected to: the lead's own brand's
-    active buyer first, falling back to the platform-wide buyer (brand=None).
-    Returns None if nothing is configured — callers must treat that as "leave
-    it pending, no destination yet" rather than an error."""
+    """The LeadBuyer a lead should be injected to: an active buyer belonging
+    to the lead's OWN brand, or None.
+
+    There is no platform-wide fallback any more (Paul's ruling, 2026-08-05):
+    a buyer belongs to exactly one brand, and a lead must never leave its
+    brand's boundary. A lead whose brand has no active buyer — or a lead with
+    no brand at all — resolves to None, which callers already treat as "leave
+    it pending, no destination yet" rather than an error. That is the correct
+    outcome: pending is recoverable, delivering to another brand's buyer is
+    not."""
     from .models import LeadBuyer
 
-    if lead.brand_id:
-        buyer = LeadBuyer.objects.filter(brand_id=lead.brand_id, is_active=True).first()
-        if buyer:
-            return buyer
-    return LeadBuyer.objects.filter(brand__isnull=True, is_active=True).first()
+    if not lead.brand_id:
+        return None
+    return LeadBuyer.objects.filter(brand_id=lead.brand_id, is_active=True).first()
 
 
 def maybe_auto_inject(lead):
@@ -55,11 +59,32 @@ def maybe_auto_inject(lead):
     Enqueues injection ONLY if a buyer is resolved AND that buyer has
     auto_inject=True — the kill-switch every new buyer starts with off, same
     shape as payouts' CRYPTO_DISPATCH_ENABLED. Returns the LeadInjection (or
-    None if nothing was enqueued)."""
+    None if nothing was enqueued).
+
+    No resolvable buyer marks the lead UNROUTED rather than leaving it in
+    `new`. Previously it returned silently, so a lead whose brand has no active
+    buyer sat indefinitely in `new` — indistinguishable from one still waiting
+    its turn, absent from the console's unrouted view, and invisible to a
+    reconcile poll because nothing moved updated_at. failover.advance_chain
+    already marks exactly this condition UNROUTED ("never had anywhere to send
+    it"); the two entry points disagreeing was a latent way to lose leads
+    quietly. This matches that precedent rather than inventing a state.
+
+    Only leads created AFTER this ships are affected: this runs at intake, and
+    nothing re-evaluates an existing lead.
+    """
     from .services import start_injection
 
     buyer = resolve_buyer_for_lead(lead)
-    if buyer is None or not buyer.auto_inject:
+    if buyer is None:
+        Lead = lead.__class__
+        Lead.objects.filter(pk=lead.pk).exclude(
+            status__in=(Lead.STATUS_INJECTED, Lead.STATUS_DEPOSIT),
+        ).touch(status=Lead.STATUS_UNROUTED)
+        return None
+    if not buyer.auto_inject:
+        # A destination exists, it is just gated off — that is "waiting", not
+        # "nowhere to go", so the lead stays in `new`.
         return None
 
     return start_injection(lead, buyer, synchronous=False)

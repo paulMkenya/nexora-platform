@@ -6,7 +6,6 @@ Ownership is enforced server-side (Lead.objects.filter(..., affiliate=
 request.user)) on the inject endpoint, not just hidden in the UI — a direct
 POST with someone else's lead id must not be able to inject it."""
 from django.contrib import messages
-from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -18,30 +17,28 @@ from leadgen.status_sync import attach_affiliate_phase
 
 
 def _available_buyers(request):
-    """Buyers a lead may be injected to.
+    """Buyers this affiliate's leads may be injected to — strictly their own
+    brand's.
 
-    The `Q(brand=b) | Q(brand__isnull=True)` shape here looks identical to the
-    offer-scoping fallback that was removed in favour of offers_for_affiliate,
-    and it is deliberately NOT the same thing. The two models point in
-    opposite directions:
+    Paul ruled on outbound scoping (2026-08-05): a LeadBuyer belongs to
+    exactly one Brand, which routes only to its own buyers and owns the payout
+    relationship. The null-brand fallback this used to carry — "a
+    platform-level destination any brand may route to" — is now incorrect, not
+    merely undecided, so it is gone.
 
-      * `Brand` is an INBOUND tenant — its affiliates, its offers, its domain.
-        A brandless *offer* reaching an affiliate exposes another tenant's
-        inventory, so there is no fallback there: strict isolation.
-      * `LeadBuyer` is an OUTBOUND destination — somewhere the routing engine
-        sends leads. A brandless *buyer* plausibly means "a platform-level
-        destination any inbound brand may route to", which is a routing
-        decision, not a tenant leak.
-
-    Same query pattern, opposite meaning, because inbound visibility and
-    outbound routing are governed by different rules. Left exactly as-is
-    pending Paul's separate ruling on outbound buyer scoping: is a brandless
-    buyer reachable by ANY brand, or only by the platform brand? Until that is
-    decided this is intentional, not a copied fallback.
+    Scoped to the affiliate's OWN brand rather than the request host, for the
+    same reason offers are (see affiliate_ui.views.general_views.
+    offers_for_affiliate): BrandMiddleware derives request.brand from the Host
+    header and falls back to the default brand, and affiliate login is not
+    brand-gated. Host-scoping here would offer an affiliate buyers that
+    leadgen.services.start_injection then refuses at the wire, because the
+    lead's brand and the buyer's would not match — a picker full of choices
+    that cannot work.
     """
-    brand = getattr(request, 'brand', None)
-    return LeadBuyer.objects.filter(is_active=True).filter(
-        Q(brand=brand) | Q(brand__isnull=True)).order_by('name')
+    brand = getattr(getattr(request.user, 'profile', None), 'brand', None)
+    if brand is None:
+        return LeadBuyer.objects.none()
+    return LeadBuyer.objects.filter(is_active=True, brand=brand).order_by('name')
 
 
 @require_approved_affiliate

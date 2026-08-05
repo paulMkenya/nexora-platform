@@ -13,7 +13,6 @@ from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
-from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -47,7 +46,9 @@ def _scoped_buyers(request, *, active_only=False):
     if active_only:
         qs = qs.filter(is_active=True)
     if not show_all_brands:
-        qs = qs.filter(Q(brand=brand) | Q(brand__isnull=True))
+        # Strictly the operator's own brand: buyers are brand-owned, and there
+        # is no platform-wide buyer to fall back to any more.
+        qs = qs.filter(brand=brand)
     return qs.order_by('name'), brand, show_all_brands
 
 

@@ -3,8 +3,12 @@ buyer' entry point (auto-inject on capture, the inject_pending_leads
 command, and every manual 'inject now' UI surface: Django admin action,
 affiliate My Leads page, operator dashboard) does the create-row +
 trigger-task mechanics, so that mechanic only exists once."""
+import logging
+
 from .models import LeadInjection
 from .tasks import inject_lead_task
+
+logger = logging.getLogger(__name__)
 
 
 def start_injection(lead, buyer, *, synchronous, chain_managed=False):
@@ -24,6 +28,21 @@ def start_injection(lead, buyer, *, synchronous, chain_managed=False):
     leadgen.failover.advance_chain passes True — see LeadInjection.
     chain_managed's docstring for why this needs to be explicit rather than
     inferred."""
+    # Layer 3 of the cross-brand guard, and the last one before the wire.
+    # Every path that delivers a lead comes through here, so whatever went
+    # wrong upstream — a hand-written rule, a shell, a future caller that
+    # forgets — a lead cannot leave its own brand's boundary. Refuse loudly
+    # rather than deliver to the wrong counterparty: this is somebody's money.
+    if lead.brand_id != buyer.brand_id:
+        logger.error(
+            'BLOCKED cross-brand injection: lead %s (brand=%s) -> buyer %s (brand=%s)',
+            lead.pk, lead.brand_id, buyer.pk, buyer.brand_id,
+        )
+        raise ValueError(
+            f'Cross-brand injection refused: lead {lead.pk} belongs to brand '
+            f'{lead.brand_id} but buyer "{buyer.name}" belongs to brand {buyer.brand_id}.'
+        )
+
     injection = LeadInjection.objects.create(lead=lead, buyer=buyer, chain_managed=chain_managed)
     if synchronous:
         try:

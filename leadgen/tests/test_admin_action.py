@@ -29,14 +29,16 @@ def _platform_admin_host(settings):
 
 @pytest.mark.django_db
 class TestInjectToBuyerAction:
-    def _lead(self):
+    def _lead(self, buyer):
+        """In the buyer's brand — start_injection refuses cross-brand."""
         return Lead.objects.create(
-            intake_channel=Lead.CHANNEL_LANDING_PAGE, email='admin-action@test.com', phone='+15551234567')
+            brand=buyer.brand, intake_channel=Lead.CHANNEL_LANDING_PAGE,
+            email='admin-action@test.com', phone='+15551234567')
 
     def test_intermediate_page_renders_buyer_choices(self, superuser, buyer):
         client = Client()
         client.force_login(superuser)
-        lead = self._lead()
+        lead = self._lead(buyer)
         r = client.post('/admin/leadgen/lead/', {
             'action': 'inject_to_buyer',
             helpers.ACTION_CHECKBOX_NAME: [str(lead.pk)],
@@ -49,7 +51,7 @@ class TestInjectToBuyerAction:
     def test_confirm_creates_injection(self, mock_task, superuser, buyer):
         client = Client()
         client.force_login(superuser)
-        lead = self._lead()
+        lead = self._lead(buyer)
         r = client.post('/admin/leadgen/lead/', {
             'action': 'inject_to_buyer',
             helpers.ACTION_CHECKBOX_NAME: [str(lead.pk)],
@@ -65,7 +67,7 @@ class TestInjectToBuyerAction:
         buyer.save(update_fields=['is_active'])
         client = Client()
         client.force_login(superuser)
-        lead = self._lead()
+        lead = self._lead(buyer)
         client.post('/admin/leadgen/lead/', {
             'action': 'inject_to_buyer',
             helpers.ACTION_CHECKBOX_NAME: [str(lead.pk)],
@@ -78,7 +80,7 @@ class TestInjectToBuyerAction:
     def test_multiple_selected_leads_all_injected(self, mock_task, superuser, buyer):
         client = Client()
         client.force_login(superuser)
-        leads = [self._lead() for _ in range(3)]
+        leads = [self._lead(buyer) for _ in range(3)]
         client.post('/admin/leadgen/lead/', {
             'action': 'inject_to_buyer',
             helpers.ACTION_CHECKBOX_NAME: [str(lead.pk) for lead in leads],

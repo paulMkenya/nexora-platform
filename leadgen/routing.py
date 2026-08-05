@@ -74,6 +74,12 @@ def resolve_buyer_chain(lead):
     rules = (
         RoutingRule.objects
         .filter(brand_id=lead.brand_id, is_active=True, buyer__is_active=True)
+        # Layer 2 of the cross-brand guard: the buyer must belong to the same
+        # brand as the lead, not merely be named by a rule of that brand.
+        # RoutingRule.clean() enforces this on save, but a rule written around
+        # validation (raw SQL, a fixture, a shell) must still not be able to
+        # send this brand's leads to another brand's buyer.
+        .filter(buyer__brand_id=lead.brand_id)
         .select_related('buyer')
         .order_by('priority', 'id')
     )

@@ -86,7 +86,7 @@ def box_type(db):
 @pytest.fixture
 def buyer(db, brand, box_type):
     b = LeadBuyer.objects.create(
-        brand=None, box_type=box_type,
+        brand=brand, box_type=box_type,
         name='Test Buyer', slug='test-buyer',
         is_active=True, auto_inject=False,
         base_url='https://buyer.test/api',
