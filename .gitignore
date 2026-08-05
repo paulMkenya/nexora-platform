@@ -128,3 +128,5 @@ data/
 
 # Collected static assets (build artifact, not source)
 staticfiles/
+.claude/
+.aider*
