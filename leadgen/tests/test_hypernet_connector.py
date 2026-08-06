@@ -16,7 +16,8 @@ is silent rather than loud:
   * build_payload() is DETERMINISTIC — inject_lead_task calls it twice and
     audits the first result while sending the second.
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -729,19 +730,260 @@ class TestRedirectUrlStorage:
         assert lead.get_broker_redirect_url() == url
 
 
+# --- status sync ------------------------------------------------------------
+#
+# Every response literal below is copied from a real probe of the live
+# desperados box on 2026-08-06 (docs/hypernet-status-endpoint.md), not invented.
+# We have no written spec from Hypernet, so these fixtures ARE the spec — if
+# their shape drifts, these fail.
+
+# The one real row we have observed end to end: registered 14:49:12Z, deposited
+# 14:59:19Z, ten minutes apart. That gap is what proves which timestamp their
+# date window filters on, so it is preserved exactly.
+REAL_ROW = {
+    'id': '422bd856-1026-4b91-995d-4f0e41019a3b',
+    'registration': {'status': 'deposited', 'rawStatus': 'Test Lead'},
+    'profile': {'email': 'nexora.qatest.t4.20260806@example.com',
+                'lastName': 'QATest', 'firstName': 'Nexora'},
+    'ip': '187.190.0.3',
+    'geo': 'MX',
+    'utmSource': None, 'utmMedium': None, 'utmCampaign': None, 'utmId': None,
+    'subId': 'nexora-qa-t4-20260806',
+    'subId_a': None, 'subId_b': None, 'subId_c': None,
+    'subId_d': None, 'subId_e': None, 'subId_f': None,
+    'isDeposited': True,
+    'createdAt': '2026-08-06T14:49:12.769Z',
+    'depositedAt': '2026-08-06T14:59:19.087Z',
+}
+
+
+def _delivered(buyer, lead, external_id, injected_at):
+    """A delivered LeadInjection — fetch_lead_statuses derives its date window
+    from these timestamps, so they are load-bearing, not scaffolding."""
+    from django.utils import timezone as dj_tz
+
+    from leadgen.models import LeadInjection
+
+    inj = LeadInjection.objects.create(
+        lead=lead, buyer=buyer, status=LeadInjection.STATUS_DELIVERED,
+        external_id=external_id)
+    # created_at is auto_now_add, so it must be overwritten after the fact.
+    LeadInjection.objects.filter(pk=inj.pk).update(created_at=injected_at)
+    inj.refresh_from_db()
+    assert dj_tz.is_aware(inj.created_at)
+    return inj
+
+
 @pytest.mark.django_db
-class TestStatusSyncIsExplicitlyUnimplemented:
-    """Hypernet's GET filters by date window, not by an ID list, so the base
-    class's Ids= call would be accepted and return an unrelated page. Loudly
-    unimplemented beats silently wrong."""
+class TestParseStatusSyncResults:
+    """Mapping their row onto the shared contract. Pure — no network."""
 
-    def test_fetch_lead_statuses_raises(self, hypernet_buyer):
-        with pytest.raises(NotImplementedError):
-            HypernetConnector(hypernet_buyer).fetch_lead_statuses(['abc'])
+    def test_maps_the_real_row(self, hypernet_buyer):
+        [result] = HypernetConnector(hypernet_buyer).parse_status_sync_results(
+            {'count': 1, 'rows': [REAL_ROW]})
+        assert result == {
+            'external_id': '422bd856-1026-4b91-995d-4f0e41019a3b',
+            'buyer_status': 'deposited',
+            'deposit': True,
+            'updated_at': '2026-08-06T14:59:19.087Z',
+            'country_iso2': 'MX',
+        }
 
-    def test_parse_status_sync_results_raises(self, hypernet_buyer):
-        with pytest.raises(NotImplementedError):
-            HypernetConnector(hypernet_buyer).parse_status_sync_results({'count': 0, 'rows': []})
+    def test_external_id_comes_from_id_not_leadId(self, hypernet_buyer):
+        """THE trap. Injection RESPONDS with leadId; the read side keys the same
+        value as `id`. A parser reading leadId off a row yields nothing and
+        every lead looks absent — silently, since absence is not an error."""
+        row = dict(REAL_ROW)
+        row['leadId'] = 'THIS-MUST-NOT-BE-USED'
+        [result] = HypernetConnector(hypernet_buyer).parse_status_sync_results(
+            {'count': 1, 'rows': [row]})
+        assert result['external_id'] == '422bd856-1026-4b91-995d-4f0e41019a3b'
+
+    def test_buyer_status_is_the_normalized_status_not_rawStatus(self, hypernet_buyer):
+        """registration.status is their stable vocabulary; rawStatus is the
+        broker's free text and varies per broker config. default_status_mapping
+        is keyed on the former."""
+        [result] = HypernetConnector(hypernet_buyer).parse_status_sync_results(
+            {'count': 1, 'rows': [REAL_ROW]})
+        assert result['buyer_status'] == 'deposited'
+        assert result['buyer_status'] != 'Test Lead'
+
+    def test_non_deposit_row_has_no_timestamp(self, hypernet_buyer):
+        """Their rows carry no general updated-at — only createdAt and
+        depositedAt, and depositedAt only once a deposit happened. So a
+        non-deposit status change returns '' and tasks._parse_buyer_timestamp
+        turns that into None. Deliberate: None reads as 'we do not know when',
+        whereas stamping poll time would assert the change happened when we
+        happened to look, which is false."""
+        row = dict(REAL_ROW, registration={'status': 'registered', 'rawStatus': 'New'},
+                   isDeposited=False, depositedAt=None)
+        [result] = HypernetConnector(hypernet_buyer).parse_status_sync_results(
+            {'count': 1, 'rows': [row]})
+        assert result['buyer_status'] == 'registered'
+        assert result['deposit'] is False
+        assert result['updated_at'] == ''
+
+    def test_empty_and_malformed_responses_are_survivable(self, hypernet_buyer):
+        c = HypernetConnector(hypernet_buyer)
+        assert c.parse_status_sync_results({'count': 0, 'rows': []}) == []
+        assert c.parse_status_sync_results({}) == []
+        assert c.parse_status_sync_results(None) == []
+        # A row with no id is skipped rather than emitted with external_id ''
+        # — that would match no injection and silently burn a sync slot.
+        assert c.parse_status_sync_results({'rows': [{'registration': {}}]}) == []
+
+
+@pytest.mark.django_db
+class TestFetchLeadStatusesWindowing:
+    """The part that is genuinely easy to get wrong.
+
+    Their from/to filter on REGISTRATION date, not on when a status changed, so
+    'pull the last hour of changes' returns nothing useful. We window by each
+    lead's own injection date instead."""
+
+    def _connector_with(self, buyer, responses):
+        """Patch fetch_leads and record the params of every call."""
+        calls = []
+
+        def fake_fetch_leads(**params):
+            calls.append(params)
+            return responses[min(len(calls) - 1, len(responses) - 1)]
+
+        c = HypernetConnector(buyer)
+        c.fetch_leads = fake_fetch_leads
+        return c, calls
+
+    def test_windows_on_the_injection_date_and_matches_on_id(self, hypernet_buyer, lead):
+        injected = datetime(2026, 8, 6, 14, 49, 11, tzinfo=dt_timezone.utc)
+        _delivered(hypernet_buyer, lead, REAL_ROW['id'], injected)
+        c, calls = self._connector_with(hypernet_buyer, [{'count': 1, 'rows': [REAL_ROW]}])
+
+        response = c.fetch_lead_statuses([REAL_ROW['id']])
+
+        assert response == {'count': 1, 'rows': [REAL_ROW]}
+        assert len(calls) == 1
+        # The window brackets the injection DAY (padded), not "recently".
+        assert calls[0]['from'] < '2026-08-06T00:00:00Z'
+        assert calls[0]['to'] > '2026-08-06T23:00:00Z'
+        assert calls[0]['take'] == HypernetConnector.STATUS_SYNC_PAGE_SIZE
+
+    def test_a_lead_injected_months_ago_is_still_found(self, hypernet_buyer, lead):
+        """The whole point. If the window were anchored to 'now', a lead that
+        registered in March and deposits today would never be returned — the
+        sync would look healthy and miss the deposit."""
+        old = datetime(2026, 3, 2, 9, 0, tzinfo=dt_timezone.utc)
+        row = dict(REAL_ROW, createdAt='2026-03-02T09:00:01.000Z')
+        _delivered(hypernet_buyer, lead, row['id'], old)
+        c, calls = self._connector_with(hypernet_buyer, [{'count': 1, 'rows': [row]}])
+
+        response = c.fetch_lead_statuses([row['id']])
+
+        assert response['count'] == 1
+        assert calls[0]['from'].startswith('2026-03-01')
+        assert calls[0]['to'].startswith('2026-03-03')
+
+    def test_one_request_per_distinct_injection_day(self, hypernet_buyer, lead):
+        """Cost scales with how many distinct days the chunk spans, not with how
+        far back the oldest lead is. Days with no leads are never requested."""
+        for i, day in enumerate((4, 4, 6)):
+            _delivered(hypernet_buyer, lead, f'id-{i}',
+                       datetime(2026, 8, day, 12, 0, tzinfo=dt_timezone.utc))
+        c, calls = self._connector_with(hypernet_buyer, [{'count': 0, 'rows': []}])
+
+        c.fetch_lead_statuses(['id-0', 'id-1', 'id-2'])
+
+        assert len(calls) == 2, 'two distinct days -> two windows, not three or 30'
+
+    def test_rows_for_other_leads_in_the_window_are_discarded(self, hypernet_buyer, lead):
+        """A date window necessarily returns every lead registered that day,
+        including other affiliates'. Only the requested ids may come back."""
+        injected = datetime(2026, 8, 6, 14, 49, 11, tzinfo=dt_timezone.utc)
+        _delivered(hypernet_buyer, lead, REAL_ROW['id'], injected)
+        stranger = dict(REAL_ROW, id='not-ours-0000-0000-0000-000000000000')
+        c, _ = self._connector_with(
+            hypernet_buyer, [{'count': 2, 'rows': [REAL_ROW, stranger]}])
+
+        response = c.fetch_lead_statuses([REAL_ROW['id']])
+
+        assert [r['id'] for r in response['rows']] == [REAL_ROW['id']]
+
+    def test_pages_until_count_is_consumed(self, hypernet_buyer, lead):
+        """Their `count` is the TOTAL matching, not the page length — proven by
+        skip=1 returning count=1 with rows=[]. Stopping at a short page would
+        silently truncate."""
+        injected = datetime(2026, 8, 6, 12, 0, tzinfo=dt_timezone.utc)
+        _delivered(hypernet_buyer, lead, 'wanted-on-page-2', injected)
+        page1 = {'count': 2, 'rows': [dict(REAL_ROW, id='other')]}
+        page2 = {'count': 2, 'rows': [dict(REAL_ROW, id='wanted-on-page-2')]}
+        c, calls = self._connector_with(hypernet_buyer, [page1, page2])
+
+        response = c.fetch_lead_statuses(['wanted-on-page-2'])
+
+        assert len(calls) == 2
+        assert calls[1]['skip'] == 1, 'second page must offset by rows already seen'
+        assert [r['id'] for r in response['rows']] == ['wanted-on-page-2']
+
+    def test_pagination_is_bounded(self, hypernet_buyer, lead):
+        """A count that never resolves must not spin a Celery worker."""
+        _delivered(hypernet_buyer, lead, 'x',
+                   datetime(2026, 8, 6, 12, 0, tzinfo=dt_timezone.utc))
+        liar = {'count': 10 ** 9, 'rows': [dict(REAL_ROW, id='filler')]}
+        c, calls = self._connector_with(hypernet_buyer, [liar])
+
+        c.fetch_lead_statuses(['x'])
+
+        assert len(calls) == HypernetConnector.STATUS_SYNC_MAX_PAGES
+
+    def test_no_external_ids_makes_no_request(self, hypernet_buyer):
+        c, calls = self._connector_with(hypernet_buyer, [{'count': 0, 'rows': []}])
+        assert c.fetch_lead_statuses([]) == {'count': 0, 'rows': []}
+        assert calls == []
+
+    def test_unknown_external_ids_make_no_request(self, hypernet_buyer):
+        """No injection row means no basis for a window. Return empty rather
+        than guessing one."""
+        c, calls = self._connector_with(hypernet_buyer, [{'count': 0, 'rows': []}])
+        assert c.fetch_lead_statuses(['never-injected']) == {'count': 0, 'rows': []}
+        assert calls == []
+
+    def test_another_buyers_injection_is_not_used_for_the_window(
+            self, hypernet_buyer, buyer_on_base_connector, lead):
+        """external_id is only unique per buyer. Scoping the lookup keeps one
+        box's ids from pulling another box's window."""
+        _delivered(buyer_on_base_connector, lead, 'shared-id',
+                   datetime(2026, 8, 6, 12, 0, tzinfo=dt_timezone.utc))
+        c, calls = self._connector_with(hypernet_buyer, [{'count': 0, 'rows': []}])
+        assert c.fetch_lead_statuses(['shared-id']) == {'count': 0, 'rows': []}
+        assert calls == []
+
+    def test_absent_lead_is_logged_not_raised(self, hypernet_buyer, lead, caplog):
+        """2 of our first 3 real deliveries are absent from their side entirely
+        (docs/hypernet-status-endpoint.md). Until Hypernet explains that,
+        absence cannot be read as 'no change' or as 'lost' — so it is logged
+        loudly and the rest of the sync proceeds."""
+        _delivered(hypernet_buyer, lead, 'delivered-but-they-have-no-record',
+                   datetime(2026, 8, 6, 12, 0, tzinfo=dt_timezone.utc))
+        c, _ = self._connector_with(hypernet_buyer, [{'count': 0, 'rows': []}])
+
+        with caplog.at_level('WARNING'):
+            response = c.fetch_lead_statuses(['delivered-but-they-have-no-record'])
+
+        assert response == {'count': 0, 'rows': []}
+        assert 'absent from buyer' in caplog.text
+
+
+@pytest.mark.django_db
+class TestStatusSyncIsWiredUp:
+    def test_supports_status_sync_is_on(self, hypernet_buyer):
+        """The flag tasks.sync_buyer_statuses_for_buyer checks before it does
+        anything. While it was False this box's leads delivered and their
+        status silently never updated."""
+        assert HypernetConnector(hypernet_buyer).supports_status_sync is True
+
+    def test_take_stays_within_their_documented_ceiling(self):
+        """501 returns 400 — probed. A page size above the cap fails the whole
+        window, not just one page."""
+        assert 1 <= HypernetConnector.STATUS_SYNC_PAGE_SIZE <= 500
 
 
 @pytest.mark.django_db

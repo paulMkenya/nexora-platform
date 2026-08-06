@@ -30,6 +30,8 @@ Security posture (deliberate, mirrors payouts/providers/nowpayments/base.py):
 import logging
 import re
 import secrets
+from datetime import datetime, time, timedelta
+from datetime import timezone as dt_timezone
 from urllib.parse import urljoin
 
 import requests
@@ -519,7 +521,7 @@ class HypernetConnector(LeadBuyerConnector):
     onboarded after op-brandy, and the first that genuinely needed its own
     connector_class rather than just a LeadBuyer row.
 
-    Four things about Hypernet the generic connector cannot express:
+    Five things about Hypernet the generic connector cannot express:
 
     1. **Response envelope.** Injection returns
        ``{"success": true, "redirectUrl": "...", "leadId": "..."}``, not
@@ -545,10 +547,11 @@ class HypernetConnector(LeadBuyerConnector):
        what we send to the live op-brandy box, so they are assembled here
        instead — see build_payload() / get_or_create_password().
 
-    Status sync is deliberately NOT implemented: Hypernet's GET endpoint
-    filters by date range, not by an ID list, so the base class's
-    Ids-based fetch would silently return nothing useful. See
-    fetch_lead_statuses().
+    5. **Status sync by date window.** Their GET has no ID filter — every
+       variant 400s — and its date window filters on REGISTRATION date, not on
+       when a status changed. So fetch_lead_statuses() windows by each lead's
+       injection date and matches on the row's ``id`` (not ``leadId``). See
+       fetch_lead_statuses() and docs/hypernet-status-endpoint.md.
     """
 
     # Measured against the live desperados box: a successful POST took 11.8s,
@@ -560,10 +563,27 @@ class HypernetConnector(LeadBuyerConnector):
     # a hung endpoint well inside a Celery worker's tolerance.
     default_timeout = 60
 
-    # Status sync is not implemented for this box — see fetch_lead_statuses().
-    # This is what keeps leadgen.tasks.sync_buyer_statuses from raising on
-    # every Celery Beat tick once this box has its first delivered lead.
-    supports_status_sync = False
+    # Status sync works for this box, but not the way the base class does it
+    # — see fetch_lead_statuses() and docs/hypernet-status-endpoint.md.
+    supports_status_sync = True
+
+    # Their GET caps `take` at 500 — 501 returns 400. Their `count` is the
+    # TOTAL matching rows, not the page size, so paging runs until `count` is
+    # consumed rather than until a page comes back short.
+    STATUS_SYNC_PAGE_SIZE = 500
+
+    # Widen each window by this much at both ends. Their createdAt is stamped
+    # when THEY accept the lead, a beat after our injection timestamp (0.8s on
+    # the one lead we can compare), and their clock is not ours. An hour is far
+    # more than the observed lag and costs only overlap, which is deduplicated
+    # by id below. Too NARROW would silently drop leads near a boundary, which
+    # is the failure mode worth paying to avoid.
+    STATUS_SYNC_WINDOW_PAD = timedelta(hours=1)
+
+    # Runaway guard. At 500/page this is 25k rows for a single day's window —
+    # orders of magnitude past anything this box does. It exists so a
+    # misbehaving `count` cannot spin a Celery worker forever.
+    STATUS_SYNC_MAX_PAGES = 50
 
     # What build_payload() puts where the password goes. The real value is
     # substituted in inject_lead() and never appears in the audit trail.
@@ -793,38 +813,167 @@ class HypernetConnector(LeadBuyerConnector):
         detail = response.get('message') or response.get('error') or str(response)
         return '', 'failed', str(detail)[:255]
 
+    @staticmethod
+    def _window_param(dt) -> str:
+        """Their accepted wire format. Full ISO-8601 in UTC with a literal Z —
+        date-only also parses, but a whole-day bucket is not what we want, and
+        a unix epoch returns 500 rather than 400 (their input handling is not
+        defensive, so send only what is known good)."""
+        return dt.astimezone(dt_timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
     def fetch_lead_statuses(self, external_ids) -> dict:
-        """Not implemented — deliberately.
+        """Pull statuses for `external_ids` by DATE WINDOW, matching on row id.
 
-        Hypernet's GET /api/external/integration/lead filters by date window
-        (``skip``/``take``/``from``/``to``), not by an ID list, so the base
-        class's ``Ids=``/``PageSize=`` call would be accepted and return an
-        unrelated page of rows. Status sync for this box needs a
-        pull-a-window-and-match-on-leadId approach instead.
+        Hypernet has no ID filter at all — id/ids/Ids/leadId/leadIds/externalId
+        every one returns 400 (probed; see docs/hypernet-status-endpoint.md).
+        So the base class's ``Ids=`` call cannot work here, and this override
+        reconstructs the same answer from the only filters they do offer.
 
-        Note the param names above are not corroborated anywhere else in this
-        repo — no fixture, no recorded response, no test exercises them.
-        Confirm them against Hypernet's own API reference before building on
-        them, per this method's error message.
+        THE THING THAT MAKES THIS NON-OBVIOUS: their ``from``/``to`` filter on
+        the lead's REGISTRATION date (createdAt), not on when its status last
+        changed. So the intuitive "pull the last hour of changes" is wrong — a
+        lead that registered in March and deposits today appears in a MARCH
+        window, never in a today window. Written that way the sync would look
+        perfectly healthy and silently miss almost every deposit.
 
-        This raise is a backstop, NOT an alarm. supports_status_sync is False
-        on this class, so sync_buyer_statuses_for_buyer returns before it ever
-        reaches this call — nothing here fires on a beat tick, and nothing
-        logs. The real consequence is a SILENT gap: Hypernet leads deliver
-        normally and their status never updates. What this raise still buys is
-        a loud failure if someone flips supports_status_sync to True, or calls
-        this directly, without supplying a real implementation first — a
-        silently wrong sync would be worse than the gap.
+        What we do instead: we already know each lead's registration date — it
+        is our own injection timestamp — so we window by THAT. The requested
+        ids are grouped by the UTC day they were injected and each distinct day
+        is pulled once, paginated. Days with no leads are never requested, so
+        cost scales with how many distinct days the caller's chunk spans, not
+        with how far back the oldest lead is. This is also why a backfill of
+        arbitrarily old leads costs the same per lead as a live sync.
+
+        Returns Hypernet's own envelope, narrowed to the requested ids:
+        ``{'count': n, 'rows': [...]}``. Rows are deduplicated by id because
+        STATUS_SYNC_WINDOW_PAD makes adjacent days overlap by design.
         """
-        raise NotImplementedError(
-            'Hypernet status sync needs a date-range-based approach (pull a window, match on '
-            'leadId), not the base class Ids filter — confirm requirements before building.')
+        from .models import LeadInjection
+
+        wanted = {str(e) for e in (external_ids or []) if e}
+        if not wanted:
+            return {'count': 0, 'rows': []}
+
+        # Their createdAt is not stored on our side; our injection timestamp is
+        # the closest thing we have to it, and STATUS_SYNC_WINDOW_PAD covers
+        # the difference. Scoped to this buyer so a shared external_id string
+        # can never pull another box's window.
+        injected_at = LeadInjection.objects.filter(
+            buyer=self.buyer, external_id__in=wanted
+        ).values_list('external_id', 'created_at')
+
+        days = {created.astimezone(dt_timezone.utc).date() for _, created in injected_at}
+        if not days:
+            # Nothing of ours to look up — no injection rows for these ids on
+            # this buyer. Not an error: return empty rather than pulling a
+            # window we have no basis for.
+            logger.warning(
+                'Hypernet status sync: no injections on buyer %s for %s external_id(s); '
+                'nothing to pull.', self.buyer.slug, len(wanted))
+            return {'count': 0, 'rows': []}
+
+        rows_by_id = {}
+        for day in sorted(days):
+            start = datetime.combine(day, time.min, tzinfo=dt_timezone.utc) - self.STATUS_SYNC_WINDOW_PAD
+            end = datetime.combine(day, time.max, tzinfo=dt_timezone.utc) + self.STATUS_SYNC_WINDOW_PAD
+            for row in self._pull_window(start, end):
+                row_id = str(row.get('id') or '')
+                if row_id in wanted:
+                    rows_by_id[row_id] = row
+
+        missing = wanted - rows_by_id.keys()
+        if missing:
+            # NOT an error, and deliberately not raised: a lead we delivered
+            # that their GET does not return is a real, open discrepancy on
+            # this box (see docs/hypernet-status-endpoint.md — 2 of our first 3
+            # deliveries are absent from their side entirely, despite their API
+            # returning success and a UUID for each). Until Hypernet explains
+            # that, absence cannot be read as "no change" OR as "lost" — so log
+            # it plainly and sync what we did get.
+            logger.warning(
+                'Hypernet status sync: %s of %s requested lead(s) absent from buyer %s: %s',
+                len(missing), len(wanted), self.buyer.slug, sorted(missing)[:20])
+
+        return {'count': len(rows_by_id), 'rows': list(rows_by_id.values())}
+
+    def _pull_window(self, start, end):
+        """Every row in [start, end], following their skip/take pagination.
+
+        Their ``count`` is the total matching, not the page length, so this
+        pages until count is consumed. Stops early on a short/empty page too,
+        so a wrong count cannot loop; STATUS_SYNC_MAX_PAGES bounds it either
+        way."""
+        collected = []
+        skip = 0
+        for _ in range(self.STATUS_SYNC_MAX_PAGES):
+            response = self.fetch_leads(**{
+                'from': self._window_param(start),
+                'to': self._window_param(end),
+                'skip': skip,
+                'take': self.STATUS_SYNC_PAGE_SIZE,
+            })
+            rows = (response or {}).get('rows') or []
+            collected.extend(rows)
+            total = (response or {}).get('count')
+            if not rows or not isinstance(total, int) or len(collected) >= total:
+                return collected
+            skip += len(rows)
+        logger.warning(
+            'Hypernet status sync: hit STATUS_SYNC_MAX_PAGES (%s) for window %s..%s on buyer %s; '
+            'results may be incomplete.',
+            self.STATUS_SYNC_MAX_PAGES, start, end, self.buyer.slug)
+        return collected
 
     def parse_status_sync_results(self, response: dict) -> list[dict]:
-        """Not implemented — see fetch_lead_statuses(). Overridden so nobody
-        half-wires status sync by supplying a fetch and inheriting a parser
-        written for op-brandy's ``{"items": [...]}`` shape (Hypernet returns
-        ``{"count": N, "rows": [...]}`` with a different row shape)."""
-        raise NotImplementedError(
-            'Hypernet status-sync parsing is not implemented — its rows carry registration.status/'
-            'isDeposited/depositedAt, not op-brandy\'s deposit/status.name.')
+        """Hypernet rows -> the shared status-sync contract.
+
+        Their row shape shares nothing with op-brandy's beyond intent, which is
+        why this override exists:
+
+        ==================  ====================================================
+        Contract key        Hypernet source
+        ==================  ====================================================
+        external_id         ``id``          NOT ``leadId``
+        buyer_status        ``registration.status``
+        deposit             ``isDeposited``
+        updated_at          ``depositedAt``, or '' — see below
+        country_iso2        ``geo``         already alpha-2
+        ==================  ====================================================
+
+        ``id`` vs ``leadId`` is a genuine trap: injection RESPONDS with
+        ``leadId``, but the read side keys the same value as ``id``. Reading
+        ``leadId`` off a row silently yields nothing and every lead looks
+        absent.
+
+        ``registration.status`` is their normalized vocabulary ('deposited');
+        ``rawStatus`` beside it is the broker's own free text ('Test Lead' on
+        the QA box) and varies per broker configuration. The normalized one is
+        what default_status_mapping should be keyed on, so that is what this
+        returns.
+
+        THE updated_at COMPROMISE: their rows carry no general updated-at.
+        Only ``createdAt`` and ``depositedAt`` exist, and depositedAt only once
+        a deposit has happened. So a non-deposit status change has no timestamp
+        available at all, and this returns '' for it — which
+        tasks._parse_buyer_timestamp turns into None, leaving
+        buyer_status_updated_at unset. That is deliberate: None reads as "we do
+        not know when", whereas stamping sync time would assert the status
+        changed at the moment we happened to poll, which is false. A non-empty
+        buyer_status alongside a null timestamp is the honest encoding of what
+        this endpoint can actually tell us. Deposits — the ones that bill — do
+        get a real timestamp. Revisit if Hypernet exposes an updated-at.
+        """
+        results = []
+        for row in (response or {}).get('rows') or []:
+            external_id = str(row.get('id') or '')
+            if not external_id:
+                continue
+            registration = row.get('registration') or {}
+            results.append({
+                'external_id': external_id,
+                'buyer_status': registration.get('status') or '',
+                'deposit': bool(row.get('isDeposited')),
+                'updated_at': row.get('depositedAt') or '',
+                'country_iso2': (row.get('geo') or '')[:2],
+            })
+        return results
