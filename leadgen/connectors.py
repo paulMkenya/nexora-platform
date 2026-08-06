@@ -161,44 +161,6 @@ AMBIGUOUS_STATUS_CODES = frozenset({500})
 RATE_LIMITED_STATUS_CODE = 429
 
 
-class LeadBuyerAmbiguousError(LeadBuyerError):
-    """The buyer MAY have accepted this lead. Never retry, never cascade.
-
-    THE CONTRACT — any handler catching LeadBuyerError that intends to retry
-    or cascade MUST check for LeadBuyerAmbiguousError FIRST and quarantine;
-    only a non-ambiguous LeadBuyerError may be retried or advanced to the
-    next buyer. This subclasses LeadBuyerError deliberately so existing
-    ``except LeadBuyerError`` blocks keep catching it rather than letting it
-    escape — which means an `except` chain that tests the BASE first makes
-    this guard silently inert. Order matters:
-
-        try:
-            ...
-        except LeadBuyerAmbiguousError:   # MUST come first
-            quarantine(...)               # no retry, no cascade
-        except LeadBuyerError:
-            retry_or_cascade(...)
-
-    Raised ONLY when the request demonstrably reached the buyer AND the
-    outcome is indeterminate — we cannot tell whether they took the lead.
-    Selling it again would be a double-sell; retrying it against the same
-    buyer would risk a duplicate. Neither is recoverable, so the lead stops
-    and a human looks at it.
-
-    NEVER raised when the buyer provably did not receive the request (DNS
-    failure, connection refused, connect timeout) — those stay a plain
-    LeadBuyerError and remain safely retryable.
-    """
-
-
-# HTTP statuses that mean "the buyer's application received and processed
-# this request, and then something went wrong inside it" — the buyer may
-# already have created the lead. 502/503/504 are deliberately NOT here: a
-# gateway/unavailable response means the request never reached the
-# application, so it is safely retryable.
-AMBIGUOUS_STATUS_CODES = frozenset({500})
-
-
 # What replaces a value that isn't on an audit allowlist. The KEY is kept so
 # the recorded shape still shows what the buyer sent back (and so a diff
 # against a later response is still meaningful) — only the value is dropped.
