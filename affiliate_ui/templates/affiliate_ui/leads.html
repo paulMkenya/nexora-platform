@@ -21,8 +21,68 @@
     data (name/email/phone) directly to that buyer and can't be undone.
   </p>
 
+  {# --- filters. GET, so a filtered view is a shareable/bookmarkable URL and
+       the back button behaves. Separate <form> from the inject POST below. --- #}
+  <form method="get" class="card mb-3">
+    <div class="card-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label for="f-q" class="form-label small mb-1">Search</label>
+          <input type="search" id="f-q" name="q" class="form-control form-control-sm"
+                 value="{{ active_filters.q|default:'' }}"
+                 placeholder="email, phone or your source id">
+        </div>
+        <div class="col-md-2">
+          <label for="f-status" class="form-label small mb-1">Status</label>
+          <select id="f-status" name="status" class="form-select form-select-sm">
+            <option value="">Any status</option>
+            {% for value, label in canonical_status_choices %}
+              <option value="{{ value }}" {% if active_filters.status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="f-delivery" class="form-label small mb-1">Delivery</label>
+          <select id="f-delivery" name="delivery" class="form-select form-select-sm">
+            <option value="">Any delivery</option>
+            {% for value, label in delivery_status_choices %}
+              <option value="{{ value }}" {% if active_filters.delivery == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="f-from" class="form-label small mb-1">From</label>
+          <input type="date" id="f-from" name="date_from" class="form-control form-control-sm"
+                 value="{{ active_filters.date_from|default:'' }}">
+        </div>
+        <div class="col-md-2">
+          <label for="f-to" class="form-label small mb-1">To</label>
+          <input type="date" id="f-to" name="date_to" class="form-control form-control-sm"
+                 value="{{ active_filters.date_to|default:'' }}">
+        </div>
+        <div class="col-md-1 d-grid">
+          <button type="submit" class="btn btn-outline-primary btn-sm">Filter</button>
+        </div>
+      </div>
+      {% if active_filters %}
+        <div class="mt-2 small text-muted">
+          Showing {{ paginator.count }} of {{ total_unfiltered }} lead{{ total_unfiltered|pluralize }}.
+          <a href="{% url 'affiliate_ui:my_leads' %}" class="ms-1">Clear filters</a>
+        </div>
+      {% else %}
+        <div class="mt-2 small text-muted">{{ paginator.count }} lead{{ paginator.count|pluralize }} total.</div>
+      {% endif %}
+    </div>
+  </form>
+
   <form method="post" action="{% url 'affiliate_ui:inject_my_leads' %}">
     {% csrf_token %}
+    {# Carries the current filters through the POST so injecting does not
+       dump the affiliate back onto an unfiltered page 1. #}
+    <input type="hidden" name="filter_querystring" value="{{ filter_querystring }}">
+    {# Selection lives on THIS page only — a checkbox on page 2 is not
+       submitted with page 1's form. Stated plainly rather than letting an
+       affiliate assume "select all" spans the whole result set. #}
 
     <div class="card mb-3">
       <div class="card-body d-flex align-items-center gap-3 flex-wrap">
@@ -135,11 +195,49 @@
               {% endfor %}
             </tbody>
           </table>
+        {% elif active_filters %}
+          {# Distinguish "no leads at all" from "no leads MATCHING" — otherwise
+             a filter with no hits reads as "you have never submitted a lead",
+             which is alarming and wrong. #}
+          <p class="text-muted mb-0">
+            No leads match these filters.
+            <a href="{% url 'affiliate_ui:my_leads' %}">Clear filters</a> to see all
+            {{ total_unfiltered }} of your lead{{ total_unfiltered|pluralize }}.
+          </p>
         {% else %}
           <p class="text-muted mb-0">No leads submitted yet.</p>
         {% endif %}
       </div>
     </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+      <nav class="d-flex justify-content-between align-items-center mb-4" aria-label="Lead pages">
+        <span class="text-muted small">
+          Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+          &nbsp;·&nbsp; showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ paginator.count }}
+        </span>
+        <div class="btn-group btn-group-sm">
+          {% if page_obj.has_previous %}
+            <a class="btn btn-outline-secondary"
+               href="?{% if filter_querystring %}{{ filter_querystring }}&amp;{% endif %}page=1">First</a>
+            <a class="btn btn-outline-secondary"
+               href="?{% if filter_querystring %}{{ filter_querystring }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+          {% else %}
+            <span class="btn btn-outline-secondary disabled">First</span>
+            <span class="btn btn-outline-secondary disabled">Previous</span>
+          {% endif %}
+          {% if page_obj.has_next %}
+            <a class="btn btn-outline-secondary"
+               href="?{% if filter_querystring %}{{ filter_querystring }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+            <a class="btn btn-outline-secondary"
+               href="?{% if filter_querystring %}{{ filter_querystring }}&amp;{% endif %}page={{ page_obj.paginator.num_pages }}">Last</a>
+          {% else %}
+            <span class="btn btn-outline-secondary disabled">Next</span>
+            <span class="btn btn-outline-secondary disabled">Last</span>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
   </form>
 </div>
 {% endblock %}
