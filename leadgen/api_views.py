@@ -209,6 +209,29 @@ class LeadListView(APIView):
     same rule that keeps affiliate B from ever seeing affiliate A's leads."""
 
     doc_purpose = 'Pull your own leads — filter by status, source_id, ids, updated_since.'
+
+    # Declared next to the code that implements them, and rendered into the
+    # affiliate doc by leadgen.api_doc — same anti-drift rule as doc_purpose:
+    # a filter that isn't really parsed below cannot be documented, and one
+    # that is added below without a row here shows up as undocumented.
+    doc_filters = [
+        {'name': 'status', 'example': 'ftd',
+         'purpose': 'Exact canonical status. Use ftd for First Time Deposit conversions.'},
+        {'name': 'source_id', 'example': 'your-own-tracking-id',
+         'purpose': 'Exact match on the source_id you submitted with the lead.'},
+        {'name': 'ids', 'example': '1024,1025,1031',
+         'purpose': 'Comma-separated Nexora lead ids. Non-numeric entries are ignored.'},
+        {'name': 'updated_since', 'example': '2026-01-01T00:00:00Z',
+         'purpose': 'ISO-8601. Returns leads whose updated_at is >= this — the reconcile filter. '
+                    'updated_at moves on every state change, including a status change, so a lead '
+                    'that converted since your last poll comes back here. An unparseable value is '
+                    'ignored rather than erroring, so always check the timestamps you get back.'},
+        {'name': 'page', 'example': '2',
+         'purpose': 'Page number, 1-based. Prefer following the "next" URL in the response.'},
+        {'name': 'page_size', 'example': '200',
+         'purpose': f'Results per page. Default {_LeadPagination.page_size}, '
+                    f'maximum {_LeadPagination.max_page_size}.'},
+    ]
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsAuthenticated, IsAffiliate]
     throttle_classes = [APIKeyThrottle]

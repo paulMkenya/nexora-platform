@@ -62,7 +62,26 @@ NARRATIVE = {
         'successful check with updated_since, and reconcile.',
         'Use it whenever a postback delivery to you fails, or as a periodic sweep — the canonical '
         'status is identical either way.',
-        'Results are paginated (50 per page, page_size up to 200).',
+        'updated_since compares against updated_at, which moves whenever anything about the lead '
+        'changes — a status change, a deposit, a delivery outcome. It is not the creation time, so '
+        'a lead you already pulled will come back again once it converts. Page through with the '
+        '"next" URL, and keep the newest updated_at you saw as the cursor for your next poll.',
+        'Responses are a standard page envelope: count, next, previous, results.',
+    ],
+    'conversions': [
+        'A conversion is a canonical status, not a separate endpoint: pull it with '
+        'GET /api/leads?status=ftd. There is no /conversions resource.',
+        'ftd is the First Time Deposit. qualified_ftd is an FTD that additionally met the '
+        'campaign\'s qualification bar and is the billable one; redeposit is a further deposit '
+        'after the first; high_value flags a VIP depositor.',
+        'test_ftd is the TESTING-phase rehearsal of an FTD — it exists so you can prove your '
+        'integration records a deposit correctly before the offer goes live. Never count it as '
+        'revenue.',
+        'chargeback reverses a previous deposit, so treat it as a negative event against a lead '
+        'you have already counted rather than as a new one.',
+        'Each lead also carries a deposit boolean and the buyer\'s own raw buyer_status string. '
+        'Prefer canonical_status: it is the value Nexora guarantees and the one postbacks send. '
+        'The other two are passed through for reconciliation and debugging.',
     ],
     'rate_limits': [
         'Limits are per API key and shown with your keys above. Exceeding one returns 429 — back '
@@ -107,6 +126,16 @@ def _endpoint_rows():
             'purpose': purpose,
         })
     return rows
+
+
+def _pull_filter_rows():
+    """The query parameters GET /api/leads accepts, read off the view's own
+    `doc_filters` rather than retyped here — same anti-drift rule as
+    doc_purpose. Returns [] if the view ever stops declaring them, which is
+    visible in the doc rather than silently wrong."""
+    from .api_views import LeadListView
+
+    return list(getattr(LeadListView, 'doc_filters', []))
 
 
 def _field_rows():
@@ -267,6 +296,7 @@ def build_doc_context(request, affiliate_user):
         'affiliate_name': affiliate_user.get_full_name() or affiliate_user.get_username(),
         'auth_header': 'Authorization: ApiKey <your secret>',
         'endpoints': _endpoint_rows(),
+        'pull_filters': _pull_filter_rows(),
         'fields': _field_rows(),
         'statuses': [{'value': value, 'label': label} for value, label in canonical_status.CHOICES],
         'offers': offers,

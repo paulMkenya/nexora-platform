@@ -17,6 +17,7 @@ from django.urls import resolve
 from offer.models import Advertiser, Offer
 
 from leadgen.api_doc import build_doc_context
+from leadgen.api_views import _LeadPagination as _LeadPaginationRef
 from leadgen.models import AffiliateOfferLink
 
 User = get_user_model()
@@ -78,6 +79,58 @@ class TestEndpointsAreDerivedFromTheUrlConf:
         monkeypatch.setattr(LeadStatusListView, 'doc_purpose', 'Changed purpose.', raising=False)
         purposes = [e['purpose'] for e in _doc(affiliate_user)['endpoints']]
         assert 'Changed purpose.' in purposes
+
+
+@pytest.mark.django_db
+class TestPullFiltersAreDerived:
+    """The pull filters are what an integrator builds their reconcile loop
+    from, so the doc must not be able to describe a parameter the endpoint
+    doesn't parse (or omit one it does)."""
+
+    def test_documents_every_filter_the_view_declares(self, affiliate_user):
+        from leadgen.api_views import LeadListView
+
+        documented = {f['name'] for f in _doc(affiliate_user)['pull_filters']}
+        assert documented == {f['name'] for f in LeadListView.doc_filters}
+        assert {'status', 'source_id', 'ids', 'updated_since', 'page', 'page_size'} <= documented
+
+    def test_every_documented_filter_is_really_parsed(self, affiliate_user):
+        """Read the view's own source: a documented parameter that the
+        handler never reads would be a lie the doc tells confidently."""
+        import inspect
+
+        from leadgen.api_views import LeadListView
+
+        source = inspect.getsource(LeadListView.get)
+        pagination = inspect.getsource(LeadListView.__mro__[0]) + inspect.getsource(_LeadPaginationRef)
+        for row in _doc(affiliate_user)['pull_filters']:
+            name = row['name']
+            assert name in source or name in pagination, f'{name} is documented but never parsed'
+
+    def test_every_parsed_parameter_appears_in_the_doc(self, affiliate_user):
+        """The REVERSE direction, which is the one that rots silently: a filter
+        added to the view but never declared leaves integrators guessing at a
+        capability that exists. Reads the handler's own source for request.GET
+        lookups and requires each to be documented."""
+        import inspect
+        import re
+
+        from leadgen.api_views import LeadListView, _LeadPagination
+
+        source = inspect.getsource(LeadListView.get)
+        parsed = set(re.findall(r"request\.GET\.get\('([a-z_]+)'\)", source))
+        # Pagination params are read by DRF's paginator, not this handler.
+        parsed |= {'page', _LeadPagination.page_size_query_param}
+
+        documented = {f['name'] for f in _doc(affiliate_user)['pull_filters']}
+        undocumented = parsed - documented
+        assert not undocumented, \
+            f'the view parses these but the doc never mentions them: {sorted(undocumented)}'
+
+    def test_page_size_limits_match_the_paginator(self, affiliate_user):
+        row = next(f for f in _doc(affiliate_user)['pull_filters'] if f['name'] == 'page_size')
+        assert str(_LeadPaginationRef.page_size) in row['purpose']
+        assert str(_LeadPaginationRef.max_page_size) in row['purpose']
 
 
 @pytest.mark.django_db

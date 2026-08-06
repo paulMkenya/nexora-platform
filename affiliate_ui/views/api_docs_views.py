@@ -115,9 +115,18 @@ def _text_delivery(doc):
                   for c in doc['postback_configs']]
         lines.append('')
 
+    lines += ['CONVERSIONS (FTD / DEPOSITS)', '']
+    lines += _wrap(doc['narrative']['conversions'])
+
     lines += ['PULL (safety net)', '']
     lines += _wrap(doc['narrative']['pull'])
     lines += _block(doc['examples']['pull_curl'])
+    lines += ['', '  Query parameters:']
+    for f in doc['pull_filters']:
+        lines.append(f'    {f["name"]}={f["example"]}')
+        lines.extend(textwrap.wrap(
+            f['purpose'], width=92, initial_indent=' ' * 8, subsequent_indent=' ' * 8))
+    lines.append('')
     lines += ['', 'RATE LIMITS', '']
     lines += _wrap(doc['narrative']['rate_limits'])
     return lines
