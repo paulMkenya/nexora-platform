@@ -237,7 +237,7 @@ def _sanitize_body(resp) -> str:
     return text[:300] if text else '<empty response body>'
 
 
-def get_connector(buyer, *, timeout: int = DEFAULT_TIMEOUT):
+def get_connector(buyer, *, timeout: int | None = None):
     """Instantiate the right connector class for `buyer`, per its
     box_type.connector_class (a dotted Python path — declarative
     selection via Django's own import_string, the same safe mechanism
@@ -282,10 +282,22 @@ class LeadBuyerConnector:
         'addedLeads', 'failedToAddLeads', 'id', 'failureReason', 'failureMessages',
     })
 
-    def __init__(self, buyer, *, timeout: int = DEFAULT_TIMEOUT):
+    # Per-box HTTP timeout. A class attribute rather than a BoxType column
+    # because it is a property of the platform's own latency, discovered by
+    # integrating against it — not something an operator should be tuning
+    # from a form. A subclass raises it for a box that is genuinely slow.
+    #
+    # This matters more than an ordinary tuning knob: a timeout that fires
+    # while the buyer is still processing produces an AMBIGUOUS outcome (see
+    # LeadBuyerAmbiguousError), which quarantines a lead that may well have
+    # been accepted. Too low a value therefore does not merely retry — it
+    # strands good leads and creates manual reconciliation work.
+    default_timeout = DEFAULT_TIMEOUT
+
+    def __init__(self, buyer, *, timeout: int | None = None):
         self.buyer = buyer
         self.box_type = buyer.box_type
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else self.default_timeout
         self._bucket = TokenBucket.for_buyer(buyer)
 
     # --- payload mapping -----------------------------------------------------
@@ -576,6 +588,15 @@ class HypernetConnector(LeadBuyerConnector):
     Ids-based fetch would silently return nothing useful. See
     fetch_lead_statuses().
     """
+
+    # Measured against the live desperados box: a successful POST took 11.8s,
+    # and an earlier attempt exceeded the 15s default outright. Their box is
+    # simply slow to answer. At the default this intermittently produced a
+    # read timeout -> AMBIGUOUS -> quarantine for leads that had NOT actually
+    # been rejected, each needing a human to check their system by hand.
+    # 60s leaves real headroom over the observed latency while still bounding
+    # a hung endpoint well inside a Celery worker's tolerance.
+    default_timeout = 60
 
     # Status sync is not implemented for this box — see fetch_lead_statuses().
     # This is what keeps leadgen.tasks.sync_buyer_statuses from raising on

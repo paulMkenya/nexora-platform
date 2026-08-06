@@ -446,6 +446,42 @@ class TestParseInjectionResult:
 
 
 @pytest.mark.django_db
+class TestTimeoutProfile:
+    """A timeout that fires while the buyer is still processing produces an
+    AMBIGUOUS outcome, which quarantines a lead that may in fact have been
+    accepted. The per-box timeout is therefore a correctness concern, not a
+    tuning knob.
+
+    Measured against the live desperados box: a successful POST took 11.8s,
+    and an earlier attempt exceeded the 15s default outright."""
+
+    def test_hypernet_raises_the_default_timeout(self, hypernet_buyer):
+        from leadgen.connectors import DEFAULT_TIMEOUT, LeadBuyerConnector
+
+        assert HypernetConnector(hypernet_buyer).timeout == 60
+        assert HypernetConnector.default_timeout > DEFAULT_TIMEOUT
+        # The generic connector is untouched — op-brandy keeps its own profile.
+        assert LeadBuyerConnector(hypernet_buyer).timeout == DEFAULT_TIMEOUT
+
+    def test_an_explicit_timeout_still_wins(self, hypernet_buyer):
+        assert HypernetConnector(hypernet_buyer, timeout=5).timeout == 5
+
+    def test_get_connector_honours_the_per_box_default(self, hypernet_buyer):
+        from leadgen.connectors import get_connector
+
+        assert get_connector(hypernet_buyer).timeout == 60
+        assert get_connector(hypernet_buyer, timeout=7).timeout == 7
+
+    def test_the_timeout_reaches_the_request(self, hypernet_buyer, lead):
+        connector = HypernetConnector(hypernet_buyer)
+        mock_resp = MagicMock(ok=True, content=b'{}',
+                              json=lambda: {'success': True, 'leadId': 'x'})
+        with patch('leadgen.connectors.requests.request', return_value=mock_resp) as req:
+            connector.inject_lead(lead)
+        assert req.call_args[1]['timeout'] == 60
+
+
+@pytest.mark.django_db
 class TestAuditSanitization:
     """Default-deny filtering of what reaches LeadInjection.response_payload.
 
