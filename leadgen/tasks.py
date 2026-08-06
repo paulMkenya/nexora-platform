@@ -92,7 +92,9 @@ def maybe_auto_inject(lead):
 
 @_celery.task(bind=True, max_retries=3, ignore_result=True)
 def inject_lead_task(self, injection_id: int):
-    from .connectors import LeadBuyerError, get_connector
+    from .connectors import (
+        LeadBuyerAmbiguousError, LeadBuyerError, LeadBuyerRejectedError, get_connector,
+    )
     from .models import Lead, LeadInjection
 
     try:
@@ -121,7 +123,12 @@ def inject_lead_task(self, injection_id: int):
 
     try:
         response = connector.inject_lead(lead)
-        injection.response_payload = response
+        # Default-deny filter before this is persisted: response_payload is
+        # rendered to affiliates (affiliate_ui/templates/affiliate_ui/leads.html)
+        # and operators (templates/admin_shared/dashboard.html), and a raw
+        # buyer response can carry credentials — Hypernet returns an autologin
+        # redirect URL. See connectors.sanitize_response_for_audit.
+        injection.response_payload = connector.sanitize_response_for_audit(response)
         external_id, status, failure_reason = connector.parse_injection_result(response)
         injection.external_id = external_id
         injection.failure_reason = failure_reason
@@ -149,6 +156,48 @@ def inject_lead_task(self, injection_id: int):
                 from .failover import advance_chain
                 advance_chain(lead.pk)
             return
+
+    except LeadBuyerAmbiguousError as exc:
+        # MUST precede the LeadBuyerRejectedError and LeadBuyerError handlers
+        # below — both are subclasses, so testing a base first would silently
+        # collapse every guard back to "retry" (pinned in
+        # tests/test_error_classification.py).
+        #
+        # The buyer MAY have accepted this lead and we cannot tell (read
+        # timeout, 500, unparseable 2xx). Retrying risks a duplicate;
+        # cascading to the next buyer is a DOUBLE-SELL. Neither is
+        # recoverable, so the lead stops here until a human checks the
+        # buyer's own system.
+        injection.status = LeadInjection.STATUS_FAILED
+        injection.failure_reason = str(exc)[:255]
+        Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_QUARANTINED)
+        injection.save(update_fields=[
+            'attempts', 'status', 'external_id', 'failure_reason',
+            'request_payload', 'response_payload', 'delivered_at',
+        ])
+        logger.error(
+            'Lead injection #%s to %s QUARANTINED — outcome unknown, not retried or cascaded: %s',
+            injection.pk, buyer.name, exc)
+        return
+
+    except LeadBuyerRejectedError as exc:
+        # They evaluated the payload and refused it. The identical payload
+        # will be refused identically in 60 seconds, so the retry budget is
+        # pure added latency on the lead's time-to-contact. Terminal for this
+        # buyer; cascade immediately if the chain is managing it.
+        injection.status = LeadInjection.STATUS_FAILED
+        injection.failure_reason = str(exc)[:255]
+        Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_REJECTED)
+        injection.save(update_fields=[
+            'attempts', 'status', 'external_id', 'failure_reason',
+            'request_payload', 'response_payload', 'delivered_at',
+        ])
+        logger.warning('Lead injection #%s rejected by %s (no retry): %s',
+                       injection.pk, buyer.name, exc)
+        if injection.chain_managed:
+            from .failover import advance_chain
+            advance_chain(lead.pk)
+        return
 
     except LeadBuyerError as exc:
         injection.failure_reason = str(exc)[:255]
@@ -244,6 +293,14 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
     from .status_sync import LeadStatusEvent, apply_status_change, map_buyer_status
 
     connector = get_connector(buyer)
+    if not connector.supports_status_sync:
+        # This box has no usable status-pull (Hypernet filters by date window,
+        # not by an ID list, so the base class's Ids= call would return an
+        # unrelated page). Its connector raises NotImplementedError rather
+        # than answer wrongly — skip it here so that does not surface as a
+        # traceback on every Celery Beat tick and train people to ignore the
+        # log. See connectors.LeadBuyerConnector.supports_status_sync.
+        return 0
     injections = list(
         LeadInjection.objects.select_related('lead')
         .filter(buyer=buyer, status=LeadInjection.STATUS_DELIVERED)
