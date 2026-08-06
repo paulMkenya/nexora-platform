@@ -13,7 +13,9 @@ from payouts.models import (
     METHOD_CHOICES, METHOD_CRYPTO, PayoutMethod, PayoutRequest,
     PayoutSettings, STATUS_PENDING, SCHEDULE_CHOICES,
 )
-from payouts.services import get_or_create_payout_settings, get_unpaid_earnings
+from payouts.services import (
+    get_or_create_payout_settings, get_unpaid_earnings, resolve_paid_through,
+)
 
 from datetime import date, timedelta
 
@@ -25,7 +27,7 @@ def payouts_home(request):
     ps = get_or_create_payout_settings(request.user)
 
     today = date.today()
-    paid_through = ps.paid_through or date(2000, 1, 1)
+    paid_through = resolve_paid_through(request.user, ps)
     pending_earnings = get_unpaid_earnings(request.user, paid_through + timedelta(days=1), today)
 
     # Crypto rides the same money-safety kill-switch as dispatch: never offer an
@@ -123,7 +125,7 @@ def set_default_method(request, pk):
 def request_early_payout(request):
     ps = get_or_create_payout_settings(request.user)
     today = date.today()
-    paid_through = ps.paid_through or date(2000, 1, 1)
+    paid_through = resolve_paid_through(request.user, ps)
     earnings = get_unpaid_earnings(request.user, paid_through + timedelta(days=1), today)
 
     if earnings < ps.min_threshold:

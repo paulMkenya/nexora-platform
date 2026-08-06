@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from project._celery import _celery
-from payouts.services import get_unpaid_earnings
+from payouts.services import get_unpaid_earnings, resolve_paid_through
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -27,7 +27,7 @@ def generate_payout_requests(self):
 
     for ps in PayoutSettings.objects.select_related('affiliate').iterator():
         affiliate = ps.affiliate
-        paid_through = ps.paid_through or date(2000, 1, 1)
+        paid_through = resolve_paid_through(affiliate, ps)
         net_days = ps.net_terms or 15
 
         period_end = today - timedelta(days=net_days)
