@@ -136,7 +136,7 @@ _AFFILIATE_GROUPS = (
         NavItem('Tracking & Asset Generator', icon='tracking'),  # SOON
     )),
     NavGroup('More', (
-        NavItem('Company Settings', icon='settings'),  # SOON
+        NavItem('Company Settings', 'affiliate_ui:company_settings', icon='settings'),
     )),
 )
 

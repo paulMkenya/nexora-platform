@@ -9,6 +9,7 @@ from .views.api_docs_views import (
     api_key_create, api_key_regenerate, api_key_revoke,
 )
 from .views.postbacks_views import postbacks, postback_create, postback_update, postback_toggle_active
+from .views.settings_views import company_settings, company_settings_update
 from .views.auth_views import (
     BrandPasswordResetView,
     BrandPasswordResetDoneView,
@@ -35,6 +36,8 @@ urlpatterns = [
     path('reset/<uidb64>/<token>/', BrandPasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     path('reset/done/', BrandPasswordResetCompleteView.as_view(), name='password_reset_complete'),
     path('dashboard/', dashboard, name='dashboard'),
+    path('settings/', company_settings, name='company_settings'),
+    path('settings/save/', company_settings_update, name='company_settings_update'),
     path('offers/', offer_list, name='offer_list'),
     path('offers/<int:offer_id>/', offer_detail, name='offer_detail'),
     path('reports/daily/', daily_report_view, name='daily_report'),
