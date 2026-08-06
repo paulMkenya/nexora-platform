@@ -180,6 +180,58 @@ class TestSyncBuyerStatusesCanonicalStatusIntegration:
         assert lead.canonical_status == ''
         assert not LeadStatusEvent.objects.filter(lead=lead).exists()
 
+    def test_needs_review_clears_once_the_status_maps(self, buyer):
+        """The flag was one-way: set on an unmapped status, never cleared. So
+        adding the missing status_mapping entry fixed the mapping but left
+        every already-flagged lead in the operator's review queue forever with
+        nothing left to review — and a queue full of resolved rows stops being
+        worth opening."""
+        lead = _lead()
+        _delivered_injection(lead, buyer, 'ext-latemap')
+        resp = _fetch_response([
+            {'id': 'ext-latemap', 'deposit': True, 'status': {'name': 'Deposit', 'updatedAtUtc': ''}},
+        ])
+
+        # First sync: no mapping exists yet, so the lead is flagged.
+        with patch('leadgen.connectors.requests.request', return_value=resp):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.canonical_status_needs_review is True
+
+        # The operator does the thing the flag asked for.
+        buyer.box_type.default_status_mapping = {'Deposit': canonical_status.FTD}
+        buyer.box_type.save(update_fields=['default_status_mapping'])
+
+        with patch('leadgen.connectors.requests.request', return_value=resp):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.canonical_status_needs_review is False, 'flag must clear once resolved'
+        assert lead.canonical_status == canonical_status.FTD
+
+    def test_a_blank_buyer_status_does_not_clear_the_flag(self, buyer):
+        """map_buyer_status returns (None, False) for a blank status — "the
+        buyer has not reported yet", which is no evidence that an earlier
+        unmapped status was dealt with. Clearing on it would silently empty the
+        review queue whenever a buyer went quiet."""
+        lead = _lead()
+        _delivered_injection(lead, buyer, 'ext-blank')
+
+        with patch('leadgen.connectors.requests.request',
+                   return_value=_fetch_response([
+                       {'id': 'ext-blank', 'deposit': False,
+                        'status': {'name': 'Unheard Of', 'updatedAtUtc': ''}}])):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.canonical_status_needs_review is True
+
+        with patch('leadgen.connectors.requests.request',
+                   return_value=_fetch_response([
+                       {'id': 'ext-blank', 'deposit': False,
+                        'status': {'name': '', 'updatedAtUtc': ''}}])):
+            sync_buyer_statuses_for_buyer(buyer)
+        lead.refresh_from_db()
+        assert lead.canonical_status_needs_review is True, 'silence is not a resolution'
+
     def test_mapped_buyer_status_applies_when_lead_has_no_affiliate(self, buyer):
         buyer.box_type.default_status_mapping = {'Deposit': canonical_status.FTD}
         buyer.box_type.save(update_fields=['default_status_mapping'])

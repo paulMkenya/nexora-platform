@@ -351,8 +351,28 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
                     'sync_buyer_statuses: buyer %s status %r has no status_mapping entry (lead #%s)',
                     buyer.slug, result['buyer_status'], injection.lead_id)
             elif canonical:
+                # The flag means "this lead's CURRENT buyer status did not
+                # resolve — a human should look". Once it resolves, that is no
+                # longer true, so clear it. Setting without ever clearing made
+                # the flag one-way: adding the missing status_mapping entry
+                # fixed the mapping but left every already-flagged lead sitting
+                # in the operator's review queue forever with nothing left to
+                # review. A queue that fills with resolved rows stops being
+                # worth opening, which costs more than the flag ever bought.
+                #
+                # Only on a REAL resolution, not on the (None, False) that
+                # map_buyer_status returns for a blank status — "the buyer has
+                # not reported yet" is no evidence that an earlier unmapped
+                # status has been dealt with.
+                #
+                # Filtered on the flag being set so an ordinary sync does not
+                # write to every row it touches.
+                Lead.objects.filter(
+                    pk=injection.lead_id, canonical_status_needs_review=True,
+                ).touch(canonical_status_needs_review=False)
                 apply_status_change(
-                    injection.lead, canonical, source=LeadStatusEvent.SOURCE_BUYER, raw_payload=result)
+                    injection.lead, canonical, source=LeadStatusEvent.SOURCE_BUYER,
+                    raw_payload=result)
 
             updated += 1
 
