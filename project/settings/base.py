@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'leads',
     'platform_leads',
     'leadgen',
+    'sso',
 ]
 
 # CRM lead pipeline: ACTIVATED leads idle beyond this many days are flagged
@@ -85,6 +86,9 @@ MIDDLEWARE = [
     # Swaps request.user to the impersonated target (re-validated every request)
     # BEFORE brand/role routing runs, so the request is handled as the target.
     'impersonation.middleware.ImpersonationMiddleware',
+    # Marks a session minted by a signed autologin link, so the shared
+    # sensitive-action gate can refuse it. Must run after AuthenticationMiddleware.
+    'sso.middleware.AutologinSessionMiddleware',
     'brands.middleware.BrandMiddleware',
     'user_profile.middleware.RolePortalMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -409,3 +413,15 @@ LOGGING = {
         },
     },
 }
+
+
+# --- Track B autologin (native SSO) -----------------------------------------
+# OFF by default, and the default lives HERE in code: an absent env var must
+# mean off, never on. Built ahead of demand — see
+# docs/adr/0001-native-sso-autologin.md. Every knob is read through sso.config,
+# which clamps the TTL to a hard ceiling.
+SSO_AUTOLOGIN_ENABLED = os.environ.get('SSO_AUTOLOGIN_ENABLED', '').lower() in ('1', 'true', 'yes')
+SSO_TOKEN_TTL_SECONDS = int(os.environ.get('SSO_TOKEN_TTL_SECONDS', '120'))
+SSO_CLOCK_SKEW_TOLERANCE_SECONDS = int(os.environ.get('SSO_CLOCK_SKEW_TOLERANCE_SECONDS', '5'))
+SSO_ISSUE_RATE_PER_HOUR = int(os.environ.get('SSO_ISSUE_RATE_PER_HOUR', '30'))
+SSO_REDEEM_RATE_PER_HOUR = int(os.environ.get('SSO_REDEEM_RATE_PER_HOUR', '60'))

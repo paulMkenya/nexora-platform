@@ -24,6 +24,9 @@ urlpatterns = [
     path('get-started/', get_started, name='get_started'),
     path('healthz', healthz, name='healthz'),
     path('account/', include('user_profile.urls', namespace='user_profile')),
+    # Autologin (Track B). sso.urls exposes NO patterns while the feature is
+    # disabled, so the endpoint is unrouted rather than routed-and-refusing.
+    path('sso/', include('sso.urls', namespace='sso')),
 
     # Standalone /login/ kept for backward-compat (middleware tests, direct links)
     path('login/', AffiliateLoginView.as_view(), name='login'),
