@@ -414,3 +414,149 @@ blocked on a question that has a safe, conservative default:
   optional per-`Offer` `post_capture_redirect_url` field, used if set and
   falling back to today's inline "thanks" behavior otherwise — additive,
   and doesn't force every existing offer to have an opinion.
+
+---
+
+## ADR: routing waterfall, error classification, and the Hypernet box
+
+Decisions made while onboarding Hypernet (buyer #2) that are not recoverable
+from the code alone. Recorded so they are not silently re-litigated.
+
+### 1. One priority axis: `RoutingRule.priority`
+
+A second `LeadBuyer.priority` field was specced and **rejected**. The chain
+already orders on `('priority', 'id')` via `RoutingRule`; adding a per-buyer
+priority would have created two axes with no defined precedence. Buyer order
+is a property of *routing*, not of the buyer.
+
+### 2. The capture path must route through the chain
+
+`tasks.maybe_auto_inject` → `resolve_buyer_for_lead` used
+`filter(brand, is_active).first()`, which under `LeadBuyer.Meta.ordering`
+selects the **alphabetically first** buyer. `failover.advance_chain` used
+`resolve_buyer_chain`, which honours rules and priority. Two parallel
+selection paths; only the broken one ran on capture.
+
+Concretely: ChainPulse's `Brand X` sorts before `Hypernet - desperados`, so
+adding the Hypernet buyer would have selected Brand X, which has
+`auto_inject=False`, so `maybe_auto_inject` would have returned `None` and the
+lead would have sat in `new` — no injection, no error, no log line, and
+Hypernet unreachable. Unifying onto the chain removes the second path.
+
+**Prerequisite — wildcard rules.** `resolve_buyer_chain` builds its list
+*purely* from `RoutingRule`s, and production had **zero active rules**.
+Switching capture onto the chain without seeding rules first resolves every
+lead to an empty chain → `UNROUTED` → a full delivery outage. Hence
+`manage.py seed_wildcard_routing_rules`: one wildcard rule per active buyer,
+created in current name order at equal priority so the chain reproduces
+today's selection exactly (`--verify` proves it; `--preflight` refuses the
+switch while any brand has active buyers and no active rule).
+
+### 3. `accepts_overflow` is per-buyer, not per-pair
+
+A buyer either may or may not receive leads a higher-priority buyer rejected.
+Expressing "A's rejects may go to B but **not** to C" needs a per-pair model.
+This is deliberately not that — with one active buyer per brand today, the
+pair matrix would be speculative. Converting later is a real migration.
+
+### 4. `auto_inject=False` is a hold, not a loss
+
+Briefly overruled, then reinstated. An `auto_inject=False` buyer is a
+legitimate "a human pushes this one" gate; forcing such leads out of `new`
+would misreport a deliberate configuration as a failure. The genuine bug was
+selecting the *wrong* buyer (§2), not the gate. Once the correct
+auto-injecting buyer is selected, the gated buyer is simply never chosen.
+`STATUS_HELD` exists for what genuinely remains: a resolved buyer that is
+gated off, which must not masquerade as still-queued in `new`.
+
+### 5. Ambiguous outcomes quarantine — this closed a live bug
+
+`_request()` raised a bare `LeadBuyerError` for *every* failure, so a 200 with
+an unparseable body was retried three times and then cascaded to the next
+buyer. If the first buyer had in fact accepted the lead, that is a
+**double-sell**, and it was reachable on the live op-brandy path.
+
+Three outcomes now, each its own exception type — see
+`connectors.LeadBuyerError`'s table for the full mapping. Two rows are worth
+restating because they are counter-intuitive:
+
+- **429 is not a rejection.** It means "slow down". Cascading it hands the
+  lead to a competitor the intended buyer would have taken seconds later.
+- **502/503/504 are not ambiguous, but 500 is.** A gateway error means the
+  request never reached the buyer's application. A 500 means it did, and
+  their code may have created the lead before failing.
+- **`ReadTimeout` is ambiguous; `ConnectTimeout` is not.** The distinction is
+  whether the payload was ever sent.
+
+Both new types subclass `LeadBuyerError` so existing `except LeadBuyerError`
+handlers keep catching them. The cost is that **handler order is
+load-bearing**: `Ambiguous` → `Rejected` → base. Testing the base first
+silently collapses every guard back to "retry" — pinned executably in
+`tests/test_error_classification.py`.
+
+This changes two live op-brandy behaviours: 4xx no longer burns the 3-retry
+budget, and 500/unparseable-2xx no longer cascade.
+
+### 6. Audit sanitisation is default-deny
+
+`LeadInjection.response_payload` is rendered to affiliates
+(`affiliate_ui/templates/affiliate_ui/leads.html`) and operators
+(`templates/admin_shared/dashboard.html`), and was stored verbatim.
+`sanitize_response_for_audit()` filters it against a per-connector allowlist,
+recursively, keeping keys and dropping values.
+
+Default-deny rather than a blocklist because the fields worth catching are the
+ones nobody anticipated. This does change what is recorded: op-brandy echoes
+the full lead back inside `addedLeads`, and that echoed PII is now redacted —
+we already store it on the `Lead` row.
+
+### 7. Hypernet `redirectUrl`: transient, not a standing credential
+
+Classified from the vendor's own answers, recorded here so the classification
+is traceable rather than assumed:
+
+1. Active for **3 minutes** only.
+2. **Single-use** — one redirect recorded even if clicked again. Two
+   independent expiry mechanisms.
+3. **Not** a session or account credential; unlocks nothing.
+4. Returned **only** on successful lead submission, never on status checks —
+   so it is capture-at-injection or never.
+5. Grants only a redirect to a specific page.
+
+Therefore: **transient, low-sensitivity**. The non-expiring standing-credential
+treatment (revocation machinery, wrapper indirection) is off the table — it
+would be over-building for a 180-second single-use redirect.
+
+Storage rules:
+- Stored with `captured_at`; **dead after 3 minutes**. A reader past that
+  window gets an explicit "expired", never a stale link.
+- **Encrypted at rest anyway.** Not mandatory for this classification, but
+  `nexora.crypto` is already imported for `broker_password_encrypted` on the
+  same model, so the marginal cost is one call. The usual objection —
+  `SECRET_KEY` rotation makes stored values unreadable — is negligible here
+  precisely *because* the value dies in 3 minutes; anything a rotation
+  orphans was already expired. Consistency won on a near-zero-cost call.
+- **Stays out of `AUDIT_RESPONSE_ALLOWLIST` regardless.** The TTL makes a
+  leak low-risk; it does not make it something to render on an affiliate or
+  operator lead-detail page. `HypernetConnector.AUDIT_RESPONSE_ALLOWLIST` is
+  `{'success', 'leadId'}`, and a regression test asserts `redirectUrl` never
+  survives sanitisation — that test exists to stop someone "helpfully"
+  widening the allowlist later.
+
+### 8. Synthesized broker passwords
+
+Some boxes require a password in the lead profile and none is collected from
+the consumer, so the connector synthesizes one. It is
+`secrets.token_urlsafe()` generated **once** and stored Fernet-encrypted on
+`Lead.broker_password_encrypted` — deliberately *not* derived from the lead's
+pk, which would let anyone holding `SECRET_KEY` recompute every lead's broker
+credential from a sequential integer.
+
+Read back thereafter, never regenerated: a regenerated password would diverge
+from what the broker stored and lock the lead out with no record of why. An
+undecryptable stored value therefore **raises** rather than minting a
+replacement.
+
+`build_payload()` emits a redaction marker; the real value is substituted in
+`inject_lead()` only, so the credential cannot reach the audit trail by any
+path.

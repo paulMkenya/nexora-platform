@@ -18,10 +18,12 @@ BoxType's defaults. Onboarding a new brand on a KNOWN box is a LeadBuyer
 row, no code.
 """
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 from nexora.crypto import decrypt_secret, encrypt_secret
 from user_profile.geo import country_choices
@@ -192,6 +194,32 @@ class LeadBuyer(models.Model):
     # occasionally needs its own quirk.
     status_mapping = models.JSONField(default=dict, blank=True)
 
+    # Static constants this box requires in EVERY request body that are not
+    # derived from the lead — Hypernet's affc/bxc/vtc plus its funnel and
+    # language values (see connectors.HypernetConnector). build_payload()
+    # only maps lead attributes via field_mapping, so there was previously
+    # nowhere for a fixed per-box value to live.
+    #
+    # Deliberately a generic JSONField rather than named columns: it matches
+    # every other varies-per-instance config in this app (field_mapping,
+    # status_mapping) and offer.Offer.mmp_extra's own precedent, and the
+    # next box needing a different static shape is then a config edit rather
+    # than another migration.
+    extra_payload_fields = models.JSONField(default=dict, blank=True)
+
+    # May this buyer receive leads that a HIGHER-priority buyer in the same
+    # brand already cleanly rejected? False (the default) means it only ever
+    # receives leads for which it is the highest-priority match.
+    #
+    # Per-BUYER, not per-pair — a deliberate simplification. Expressing "A's
+    # rejects may go to B but not to C" needs a per-pair model; this is not
+    # that, and turning it into one later is a real migration, not a tweak.
+    # See leadgen/README.md's routing ADR.
+    accepts_overflow = models.BooleanField(
+        default=False,
+        help_text='May receive leads that a higher-priority buyer in this brand rejected.',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -276,12 +304,42 @@ class Lead(models.Model):
     STATUS_REJECTED = 'rejected'
     STATUS_FAILED = 'failed'
     STATUS_DEPOSIT = 'deposit'
-    # The whole resolved buyer chain (leadgen.routing.resolve_buyer_chain)
-    # was tried — every buyer either had no match, terminally rejected, or
-    # exhausted its transient retries — and nobody accepted it. Set by
-    # leadgen.failover.advance_chain; see leadgen/README.md's Phase 2
-    # section (build guide: Nexora_Lead_Distribution_Build_Guide.md).
+
+    # --- terminal / waiting states of the routing waterfall ---
+    #
+    # These four are deliberately distinct rather than one catch-all. Each
+    # answers a different operator question and needs a different action, and
+    # collapsing any two of them hides a real failure behind a plausible one:
+    #
+    #   unrouted     nothing to send it to     -> configure a buyer
+    #   held         somewhere to send it, but that buyer is gated off
+    #                (auto_inject=False)       -> flip the switch, or push manually
+    #   exhausted    everyone eligible said no -> nothing to do; it is dead
+    #   quarantined  we do not know what happened -> a human must check the
+    #                buyer's own system before this lead moves again
+    #
+    # STATUS_UNROUTED predates the others and used to mean both "nowhere to
+    # send it" AND "tried everywhere, nobody wanted it" — its old label said
+    # "(chain exhausted)". Those are now separate; existing unrouted rows are
+    # deliberately NOT relabelled, because which of the two meanings applied
+    # to a given historical row is not recoverable.
     STATUS_UNROUTED = 'unrouted'
+    # A buyer resolved, but it is not auto-injectable (LeadBuyer.auto_inject
+    # is False). That is a legitimate "a human pushes this one" hold, not a
+    # loss — but the lead must not sit in `new` looking like it is still
+    # queued, because nothing will ever pick it up on its own.
+    STATUS_HELD = 'held'
+    # Every eligible buyer in the chain was attempted and each CLEANLY
+    # rejected it (see connectors.LeadBuyerRejectedError). Distinct from
+    # unrouted: destinations existed, they all said no.
+    STATUS_EXHAUSTED = 'exhausted'
+    # A buyer MAY have accepted this lead and we cannot tell (see
+    # connectors.LeadBuyerAmbiguousError — read timeout, 500, unparseable
+    # 2xx). Never auto-routed onward: selling it again would be a
+    # double-sell, and retrying risks a duplicate. Terminal until a human
+    # checks the buyer's own system and resolves it by hand.
+    STATUS_QUARANTINED = 'quarantined'
+
     STATUS_CHOICES = [
         (STATUS_NEW, 'New'),
         (STATUS_INJECTED, 'Injected'),
@@ -289,7 +347,10 @@ class Lead(models.Model):
         (STATUS_REJECTED, 'Rejected'),
         (STATUS_FAILED, 'Failed'),
         (STATUS_DEPOSIT, 'Deposit'),
-        (STATUS_UNROUTED, 'Unrouted (chain exhausted)'),
+        (STATUS_UNROUTED, 'Unrouted (no buyer configured)'),
+        (STATUS_HELD, 'Held (buyer not auto-injecting)'),
+        (STATUS_EXHAUSTED, 'Exhausted (all buyers rejected)'),
+        (STATUS_QUARANTINED, 'Quarantined (outcome unknown — needs review)'),
     ]
 
     brand = models.ForeignKey(
@@ -361,6 +422,38 @@ class Lead(models.Model):
     # flag so an unmapped status doesn't sit invisible.
     canonical_status_needs_review = models.BooleanField(default=False)
 
+    # The password a broker account was provisioned with on the buyer's side,
+    # Fernet-encrypted (nexora.crypto — the same helper behind
+    # LeadBuyer.api_key_encrypted). Some boxes require a password in the lead
+    # profile and none is ever collected from the consumer, so the connector
+    # synthesizes one at first delivery — see
+    # connectors.HypernetConnector.get_or_create_password.
+    #
+    # Written ONCE, at first delivery, and read back thereafter — never
+    # regenerated. A regenerated password would silently diverge from what
+    # the broker actually stored and lock the lead out of the account. Blank
+    # for every lead on a box that does not need one, which is most of them.
+    broker_password_encrypted = models.CharField(max_length=512, blank=True, default='')
+
+    # A one-shot redirect the buyer hands back on successful injection —
+    # Hypernet's `redirectUrl`, which sends the consumer straight into the
+    # broker's onboarding page. Classified TRANSIENT, not a standing
+    # credential, on the vendor's own answers: 3-minute life, single-use,
+    # grants only a redirect, unlocks no account or session, and is returned
+    # ONLY on submission (never on a status check, so it is capture-now or
+    # never). See leadgen/README.md's ADR §7.
+    #
+    # Encrypted at rest even though the classification does not require it:
+    # nexora.crypto is already here for broker_password_encrypted, so it
+    # costs one call, and the usual objection (a SECRET_KEY rotation orphans
+    # stored values) is moot for something that dies in 180 seconds.
+    #
+    # Deliberately NOT on any connector's AUDIT_RESPONSE_ALLOWLIST: the TTL
+    # makes a leak low-risk, it does not make this something to render on an
+    # affiliate- or operator-facing lead page.
+    broker_redirect_url_encrypted = models.CharField(max_length=2048, blank=True, default='')
+    broker_redirect_captured_at = models.DateTimeField(null=True, blank=True)
+
     # For CHANNEL_AFFILIATE_API leads, `ip` may be the CONSUMER's IP if the
     # affiliate's own system captured it (Affiliate Inbound API spec §4.3) —
     # falls back to the submitting request's own remote address otherwise,
@@ -387,6 +480,33 @@ class Lead(models.Model):
     @property
     def full_name(self):
         return f'{self.first_name} {self.last_name}'.strip()
+
+    # How long a stored broker redirect stays usable. Hypernet's own figure;
+    # they also enforce single-use independently, so this is the outer bound
+    # of two expiry mechanisms, not the only one.
+    BROKER_REDIRECT_TTL = timedelta(minutes=3)
+
+    @property
+    def broker_redirect_is_expired(self):
+        """True when a stored redirect is past its TTL — or when there is
+        nothing stored at all, since 'no usable redirect' is the same answer
+        to every caller."""
+        if not self.broker_redirect_url_encrypted or self.broker_redirect_captured_at is None:
+            return True
+        return timezone.now() - self.broker_redirect_captured_at > self.BROKER_REDIRECT_TTL
+
+    def get_broker_redirect_url(self):
+        """The stored broker redirect, or None if absent or expired.
+
+        The ONLY sanctioned read path — never read
+        broker_redirect_url_encrypted directly, or a caller will happily
+        hand a consumer a dead link. A caller that needs to tell "expired"
+        apart from "never had one" should check
+        broker_redirect_captured_at itself; everything else wants this.
+        """
+        if self.broker_redirect_is_expired:
+            return None
+        return decrypt_secret(self.broker_redirect_url_encrypted) or None
 
 
 class LeadInjection(models.Model):
@@ -511,6 +631,17 @@ class RoutingRule(models.Model):
 
     class Meta:
         ordering = ('priority', 'id')
+        indexes = [
+            # Serves resolve_buyer_chain()'s only query: filter on brand,
+            # then order by (priority, id). The table's existing indexes are
+            # all single-column FK indexes (brand_id, buyer_id, offer_id,
+            # affiliate_id) — none of them covers the ordering, so before
+            # this the sort was unindexed. Matters once the capture path
+            # routes through the chain and this runs on every lead intake
+            # rather than only on a deliberate re-route.
+            models.Index(fields=['brand', 'priority', 'id'],
+                         name='leadgen_rule_brand_prio_idx'),
+        ]
 
     def clean(self):
         """Layer 1 of the cross-brand guard: a rule may only point at a buyer
