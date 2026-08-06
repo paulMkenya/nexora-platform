@@ -840,12 +840,19 @@ class HypernetConnector(LeadBuyerConnector):
         unrelated page of rows. Status sync for this box needs a
         pull-a-window-and-match-on-leadId approach instead.
 
-        Raising is the point: leadgen.tasks.sync_buyer_statuses_for_buyer
-        catches only LeadBuyerError around this call, so this propagates to
-        sync_buyer_statuses' per-buyer ``except Exception`` and is logged
-        loudly, once per beat tick, from the moment this box has its first
-        delivered injection. That noise is the intended signal — a silently
-        wrong implementation would be worse.
+        Note the param names above are not corroborated anywhere else in this
+        repo — no fixture, no recorded response, no test exercises them.
+        Confirm them against Hypernet's own API reference before building on
+        them, per this method's error message.
+
+        This raise is a backstop, NOT an alarm. supports_status_sync is False
+        on this class, so sync_buyer_statuses_for_buyer returns before it ever
+        reaches this call — nothing here fires on a beat tick, and nothing
+        logs. The real consequence is a SILENT gap: Hypernet leads deliver
+        normally and their status never updates. What this raise still buys is
+        a loud failure if someone flips supports_status_sync to True, or calls
+        this directly, without supplying a real implementation first — a
+        silently wrong sync would be worse than the gap.
         """
         raise NotImplementedError(
             'Hypernet status sync needs a date-range-based approach (pull a window, match on '
