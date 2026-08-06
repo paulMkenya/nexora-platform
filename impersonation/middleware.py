@@ -17,6 +17,7 @@ now the target.
 A persistent banner is injected into every HTML response so the state is
 unmissable on every page, whatever template rendered it.
 """
+import logging
 import re
 
 from django.middleware.csrf import get_token
@@ -29,6 +30,8 @@ from impersonation.service import (
     clear_session,
     close_open_log,
 )
+
+logger = logging.getLogger(__name__)
 
 _BODY_RE = re.compile(rb'<body[^>]*>', re.IGNORECASE)
 
@@ -90,7 +93,21 @@ class ImpersonationMiddleware:
             return response
 
         target = request.user
-        actor = request.impersonator
+        actor = getattr(request, 'impersonator', None)
+        if actor is None or target is None:
+            # is_impersonating set without a resolvable actor is an
+            # inconsistent state — _maybe_swap always sets both, and clears
+            # both when re-validation fails. Rendering the banner is cosmetic,
+            # so an inconsistency here must degrade to "no banner" rather than
+            # raise: this runs on the response path of EVERY html response, so
+            # an AttributeError would turn one bad session into a 500 on every
+            # page that session touches, including the ones that would let an
+            # operator notice and end it.
+            logger.warning(
+                'Impersonation banner skipped: is_impersonating set but actor=%r target=%r',
+                actor, target)
+            return response
+
         name = escape(target.get_full_name() or target.get_username())
         role = escape(self._role_label(target))
         actor_name = escape(actor.get_full_name() or actor.get_username())
