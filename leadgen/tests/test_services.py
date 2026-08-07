@@ -1,6 +1,7 @@
 """Tests for leadgen/services.py — the shared synchronous-injection helper
 used by the Django admin action, affiliate My Leads page, and the operator
 dashboard's embedded inject section."""
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -52,6 +53,74 @@ class TestStartInjection:
         with patch('leadgen.services.inject_lead_task', side_effect=Exception('Retry')):
             injection = start_injection(lead, buyer, synchronous=True)  # must not raise
         assert injection.pk is not None
+
+
+@pytest.mark.django_db
+class TestSynchronousRetriesGetAScheduler:
+    """A synchronous attempt that ends in "retry later" must be handed to
+    Celery, because NOTHING ELSE WILL EVER RUN IT.
+
+    next_retry_at is a display column — no Beat task or cron sweeps it. The
+    only mechanism that re-runs an injection is Celery's own self.retry(),
+    and that enqueues nothing when the task was called directly, which is
+    exactly what the synchronous branch does. Without the hand-off, every
+    manual "inject now" surface (the Django admin action included) parks the
+    lead at PENDING with a retry time that silently never fires.
+    """
+
+    def _sync_attempt_ending_in(self, buyer, status, next_retry_at):
+        """Run start_injection(synchronous=True) against a task that leaves
+        the row in the given state, the way the real task would."""
+        lead = _lead(buyer)
+
+        def fake_task(injection_pk):
+            LeadInjection.objects.filter(pk=injection_pk).update(
+                status=status, next_retry_at=next_retry_at)
+
+        with patch('leadgen.services.inject_lead_task') as mock_task:
+            mock_task.side_effect = fake_task
+            injection = start_injection(lead, buyer, synchronous=True)
+        return injection, mock_task
+
+    def test_a_pending_retry_is_queued_with_celery(self, buyer):
+        from django.utils import timezone
+
+        eta = timezone.now() + timedelta(seconds=300)
+        injection, mock_task = self._sync_attempt_ending_in(
+            buyer, LeadInjection.STATUS_PENDING, eta)
+
+        mock_task.apply_async.assert_called_once_with((injection.pk,), eta=eta)
+
+    def test_a_delivered_injection_is_not_queued(self, buyer):
+        """Nothing to retry — queueing here would re-send a sold lead."""
+        injection, mock_task = self._sync_attempt_ending_in(
+            buyer, LeadInjection.STATUS_DELIVERED, None)
+        mock_task.apply_async.assert_not_called()
+
+    def test_a_terminal_failure_with_a_stale_retry_time_is_not_queued(self, buyer):
+        """The terminal branches do not CLEAR next_retry_at, so a failed row
+        can carry a leftover one from an earlier attempt. Status is what
+        decides — otherwise a lead the buyer terminally rejected would be
+        resurrected and sent again."""
+        from django.utils import timezone
+
+        injection, mock_task = self._sync_attempt_ending_in(
+            buyer, LeadInjection.STATUS_FAILED, timezone.now() + timedelta(seconds=300))
+        mock_task.apply_async.assert_not_called()
+
+    def test_pending_without_a_retry_time_is_not_queued(self, buyer):
+        """PENDING alone is not the signal — a row can be pending simply
+        because nothing has run yet."""
+        injection, mock_task = self._sync_attempt_ending_in(
+            buyer, LeadInjection.STATUS_PENDING, None)
+        mock_task.apply_async.assert_not_called()
+
+    def test_the_async_path_never_double_queues(self, buyer):
+        """.delay() already scheduled it; the hand-off is synchronous-only."""
+        lead = _lead(buyer)
+        with patch('leadgen.services.inject_lead_task') as mock_task:
+            start_injection(lead, buyer, synchronous=False)
+        mock_task.apply_async.assert_not_called()
 
 
 @pytest.mark.django_db

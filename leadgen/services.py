@@ -48,11 +48,59 @@ def start_injection(lead, buyer, *, synchronous, chain_managed=False):
         try:
             inject_lead_task(injection.pk)
         except Exception:
-            pass  # a scheduled Celery retry raises Retry — state is already saved
+            # The task asking for a retry raises — Celery re-raises the
+            # ORIGINAL exception rather than Retry when the task was called
+            # directly (self.request.called_directly). Either way the row is
+            # already saved, so there is nothing to do here but look at it.
+            pass
         injection.refresh_from_db()
+        _hand_pending_retry_to_celery(injection)
     else:
         inject_lead_task.delay(injection.pk)
     return injection
+
+
+def _hand_pending_retry_to_celery(injection) -> bool:
+    """Give a synchronously-attempted injection that asked for a retry an
+    actual scheduler. Returns whether one was queued.
+
+    THE BUG THIS EXISTS TO CLOSE: ``next_retry_at`` is a display column.
+    Nothing sweeps it — no Beat task, no cron, nothing. The only thing that
+    ever re-runs an injection is Celery's own ``self.retry(countdown=...)``,
+    and that schedules nothing when the task was called DIRECTLY: Celery sees
+    ``called_directly`` and re-raises instead of enqueueing. start_injection's
+    synchronous branch calls it directly.
+
+    So before this, a synchronous attempt that ended in "retry later" wrote a
+    convincing ``next_retry_at``, returned an injection sitting at PENDING,
+    and then nothing ever happened. Forever. Silently — the row looks alive,
+    the console shows a scheduled time that passes and never fires.
+
+    That path is every manual "inject now" surface, including the Django
+    admin action (leadgen/admin.py inject_to_buyer), which is exactly what an
+    operator reaches for when a buyer has been refusing leads. It mattered
+    little while the only retryable failures were seconds-long network
+    blips; LeadBuyerCapacityError made "retry later" a normal, hours-long
+    outcome, and turned a latent hole into the common case.
+
+    PENDING + a retry time is precisely the "I asked for a retry" signal:
+    every terminal branch sets a non-PENDING status first. A stale
+    ``next_retry_at`` left on a FAILED row (the terminal branches do not
+    clear it) therefore cannot trigger this.
+    """
+    if injection.status != LeadInjection.STATUS_PENDING or not injection.next_retry_at:
+        return False
+
+    # eta, not countdown: the task already decided WHEN, and it may have been
+    # deciding a while ago if the buyer was slow to answer. A past eta runs
+    # immediately, which is the right reading of an overdue retry — and
+    # cannot loop, because each run increments the persisted attempt counter.
+    inject_lead_task.apply_async((injection.pk,), eta=injection.next_retry_at)
+    logger.info(
+        'Injection #%s was attempted synchronously and asked to retry at %s; '
+        'queued with Celery (nothing else would have run it).',
+        injection.pk, injection.next_retry_at)
+    return True
 
 
 def inject_leads_to_buyer(leads, buyer):

@@ -308,6 +308,28 @@ class TestTaskHandling:
         assert injection.status == LeadInjection.STATUS_FAILED
         assert injection.next_retry_at is None, 'cascaded AND scheduled a retry'
 
+    def test_a_manual_inject_now_schedules_a_real_retry(self, lead, hypernet_buyer):
+        """End to end, through the surface an operator actually uses.
+
+        services.start_injection(synchronous=True) backs every manual "inject
+        now" button, including the Django admin action — the thing someone
+        reaches for when a buyer has been refusing leads. It runs the task
+        DIRECTLY, so Celery's self.retry() enqueues nothing; without the
+        hand-off in services._hand_pending_retry_to_celery the lead parks at
+        PENDING with a next_retry_at that never fires, and the operator has
+        no way to tell.
+        """
+        from leadgen.services import start_injection
+
+        with patch('leadgen.connectors.requests.request',
+                   return_value=_response(404, NO_HUBS_BODY)), \
+             patch('leadgen.services.inject_lead_task.apply_async') as queued:
+            injection = start_injection(lead, hypernet_buyer, synchronous=True)
+
+        assert injection.status == LeadInjection.STATUS_PENDING
+        assert injection.next_retry_at is not None
+        queued.assert_called_once_with((injection.pk,), eta=injection.next_retry_at)
+
     def test_a_chain_managed_lead_with_nowhere_to_go_still_waits(self, injection):
         """The ChainPulse case: chain-managed, but every buyer tried.
         Cascading resolves to UNROUTED, i.e. the bin — so waiting wins."""
