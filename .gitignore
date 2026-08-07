@@ -128,5 +128,11 @@ data/
 
 # Collected static assets (build artifact, not source)
 staticfiles/
+
+# User-uploaded and generated files (invoice PDFs from billing.tasks.invoice,
+# etc). Runtime output, never source. project/settings/test.py redirects
+# MEDIA_ROOT to a temp dir so a test run does not create this at all, but a
+# local runserver still writes here.
+media/
 .claude/
 .aider*
