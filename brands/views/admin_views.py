@@ -2,6 +2,7 @@ import datetime
 from collections import defaultdict
 
 from django.contrib.admin.views.decorators import staff_member_required
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
@@ -9,13 +10,28 @@ from django.views.decorators.http import require_http_methods
 from brands.email import send_test_email
 from brands.models import Brand
 from brands.permissions import brand_admin_required, platform_owner_required
-from brands.scoping import operator_brand
+from brands.scoping import is_platform_owner, operator_brand
 
 
 _BRAND_FORM_FIELDS = (
     'name', 'slug', 'primary_domain', 'tracking_domain', 'support_email',
     'logo', 'favicon', 'terms_url', 'privacy_url', 'primary_color',
     'secondary_color', 'is_default',
+)
+
+# What a BRAND ADMIN may change on its own brand. Everything here is brand
+# identity/presentation — it affects only how that tenant looks to its own
+# users. The four fields deliberately NOT here are platform-level levers, not
+# tenant settings:
+#   slug            — the brand's natural key, referenced by seeds and ops.
+#   primary_domain  — BrandMiddleware resolves the tenant FROM the host, so a
+#   tracking_domain   tenant able to edit its own domains could claim another
+#                     tenant's domain (or cpa.cloudtrade.pro) and become it.
+#   is_default      — the fallback tenant for every unmatched host, platform-wide.
+# A platform owner still edits all of them.
+_BRAND_ADMIN_EDITABLE_FIELDS = (
+    'name', 'support_email', 'logo', 'favicon', 'terms_url', 'privacy_url',
+    'primary_color', 'secondary_color',
 )
 
 
@@ -164,12 +180,20 @@ def inject_consumer_leads(request):
     return redirect('admin_dashboard')
 
 
-@platform_owner_required
+@brand_admin_required
 def brand_list(request):
     # Active brands only; archived brands live in the Archived home.
     brands = Brand.objects.filter(is_archived=False)
+    owner = is_platform_owner(request.user)
+    if not owner:
+        # A brand admin gets this page as the way into its OWN brand's settings
+        # — never a roster of the platform's other tenants. Scoped to the
+        # operator's assigned brand (not request.brand) for the same reason
+        # brands.scoping does: the host must not widen what you can see.
+        brands = brands.filter(pk=getattr(operator_brand(request.user), 'pk', None))
     return render(request, 'brands/admin/brand_list.html', {
         'brands': brands, 'shell_role': 'admin', 'page_title': 'Brands',
+        'is_platform_owner': owner,
     })
 
 
@@ -305,22 +329,36 @@ def brand_create(request):
     })
 
 
-@platform_owner_required
+@brand_admin_required
 @require_http_methods(['GET', 'POST'])
 def brand_edit(request, pk):
+    """Edit a brand. A platform owner may edit any brand and every field; a
+    brand admin may edit only its OWN brand, and only the identity/presentation
+    fields in _BRAND_ADMIN_EDITABLE_FIELDS.
+
+    Both halves are enforced here on the view, not in the template: hiding the
+    domain inputs stops an honest mistake, it does not stop a hand-rolled POST.
+    """
     brand = get_object_or_404(Brand, pk=pk)
+    owner = is_platform_owner(request.user)
+    if not owner and brand.pk != getattr(operator_brand(request.user), 'pk', None):
+        raise PermissionDenied
+
+    editable = _BRAND_FORM_FIELDS if owner else _BRAND_ADMIN_EDITABLE_FIELDS
+
     if request.method == 'POST':
-        brand.name = request.POST.get('name', brand.name).strip()
-        brand.primary_domain = request.POST.get('primary_domain', brand.primary_domain).strip()
-        brand.tracking_domain = request.POST.get('tracking_domain', brand.tracking_domain).strip()
-        brand.primary_color = request.POST.get('primary_color', brand.primary_color).strip()
-        brand.secondary_color = request.POST.get('secondary_color', brand.secondary_color).strip()
-        brand.support_email = request.POST.get('support_email', brand.support_email).strip()
-        brand.logo = request.POST.get('logo', brand.logo).strip()
-        brand.favicon = request.POST.get('favicon', brand.favicon).strip()
-        brand.terms_url = request.POST.get('terms_url', brand.terms_url).strip()
-        brand.privacy_url = request.POST.get('privacy_url', brand.privacy_url).strip()
-        brand.is_default = request.POST.get('is_default') == 'on'
+        text_fields = (
+            'name', 'primary_domain', 'tracking_domain', 'primary_color',
+            'secondary_color', 'support_email', 'logo', 'favicon',
+            'terms_url', 'privacy_url',
+        )
+        for field in text_fields:
+            if field not in editable:
+                continue
+            current = getattr(brand, field)
+            setattr(brand, field, request.POST.get(field, current).strip())
+        if 'is_default' in editable:
+            brand.is_default = request.POST.get('is_default') == 'on'
         brand.save()
         messages.success(request, f'Brand "{brand.name}" updated.')
         return redirect('brands_admin:brand_list')
@@ -328,6 +366,7 @@ def brand_edit(request, pk):
     return render(request, 'brands/admin/brand_form.html', {
         'action': 'Edit', 'post': _form_data(request, brand),
         'shell_role': 'admin', 'page_title': 'Edit Brand',
+        'is_platform_owner': owner,
     })
 
 

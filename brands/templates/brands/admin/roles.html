@@ -17,22 +17,33 @@
 
   {% if is_platform_owner %}
   <h1 class="h3 mb-4">Roles &amp; Admins</h1>
+  {% else %}
+  <h1 class="h3 mb-1">Roles &amp; Admins</h1>
+  <p class="text-muted">Admins and affiliate managers for <strong>{{ brand.name }}</strong>.</p>
+  {% endif %}
 
+  {# The brand chooser exists only for the platform owner. A brand admin's
+     appointments are bound to its own brand by appoint_brand_admin, which
+     takes the brand from the actor and ignores any posted value. #}
   <div class="card mb-4">
-    <div class="card-header fw-semibold">Appoint a brand admin</div>
+    <div class="card-header fw-semibold">
+      {% if is_platform_owner %}Appoint a brand admin{% else %}Appoint an admin for {{ brand.name }}{% endif %}
+    </div>
     <div class="card-body">
       <form method="post" action="{% url 'roles_admin:appoint_brand_admin' %}" class="row g-2 align-items-end">
         {% csrf_token %}
-        <div class="col-md-5">
+        <div class="{% if is_platform_owner %}col-md-5{% else %}col-md-9{% endif %}">
           <label class="form-label">User (username or email)</label>
           <input type="text" name="identifier" class="form-control" required>
         </div>
+        {% if is_platform_owner %}
         <div class="col-md-4">
           <label class="form-label">Brand</label>
           <select name="brand" class="form-select" required>
             {% for b in brands %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}
           </select>
         </div>
+        {% endif %}
         <div class="col-md-3">
           <button class="btn btn-primary w-100" type="submit">Appoint brand admin</button>
         </div>
@@ -41,7 +52,9 @@
   </div>
 
   <div class="card mb-4">
-    <div class="card-header fw-semibold">Current brand admins</div>
+    <div class="card-header fw-semibold">
+      {% if is_platform_owner %}Current brand admins{% else %}Current admins{% endif %}
+    </div>
     <table class="table mb-0">
       <thead class="table-light"><tr><th>User</th><th>Email</th><th>Brand</th></tr></thead>
       <tbody>
@@ -51,10 +64,6 @@
       </tbody>
     </table>
   </div>
-  {% else %}
-  <h1 class="h3 mb-1">Managers</h1>
-  <p class="text-muted">Affiliate managers for <strong>{{ brand.name }}</strong>.</p>
-  {% endif %}
 
   <div class="card mb-4">
     <div class="card-header fw-semibold">Appoint an affiliate manager</div>

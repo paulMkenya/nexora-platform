@@ -89,9 +89,50 @@ class BrandAdminScopeTest(AdminHierarchyBase):
         r = self.client.get('/admin/')
         self.assertRedirects(r, '/admin/dashboard/', fetch_redirect_response=False)
 
-    def test_brand_admin_cannot_manage_brands(self):
+    # 2026-08-07: a brand admin is now full admin OF ITS OWN BRAND, so the
+    # brands page is reachable — but it is scoped to that one brand and the
+    # cross-tenant actions behind it stay platform-owner-only. Was: a flat 403.
+    def test_brand_admin_sees_only_its_own_brand_on_brands_page(self):
         self.client.force_login(self.admin_a)
-        self.assertEqual(self.client.get('/admin/brands/').status_code, 403)
+        r = self.client.get('/admin/brands/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([b.pk for b in r.context['brands']], [self.brand_a.pk])
+        self.assertNotContains(r, self.brand_b.name)
+
+    def test_brand_admin_cannot_create_or_delete_a_brand(self):
+        self.client.force_login(self.admin_a)
+        self.assertEqual(self.client.get('/admin/brands/new/').status_code, 403)
+        self.assertEqual(
+            self.client.post(f'/admin/brands/{self.brand_a.pk}/delete/').status_code, 403)
+
+    def test_brand_admin_cannot_edit_another_brand(self):
+        self.client.force_login(self.admin_a)
+        self.assertEqual(
+            self.client.get(f'/admin/brands/{self.brand_b.pk}/edit/').status_code, 403)
+
+    def test_brand_admin_cannot_change_its_own_domains_or_default_flag(self):
+        """The platform-level fields are ignored for a non-owner even when
+        POSTed directly — the template hiding them is not the control.
+
+        Run as admin_b: brand_b is NOT the default, so a successful grab of
+        is_default would be visible. (brand_a already is the default, which
+        would make that assertion pass for the wrong reason.)"""
+        self.assertFalse(self.brand_b.is_default)
+        self.client.force_login(self.admin_b)
+        original_domain = self.brand_b.primary_domain
+        original_tracking = self.brand_b.tracking_domain
+        r = self.client.post(f'/admin/brands/{self.brand_b.pk}/edit/', {
+            'name': 'Renamed B',
+            'primary_domain': 'stolen.example.com',
+            'tracking_domain': 'stolen-t.example.com',
+            'is_default': 'on',
+        })
+        self.assertEqual(r.status_code, 302)
+        self.brand_b.refresh_from_db()
+        self.assertEqual(self.brand_b.name, 'Renamed B')                    # allowed
+        self.assertEqual(self.brand_b.primary_domain, original_domain)      # ignored
+        self.assertEqual(self.brand_b.tracking_domain, original_tracking)   # ignored
+        self.assertFalse(self.brand_b.is_default)                           # ignored
 
 
 @override_settings(PLATFORM_ADMIN_HOSTS=['testserver'])
@@ -209,14 +250,38 @@ class RoleAppointmentTest(AdminHierarchyBase):
         target.profile.refresh_from_db()
         self.assertEqual(target.profile.brand, self.brand_a)
 
-    def test_brand_admin_cannot_appoint_brand_admin(self):
+    # 2026-08-07: a brand admin may now appoint co-admins, but only inside its
+    # own brand — the brand comes from the actor, never the form. Was: 403.
+    def test_brand_admin_can_appoint_co_admin_in_own_brand(self):
         target = _user('wannabe', Profile.Role.AFFILIATE, self.brand_a)
         self.client.force_login(self.admin_a)
         r = self.client.post('/admin/roles/appoint-brand-admin/',
-                             {'identifier': 'wannabe', 'brand': self.brand_a.pk})
-        self.assertEqual(r.status_code, 403)
+                             {'identifier': 'wannabe'})
+        self.assertEqual(r.status_code, 302)
         target.profile.refresh_from_db()
-        self.assertEqual(target.profile.role, Profile.Role.AFFILIATE)
+        target.refresh_from_db()
+        self.assertEqual(target.profile.role, Profile.Role.NETWORK_ADMIN)
+        self.assertEqual(target.profile.brand, self.brand_a)
+        self.assertTrue(target.is_staff)
+        self.assertFalse(target.is_superuser)
+
+    def test_brand_admin_appointing_ignores_a_posted_foreign_brand(self):
+        target = _user('wannabe2', Profile.Role.AFFILIATE, self.brand_a)
+        self.client.force_login(self.admin_a)
+        self.client.post('/admin/roles/appoint-brand-admin/',
+                         {'identifier': 'wannabe2', 'brand': self.brand_b.pk})
+        target.profile.refresh_from_db()
+        self.assertEqual(target.profile.brand, self.brand_a)
+
+    def test_brand_admin_cannot_demote_a_platform_owner(self):
+        owner = _user('someowner', Profile.Role.NETWORK_ADMIN, self.brand_a)
+        owner.is_superuser = True
+        owner.is_staff = True
+        owner.save()
+        self.client.force_login(self.admin_a)
+        self.client.post('/admin/roles/appoint-brand-admin/', {'identifier': 'someowner'})
+        owner.refresh_from_db()
+        self.assertTrue(owner.is_superuser)
 
     def test_appointed_manager_is_never_superuser(self):
         target = _user('mgr_target', Profile.Role.AFFILIATE, self.brand_a)

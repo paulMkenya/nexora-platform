@@ -38,7 +38,9 @@ class NavGroup:
 
 
 def _admin_groups(*, is_platform_owner: bool) -> Tuple[NavGroup, ...]:
-    roles_label = 'Roles & Admins' if is_platform_owner else 'Managers'
+    # Both roles land on the same console now: a brand admin appoints admins
+    # and managers within its own brand, an owner does it across brands.
+    roles_label = 'Roles & Admins'
     return (
         NavGroup('Overview', (
             NavItem('Dashboard', 'admin_dashboard', icon='dashboard'),
@@ -76,7 +78,10 @@ def _admin_groups(*, is_platform_owner: bool) -> Tuple[NavGroup, ...]:
             NavItem('Offers', 'offers_admin:list', icon='offers', match_extra=(
                 'offers_admin:create', 'offers_admin:edit', 'offers_admin:set_status',
             )),
-            NavItem('Brands', 'brands_admin:brand_list', icon='brands', owner_only=True, match_extra=(
+            # Not owner_only: brand_list scopes itself, so a brand admin lands
+            # on a one-row list — the way into its OWN brand's settings. The
+            # create/delete/setup views behind it stay platform-owner-only.
+            NavItem('Brands', 'brands_admin:brand_list', icon='brands', match_extra=(
                 'brands_admin:brand_create', 'brands_admin:brand_edit',
                 'brands_admin:brand_delete', 'brands_admin:brand_setup',
             )),

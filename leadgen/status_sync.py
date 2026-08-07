@@ -56,12 +56,50 @@ def map_buyer_status(buyer, raw_status):
     return mapped, False
 
 
+def _is_redundant_buyer_report(lead, to_status, *, current, applies):
+    """True when this buyer report would change nothing and tell nobody
+    anything new, so it should not be written at all.
+
+    sync_buyer_statuses re-pulls every delivered lead on every Beat tick (every
+    30 minutes), and a lead sits at one buyer status for days. Without this
+    check each tick wrote a fresh LeadStatusEvent and — for an applied event —
+    fired an affiliate postback: a single live lead produced 48 identical
+    "pending -> pending" events and 48 postbacks a day, growing linearly with
+    lead volume, with nothing downstream able to tell them from a real move.
+
+    The test differs by phase, and getting that wrong strands leads:
+
+    * An APPLYING report (LIVE, or a lead with no affiliate link) is redundant
+      only when canonical_status is ALREADY this status. Judging it against the
+      buyer's previous word instead would suppress the first authoritative
+      report after go-live whenever the buyer had already said the same thing
+      during TESTING — the lead would sit at its stale operator-set status
+      until the buyer happened to change its mind.
+    * A NON-APPLYING report (TESTING-phase buyer) never touches
+      canonical_status, so `current` stays different forever and would never
+      settle. It is redundant once the buyer's own last word was already this
+      status — a pure audit duplicate.
+    """
+    if applies:
+        return current == to_status
+    last_buyer_status = (
+        LeadStatusEvent.objects
+        .filter(lead=lead, source=LeadStatusEvent.SOURCE_BUYER)
+        .order_by('-lead_seq')
+        .values_list('to_status', flat=True)
+        .first()
+    )
+    return last_buyer_status == to_status
+
+
 def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None, override_reason=''):
     """Record a LeadStatusEvent and, if the TESTING/LIVE authority rule
-    allows it, update Lead.canonical_status to match. Always returns the
+    allows it, update Lead.canonical_status to match. Returns the
     LeadStatusEvent it wrote (check event.applied to see whether it took
-    effect). Raises StatusAuthorityError instead of writing anything when a
-    LIVE-phase operator flip has no override_reason.
+    effect), or None when the call was a no-op repeat of the buyer's own
+    previous report (see _is_repeat_buyer_report). Raises
+    StatusAuthorityError instead of writing anything when a LIVE-phase
+    operator flip has no override_reason.
 
     `lead` may be passed with a possibly-stale canonical_status in memory —
     this function re-reads it from the DB immediately before writing, so two
@@ -80,6 +118,16 @@ def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None
 
     current = Lead.objects.only('canonical_status').get(pk=lead.pk).canonical_status
     applies = not (source == LeadStatusEvent.SOURCE_BUYER and phase == AffiliateOfferLink.PHASE_TESTING)
+
+    # A buyer repeating itself is not news: no event, no postback, no write.
+    # Only the buyer is deduplicated — an operator re-affirming a status is a
+    # deliberate, audited act and is always recorded. Placed after the
+    # authority check so an operator flip is validated identically either way.
+    if source == LeadStatusEvent.SOURCE_BUYER and _is_redundant_buyer_report(
+        lead, to_status, current=current, applies=applies,
+    ):
+        return None
+
     next_seq = LeadStatusEvent.objects.filter(lead=lead).count() + 1
 
     event = LeadStatusEvent.objects.create(
@@ -91,12 +139,17 @@ def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None
     if applies:
         Lead.objects.filter(pk=lead.pk).touch(canonical_status=to_status)
         lead.canonical_status = to_status
-        # Return path §5.1 — only an event that actually changed the
-        # affiliate-visible status should ever reach the affiliate's
-        # postback URL. A recorded-but-not-applied TESTING-phase buyer
-        # status must stay silent from the affiliate's point of view.
-        from .postback_delivery import dispatch_postbacks_for_event
-        dispatch_postbacks_for_event(event)
+        # Return path §5.1 — only an event that actually CHANGED the
+        # affiliate-visible status should ever reach the affiliate's postback
+        # URL. Two things have to be true for that: the event applied (a
+        # recorded-but-not-applied TESTING-phase buyer status stays silent from
+        # the affiliate's point of view), and the status it applied differs
+        # from what the affiliate was already told. Gating on `applies` alone
+        # let a re-affirmation of the current status fire a postback that
+        # carried no new information.
+        if current != to_status:
+            from .postback_delivery import dispatch_postbacks_for_event
+            dispatch_postbacks_for_event(event)
 
     return event
 

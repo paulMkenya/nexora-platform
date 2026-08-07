@@ -4,8 +4,13 @@ Role model (see docs/CAPABILITIES.md and brands.scoping):
 
   * PLATFORM OWNER  = ``is_superuser``. Full Django model admin, sees all brands.
   * BRAND ADMIN     = ``NETWORK_ADMIN`` whose ``Profile.brand`` is set; NOT a
-    superuser. Scoped strictly to that one brand. Uses the custom operator
-    console but is blocked from the Django model admin.
+    superuser. Full admin of that ONE brand — including its brand settings and
+    appointing co-admins/managers inside it — and nothing outside it. Uses the
+    custom operator console; blocked from the Django model admin, from every
+    cross-tenant surface (the brand roster, creating/deleting/archiving a
+    brand, the platform sales funnel), and from the platform-level fields on
+    its own brand (slug, domains, is_default — see
+    brands.views.admin_views._BRAND_ADMIN_EDITABLE_FIELDS).
   * AFFILIATE MGR   = ``AFFILIATE_MANAGER``; scoped to one brand and, within it,
     to the affiliates assigned to them.
 

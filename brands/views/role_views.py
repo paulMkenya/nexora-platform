@@ -58,13 +58,13 @@ def _find_user(identifier):
 
 @brand_admin_required
 def roles_home(request):
-    """Role console. Platform owner manages brand admins; brand admin manages
-    its own affiliate managers."""
+    """Role console. Platform owner manages brand admins across every brand;
+    a brand admin manages the admins and affiliate managers of its own."""
     owner = is_platform_owner(request.user)
     ctx = {
         'active': 'roles', 'is_platform_owner': owner,
         'shell_role': 'admin',
-        'page_title': 'Roles & Admins' if owner else 'Managers',
+        'page_title': 'Roles & Admins',
     }
 
     if owner:
@@ -78,25 +78,46 @@ def roles_home(request):
     else:
         brand = operator_brand(request.user)
         ctx['brand'] = brand
+        # A brand admin runs its own tenant's admin roster: it may see and
+        # appoint co-admins WITHIN its brand (never across brands, never a
+        # platform owner). The brand is taken from the actor, so there is no
+        # brand chooser to render — see appoint_brand_admin.
+        ctx['brand_admins'] = (
+            Profile.objects.filter(role=Profile.Role.NETWORK_ADMIN, brand=brand)
+            .select_related('user', 'brand')
+            .order_by('user__username')
+        )
         ctx['managers'] = _scoped_managers(request).order_by('user__username')
 
     return render(request, 'brands/admin/roles.html', ctx)
 
 
-@platform_owner_required
+@brand_admin_required
 def appoint_brand_admin(request):
-    """Platform-owner-only: make a user a BRAND ADMIN for a chosen brand."""
+    """Make a user a BRAND ADMIN. A platform owner may target any brand; a
+    brand admin may only appoint co-admins for its OWN brand — the brand comes
+    from the actor, never from the form, exactly as in appoint_manager."""
     if request.method != 'POST':
         return redirect('roles_admin:home')
 
     user = _find_user(request.POST.get('identifier'))
-    brand = Brand.objects.filter(pk=request.POST.get('brand') or 0).first()
+
+    if is_platform_owner(request.user):
+        brand = Brand.objects.filter(pk=request.POST.get('brand') or 0).first()
+    else:
+        brand = operator_brand(request.user)
 
     if user is None:
         messages.error(request, 'No user found with that username or email.')
         return redirect('roles_admin:home')
     if brand is None:
         messages.error(request, 'Choose a valid brand.')
+        return redirect('roles_admin:home')
+    # Only the platform owner may demote a platform owner. Without this a brand
+    # admin could name a superuser as its co-admin and the is_superuser=False
+    # below would strip the platform owner's own access.
+    if user.is_superuser and not is_platform_owner(request.user):
+        messages.error(request, f'{user.username} is a platform owner — only another platform owner may change that.')
         return redirect('roles_admin:home')
 
     profile = user.profile

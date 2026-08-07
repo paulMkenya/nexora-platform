@@ -145,6 +145,81 @@ class TestApplyStatusChangeTriggersPostback:
         assert event.applied is False
         mock_task.delay.assert_not_called()
 
+    def test_repeated_buyer_report_of_the_same_status_is_silent(self, affiliate_user, offer):
+        """The 30-minute buyer poll re-reports an unchanged status forever.
+        Only the first one is news: the repeats must write no event and fire
+        no postback, or a single live lead generates 48 identical postbacks a
+        day."""
+        AffiliatePostbackConfig.objects.create(affiliate=affiliate_user, url='https://aff.test/cb')
+        lead = _lead(affiliate=affiliate_user, offer=offer)
+        link = AffiliateOfferLink.objects.create(affiliate=affiliate_user, offer=offer)
+        go_live(link, actor=affiliate_user)
+
+        with patch('leadgen.postback_delivery.deliver_affiliate_postback.delay') as mock_delay:
+            first = apply_status_change(lead, canonical_status.PENDING, source=LeadStatusEvent.SOURCE_BUYER)
+            repeats = [
+                apply_status_change(lead, canonical_status.PENDING, source=LeadStatusEvent.SOURCE_BUYER)
+                for _ in range(5)
+            ]
+        assert first is not None and first.applied is True
+        assert repeats == [None] * 5
+        assert mock_delay.call_count == 1
+        assert LeadStatusEvent.objects.filter(
+            lead=lead, source=LeadStatusEvent.SOURCE_BUYER).count() == 1
+
+    def test_a_real_buyer_transition_after_repeats_still_fires(self, affiliate_user, offer):
+        """Deduplication must not swallow the move that matters."""
+        AffiliatePostbackConfig.objects.create(affiliate=affiliate_user, url='https://aff.test/cb')
+        lead = _lead(affiliate=affiliate_user, offer=offer)
+        link = AffiliateOfferLink.objects.create(affiliate=affiliate_user, offer=offer)
+        go_live(link, actor=affiliate_user)
+
+        with patch('leadgen.postback_delivery.deliver_affiliate_postback.delay') as mock_delay:
+            apply_status_change(lead, canonical_status.PENDING, source=LeadStatusEvent.SOURCE_BUYER)
+            apply_status_change(lead, canonical_status.PENDING, source=LeadStatusEvent.SOURCE_BUYER)
+            moved = apply_status_change(lead, canonical_status.FTD, source=LeadStatusEvent.SOURCE_BUYER)
+        lead.refresh_from_db()
+        assert moved is not None and moved.applied is True
+        assert lead.canonical_status == canonical_status.FTD
+        assert mock_delay.call_count == 2  # pending, then ftd — not the repeat
+
+    def test_go_live_applies_a_status_the_buyer_already_reported_in_testing(self, affiliate_user, offer):
+        """Regression: dedupe must be phase-aware. A buyer saying FTD during
+        TESTING is recorded but not applied; after go-live the SAME status is
+        authoritative for the first time and must take effect. Deduplicating on
+        the buyer's previous word alone would strand the lead on its stale
+        operator-set status until the buyer happened to change its mind."""
+        AffiliatePostbackConfig.objects.create(affiliate=affiliate_user, url='https://aff.test/cb')
+        lead = _lead(affiliate=affiliate_user, offer=offer)
+        apply_status_change(lead, canonical_status.PENDING, source=LeadStatusEvent.SOURCE_OPERATOR)
+        link = AffiliateOfferLink.objects.get(affiliate=affiliate_user, offer=offer)
+
+        testing_event = apply_status_change(lead, canonical_status.FTD, source=LeadStatusEvent.SOURCE_BUYER)
+        assert testing_event.applied is False
+        # ...and the testing-phase repeat is still suppressed as pure noise.
+        assert apply_status_change(lead, canonical_status.FTD, source=LeadStatusEvent.SOURCE_BUYER) is None
+
+        go_live(link, actor=affiliate_user)
+        with patch('leadgen.postback_delivery.deliver_affiliate_postback.delay') as mock_delay:
+            live_event = apply_status_change(lead, canonical_status.FTD, source=LeadStatusEvent.SOURCE_BUYER)
+        lead.refresh_from_db()
+        assert live_event is not None and live_event.applied is True
+        assert lead.canonical_status == canonical_status.FTD
+        mock_delay.assert_called_once()
+
+    def test_operator_reaffirming_a_status_is_always_recorded(self, affiliate_user, offer):
+        """Only the buyer is deduplicated. An operator setting the status it
+        already holds is a deliberate, audited act — but it still carries no
+        news for the affiliate, so no postback fires."""
+        AffiliatePostbackConfig.objects.create(affiliate=affiliate_user, url='https://aff.test/cb')
+        lead = _lead(affiliate=affiliate_user, offer=offer)
+        with patch('leadgen.postback_delivery.deliver_affiliate_postback.delay') as mock_delay:
+            apply_status_change(lead, canonical_status.PENDING, source=LeadStatusEvent.SOURCE_OPERATOR)
+            again = apply_status_change(lead, canonical_status.PENDING, source=LeadStatusEvent.SOURCE_OPERATOR)
+        assert again is not None
+        assert LeadStatusEvent.objects.filter(lead=lead).count() == 2
+        assert mock_delay.call_count == 1
+
     def test_lead_seq_increments_monotonically_per_lead(self, affiliate_user, offer):
         lead = _lead(affiliate=affiliate_user, offer=offer)
         e1 = apply_status_change(lead, canonical_status.NEW, source=LeadStatusEvent.SOURCE_OPERATOR)

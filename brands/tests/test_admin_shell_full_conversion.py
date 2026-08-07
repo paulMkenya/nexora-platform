@@ -56,11 +56,20 @@ class AdminShellFullConversionTest(TestCase):
                 self.assertIn('id="nx-sidebar"', html, f'{url} missing shared sidebar')
                 self.assertNotIn('nx-anav', html, f'{url} still renders the old top-nav')
 
-    def test_brands_page_still_owner_gated_after_shell_swap(self):
+    def test_brands_page_scoped_to_own_brand_after_shell_swap(self):
+        """2026-08-07: the brands page is no longer owner-gated — a brand admin
+        reaches it as its own brand's settings. What must survive the shell
+        swap is the SCOPING, not a 403: it may never list another tenant. The
+        cross-tenant create/delete actions are covered in test_admin_hierarchy."""
+        other = Brand.objects.create(
+            slug='other-tenant', name='Other Tenant',
+            primary_domain='other.test', tracking_domain='t.other.test')
         non_owner = User.objects.create_user(username='netadmin2', password='pass', is_staff=True)
         non_owner.profile.role = Profile.Role.NETWORK_ADMIN
         non_owner.profile.brand = self.brand
         non_owner.profile.save()
         self.client.force_login(non_owner)
         r = self.client.get('/admin/brands/')
-        self.assertNotEqual(r.status_code, 200)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([b.pk for b in r.context['brands']], [self.brand.pk])
+        self.assertNotContains(r, other.name)

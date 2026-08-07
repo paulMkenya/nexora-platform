@@ -10,11 +10,13 @@
 <div class="p-8">
 <div class="max-w-5xl mx-auto">
   <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-semibold text-gray-800">Brands</h1>
+    <h1 class="text-2xl font-semibold text-gray-800">{% if is_platform_owner %}Brands{% else %}Brand Settings{% endif %}</h1>
+    {% if is_platform_owner %}
     <a href="{% url 'brands_admin:brand_create' %}"
        class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700">
       + New Brand
     </a>
+    {% endif %}
   </div>
 
   {% if messages %}
@@ -57,9 +59,11 @@
             </div>
           </td>
           <td class="px-6 py-4 text-sm text-right space-x-3">
+            {% if is_platform_owner %}
             <a href="{% url 'brands_admin:brand_setup' brand.pk %}" class="text-indigo-600 hover:text-indigo-900">Setup</a>
+            {% endif %}
             <a href="{% url 'brands_admin:brand_edit' brand.pk %}" class="text-indigo-600 hover:text-indigo-900">Edit</a>
-            {% if not brand.is_default %}
+            {% if is_platform_owner and not brand.is_default %}
             <form method="post" action="{% url 'archived_admin:brand_archive' brand.pk %}" class="inline"
                   onsubmit="return confirm('Archive brand {{ brand.name }}? Its domains fall back to the default brand (reversible from Archived).')">
               {% csrf_token %}

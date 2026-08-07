@@ -5,10 +5,13 @@ signing + retry/backoff shape exactly (same 60s/300s/1800s schedule, same
 "reuse the outbound engine's retry logic" the spec asks for.
 
 dispatch_postbacks_for_event() is called from exactly one place —
-leadgen.status_sync.apply_status_change(), and only for events where
-applied=True. A recorded-but-not-applied TESTING-phase buyer status must
-never reach an affiliate's postback URL: nothing actually changed for them,
-so nothing should fire.
+leadgen.status_sync.apply_status_change(), and only for events that both
+applied=True AND moved the status (from_status != to_status). Two ways an
+event carries no news for the affiliate, and neither may fire: a
+recorded-but-not-applied TESTING-phase buyer status (nothing changed for
+them), and a re-affirmation of the status they were already told — which is
+what every 30-minute buyer poll produces for a lead that is simply sitting
+still.
 """
 import hashlib
 import hmac

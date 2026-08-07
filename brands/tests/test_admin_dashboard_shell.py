@@ -66,12 +66,15 @@ class AdminDashboardShellTest(TestCase):
         self.assertEqual(r.status_code, 200)
         sidebar = self._sidebar(r.content.decode())
 
-        self.assertNotIn('Brands', sidebar)
+        # 2026-08-07: Brands left the owner_only set — a brand admin needs the
+        # way into its OWN brand's settings, and brand_list scopes itself to
+        # exactly that one row. The genuinely cross-tenant items stay hidden.
         self.assertNotIn('Sales Funnel', sidebar)
         self.assertNotIn('Nexora Admin', sidebar)
         # Ungated items still present.
         self.assertIn('Email', sidebar)
-        self.assertIn('Managers', sidebar)  # roles item relabeled for non-owners
+        self.assertIn('Brands', sidebar)
+        self.assertIn('Roles &amp; Admins', sidebar)  # same label for both roles now
 
     def test_affiliate_manager_sees_reduced_menu_only(self):
         manager = User.objects.create_user(username='mgr', password='pass', is_staff=True)
