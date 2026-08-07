@@ -572,17 +572,29 @@ class HypernetConnector(LeadBuyerConnector):
     # consumed rather than until a page comes back short.
     STATUS_SYNC_PAGE_SIZE = 500
 
-    # Widen each window by this much at both ends. Their createdAt is stamped
-    # when THEY accept the lead, a beat after our injection timestamp (0.8s on
-    # the one lead we can compare), and their clock is not ours. An hour is far
-    # more than the observed lag and costs only overlap, which is deduplicated
-    # by id below. Too NARROW would silently drop leads near a boundary, which
-    # is the failure mode worth paying to avoid.
-    STATUS_SYNC_WINDOW_PAD = timedelta(hours=1)
+    # Widen each window by this much at both ends, because their createdAt is
+    # NOT our injection timestamp and the gap is not small.
+    #
+    # This was 1 hour, justified by a single observed sample (0.8s on lead 29).
+    # Reconciling ChainPulse against desperados on 2026-08-07 found the sample
+    # was not representative: lead 22 was injected 08-06 11:42 and carries
+    # their createdAt of 08-07T06:06Z — 18h24m later, across a UTC day
+    # boundary. Its window was built around 08-06 and therefore never saw it,
+    # so it would never have received a status, silently, while the sync
+    # logged as healthy. 48h clears the observed skew by better than 2x in
+    # both directions.
+    #
+    # The cost is bounded by _merged_windows() below: a wide pad makes adjacent
+    # days' windows overlap almost entirely, so they are merged into one range
+    # before any request goes out. Widening the pad therefore costs roughly one
+    # extra window's worth of rows per contiguous run of days, not a multiple
+    # of every day pulled. Too NARROW silently drops leads; that is the failure
+    # mode worth paying to avoid.
+    STATUS_SYNC_WINDOW_PAD = timedelta(hours=48)
 
-    # Runaway guard. At 500/page this is 25k rows for a single day's window —
-    # orders of magnitude past anything this box does. It exists so a
-    # misbehaving `count` cannot spin a Celery worker forever.
+    # Runaway guard. At 500/page this is 25k rows for a single merged window —
+    # orders of magnitude past anything this box does, even at a 48h pad. It
+    # exists so a misbehaving `count` cannot spin a Celery worker forever.
     STATUS_SYNC_MAX_PAGES = 50
 
     # What build_payload() puts where the password goes. The real value is
@@ -836,13 +848,20 @@ class HypernetConnector(LeadBuyerConnector):
         window, never in a today window. Written that way the sync would look
         perfectly healthy and silently miss almost every deposit.
 
-        What we do instead: we already know each lead's registration date — it
-        is our own injection timestamp — so we window by THAT. The requested
-        ids are grouped by the UTC day they were injected and each distinct day
-        is pulled once, paginated. Days with no leads are never requested, so
-        cost scales with how many distinct days the caller's chunk spans, not
-        with how far back the oldest lead is. This is also why a backfill of
-        arbitrarily old leads costs the same per lead as a live sync.
+        What we do instead: our own injection timestamp is the closest thing we
+        have to their registration date, so we window by THAT, generously
+        padded — see STATUS_SYNC_WINDOW_PAD, which is 48h precisely because the
+        two are NOT interchangeable (one observed lead is stamped 18h late, on
+        the following UTC day). The requested ids are grouped by the UTC day
+        they were injected, those day windows are padded and then coalesced
+        where they overlap (_merged_windows), and each resulting range is
+        pulled once, paginated. Days with no leads are never requested, so cost
+        scales with how many contiguous RUNS of days the caller's chunk spans,
+        not with how far back the oldest lead is. This is also why a backfill
+        of arbitrarily old leads costs about the same per lead as a live sync.
+
+        A lead their GET still does not return after all that is logged as a
+        discrepancy rather than guessed at — see the `missing` branch below.
 
         Returns Hypernet's own envelope, narrowed to the requested ids:
         ``{'count': n, 'rows': [...]}``. Rows are deduplicated by id because
@@ -873,9 +892,7 @@ class HypernetConnector(LeadBuyerConnector):
             return {'count': 0, 'rows': []}
 
         rows_by_id = {}
-        for day in sorted(days):
-            start = datetime.combine(day, time.min, tzinfo=dt_timezone.utc) - self.STATUS_SYNC_WINDOW_PAD
-            end = datetime.combine(day, time.max, tzinfo=dt_timezone.utc) + self.STATUS_SYNC_WINDOW_PAD
+        for start, end in self._merged_windows(days):
             for row in self._pull_window(start, end):
                 row_id = str(row.get('id') or '')
                 if row_id in wanted:
@@ -895,6 +912,38 @@ class HypernetConnector(LeadBuyerConnector):
                 len(missing), len(wanted), self.buyer.slug, sorted(missing)[:20])
 
         return {'count': len(rows_by_id), 'rows': list(rows_by_id.values())}
+
+    def _merged_windows(self, days):
+        """The padded windows for `days`, with overlapping ones coalesced.
+
+        Each day becomes [midnight - PAD, end-of-day + PAD]. At a 48h pad two
+        consecutive days overlap by about four of their five days, so pulling
+        them separately would re-fetch the same rows several times over and
+        multiply requests against a box that already answers slowly. Merging
+        first makes a contiguous run of days cost one range instead of one per
+        day, which is what keeps a wide pad affordable.
+
+        Returns (start, end) tuples in ascending order. Purely arithmetic — no
+        I/O — so the merge itself is cheap and unit-testable. The result set is
+        identical to pulling each day separately: the caller keys rows by id
+        and keeps only the ones it asked for.
+        """
+        windows = sorted(
+            (
+                datetime.combine(day, time.min, tzinfo=dt_timezone.utc) - self.STATUS_SYNC_WINDOW_PAD,
+                datetime.combine(day, time.max, tzinfo=dt_timezone.utc) + self.STATUS_SYNC_WINDOW_PAD,
+            )
+            for day in days
+        )
+        merged = []
+        for start, end in windows:
+            if merged and start <= merged[-1][1]:
+                # Overlaps (or exactly abuts) the run we're building — extend
+                # it rather than opening a second request for the same span.
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+        return [(start, end) for start, end in merged]
 
     def _pull_window(self, start, end):
         """Every row in [start, end], following their skip/take pagination.

@@ -879,12 +879,37 @@ class TestFetchLeadStatusesWindowing:
         response = c.fetch_lead_statuses([row['id']])
 
         assert response['count'] == 1
-        assert calls[0]['from'].startswith('2026-03-01')
-        assert calls[0]['to'].startswith('2026-03-03')
+        # 48h pad either side of 2026-03-02.
+        assert calls[0]['from'].startswith('2026-02-28')
+        assert calls[0]['to'].startswith('2026-03-04')
 
-    def test_one_request_per_distinct_injection_day(self, hypernet_buyer, lead):
-        """Cost scales with how many distinct days the chunk spans, not with how
-        far back the oldest lead is. Days with no leads are never requested."""
+    def test_a_lead_their_clock_stamps_a_day_late_is_still_found(self, hypernet_buyer, lead):
+        """Regression, 2026-08-07: their createdAt is NOT our injection time.
+        Lead 22 was injected 08-06 11:42 and stamped 08-07T06:06Z — 18h24m
+        later, on the NEXT UTC day. At the old 1h pad its 08-06 window never
+        saw it, so it would never have received a status while the sync logged
+        as healthy. The pad has to clear a skew of that size."""
+        injected = datetime(2026, 8, 6, 11, 42, 0, tzinfo=dt_timezone.utc)
+        row = dict(REAL_ROW, createdAt='2026-08-07T06:06:17.500Z')
+        _delivered(hypernet_buyer, lead, row['id'], injected)
+        c, calls = self._connector_with(hypernet_buyer, [{'count': 1, 'rows': [row]}])
+
+        response = c.fetch_lead_statuses([row['id']])
+
+        assert response['count'] == 1
+        assert calls[0]['from'] <= row['createdAt'] <= calls[0]['to'], (
+            'their createdAt must fall inside the window we build from our own '
+            'injection timestamp'
+        )
+
+    def test_one_request_per_contiguous_run_of_days(self, hypernet_buyer, lead):
+        """Cost scales with contiguous RUNS of days, not the number of distinct
+        days and not with how far back the oldest lead is.
+
+        Was one request per distinct day. At a 48h pad two days three apart
+        overlap heavily, so pulling them separately would re-fetch most of the
+        same rows twice against a box that already answers slowly —
+        _merged_windows coalesces them into one range instead."""
         for i, day in enumerate((4, 4, 6)):
             _delivered(hypernet_buyer, lead, f'id-{i}',
                        datetime(2026, 8, day, 12, 0, tzinfo=dt_timezone.utc))
@@ -892,7 +917,24 @@ class TestFetchLeadStatusesWindowing:
 
         c.fetch_lead_statuses(['id-0', 'id-1', 'id-2'])
 
-        assert len(calls) == 2, 'two distinct days -> two windows, not three or 30'
+        assert len(calls) == 1, 'Aug 4 and Aug 6 windows overlap at a 48h pad -> one merged range'
+        assert calls[0]['from'].startswith('2026-08-02')
+        assert calls[0]['to'].startswith('2026-08-08')
+
+    def test_far_apart_days_are_not_merged(self, hypernet_buyer, lead):
+        """Merging must not collapse into one giant range: days that do NOT
+        overlap still get their own window, so a backfill spanning months does
+        not pull every day in between."""
+        for i, (month, day) in enumerate(((3, 2), (8, 6))):
+            _delivered(hypernet_buyer, lead, f'id-{i}',
+                       datetime(2026, month, day, 12, 0, tzinfo=dt_timezone.utc))
+        c, calls = self._connector_with(hypernet_buyer, [{'count': 0, 'rows': []}])
+
+        c.fetch_lead_statuses(['id-0', 'id-1'])
+
+        assert len(calls) == 2
+        assert calls[0]['from'].startswith('2026-02-28')
+        assert calls[1]['from'].startswith('2026-08-04')
 
     def test_rows_for_other_leads_in_the_window_are_discarded(self, hypernet_buyer, lead):
         """A date window necessarily returns every lead registered that day,
