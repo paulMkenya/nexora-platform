@@ -519,6 +519,28 @@ class LeadInjection(models.Model):
     """
     RETRY_BACKOFFS = [60, 300, 1800]  # seconds: 1 min, 5 min, 30 min
 
+    # A capacity refusal (connectors.LeadBuyerCapacityError) is a different
+    # KIND of wait from a network hiccup, so it gets a different schedule.
+    #
+    # RETRY_BACKOFFS is tuned for "their box blipped" — it should resolve in
+    # seconds or not at all, and giving up fast is right because a lead's
+    # value decays with time-to-contact. A closed hub does not blip. It
+    # reopens when a cap resets, a paused desk is resumed, or working hours
+    # start — hours, not minutes. Measured against the schedule above, the
+    # 2026-08-07 desperados outage (still closed 1h+ after the first refusal)
+    # would have exhausted every attempt and destroyed the leads anyway,
+    # which is why reclassifying alone is not the fix.
+    #
+    # 5m -> 15m -> 1h -> 3h -> 6h spans ~10h45m: long enough to ride out a
+    # daily cap or an overnight close, front-loaded so a short pause is
+    # caught quickly. The far end is deliberately coarse — by then the lead
+    # is cold and the point is salvage, not speed.
+    #
+    # This is the LAST-RESORT path. A lead with somewhere else to go cascades
+    # instead of waiting (see tasks.inject_lead_task) — waiting is what
+    # happens when the alternative is throwing the lead away.
+    CAPACITY_RETRY_BACKOFFS = [300, 900, 3600, 10800, 21600]
+
     STATUS_PENDING = 'pending'
     STATUS_DELIVERED = 'delivered'
     STATUS_DUPLICATE = 'duplicate'

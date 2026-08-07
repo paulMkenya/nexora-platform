@@ -90,10 +90,27 @@ def maybe_auto_inject(lead):
     return start_injection(lead, buyer, synchronous=False)
 
 
-@_celery.task(bind=True, max_retries=3, ignore_result=True)
+# Celery's own ceiling on self.retry(). It must clear the LONGEST schedule
+# any branch of inject_lead_task can ask for, which is now
+# LeadInjection.CAPACITY_RETRY_BACKOFFS (5) rather than RETRY_BACKOFFS (3) —
+# below it, Celery raises MaxRetriesExceededError mid-schedule and the lead
+# dies at whatever attempt the cap happens to fall on, silently.
+#
+# Not derived from the model: importing leadgen.models at decoration time
+# would import models from a module models imports back. The invariant is
+# pinned instead by test_capacity_retries.py::test_max_retries_clears_the_
+# longest_schedule, so the two cannot drift apart unnoticed.
+#
+# Raising it does not lengthen any OTHER branch: each one bounds itself by
+# its own backoff list against the persisted injection.attempts, not by this.
+_MAX_INJECTION_RETRIES = 5
+
+
+@_celery.task(bind=True, max_retries=_MAX_INJECTION_RETRIES, ignore_result=True)
 def inject_lead_task(self, injection_id: int):
     from .connectors import (
-        LeadBuyerAmbiguousError, LeadBuyerError, LeadBuyerRejectedError, get_connector,
+        LeadBuyerAmbiguousError, LeadBuyerCapacityError, LeadBuyerError,
+        LeadBuyerRejectedError, get_connector,
     )
     from .models import Lead, LeadInjection
 
@@ -179,6 +196,66 @@ def inject_lead_task(self, injection_id: int):
             'Lead injection #%s to %s QUARANTINED — outcome unknown, not retried or cascaded: %s',
             injection.pk, buyer.name, exc)
         return
+
+    except LeadBuyerCapacityError as exc:
+        # They never evaluated the lead — they had nowhere to route it (hub
+        # closed, cap filled, desk paused). Temporary by construction, so
+        # this is NOT terminal the way a rejection is. See
+        # connectors.LeadBuyerCapacityError.
+        #
+        # Must precede the base `except LeadBuyerError` below (it is a
+        # subclass) but is a SIBLING of LeadBuyerRejectedError, so its
+        # position relative to that one is free.
+        injection.failure_reason = str(exc)[:255]
+        backoffs = LeadInjection.CAPACITY_RETRY_BACKOFFS
+
+        # Somewhere else to send it? Then send it there NOW. A closed hub is
+        # precisely what a failover chain exists for, and a buyer who would
+        # take this lead this minute beats one who might take it in six
+        # hours. Waiting is strictly the fallback for a lead with no
+        # alternative — which is the ChainPulse case that motivated this.
+        if injection.chain_managed:
+            from .failover import has_untried_buyer
+
+            if has_untried_buyer(lead):
+                injection.status = LeadInjection.STATUS_FAILED
+                injection.save(update_fields=[
+                    'attempts', 'status', 'external_id', 'failure_reason',
+                    'request_payload', 'response_payload', 'delivered_at',
+                ])
+                logger.warning(
+                    'Lead injection #%s: %s has no capacity; cascading to the next buyer: %s',
+                    injection.pk, buyer.name, exc)
+                from .failover import advance_chain
+                advance_chain(lead.pk)
+                return
+
+        # `<=`, not the `<` used for RETRY_BACKOFFS below. That comparison
+        # never reaches its own last element (attempt 3 of [60, 300, 1800]
+        # goes terminal without ever waiting 1800s); this branch is written
+        # to actually use all five of its backoffs. Not folded together
+        # because fixing the other one silently changes retry behaviour for
+        # every buyer on the platform — a separate decision.
+        if attempt <= len(backoffs):
+            injection.next_retry_at = timezone.now() + timedelta(seconds=backoffs[attempt - 1])
+            injection.save(update_fields=[
+                'attempts', 'failure_reason', 'request_payload', 'next_retry_at',
+            ])
+            logger.warning(
+                'Lead injection #%s: %s has no capacity; retry %s of %s in %ss: %s',
+                injection.pk, buyer.name, attempt, len(backoffs), backoffs[attempt - 1], exc)
+            raise self.retry(exc=exc, countdown=backoffs[attempt - 1])
+
+        # Waited it out and it never opened. STATUS_FAILED, not
+        # STATUS_REJECTED: nobody ever looked at this lead, and recording a
+        # verdict that was never given would misreport the buyer's quality
+        # in every report built on rejection counts.
+        injection.status = LeadInjection.STATUS_FAILED
+        Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_FAILED)
+        logger.error(
+            'Lead injection #%s to %s gave up after %s capacity retries over ~%sh: %s',
+            injection.pk, buyer.name, attempt, round(sum(backoffs) / 3600, 1), exc)
+        reached_terminal_outcome = True
 
     except LeadBuyerRejectedError as exc:
         # They evaluated the payload and refused it. The identical payload

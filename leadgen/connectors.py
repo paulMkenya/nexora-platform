@@ -71,6 +71,9 @@ class LeadBuyerError(Exception):
     ==========================  ==================  =========================
     Condition                   Raises              Caller must
     ==========================  ==================  =========================
+    4xx a connector calls       CapacityError       retry on the LONG
+    "no capacity" (see                              schedule, or cascade if
+    is_capacity_error)                              a next buyer exists
     4xx, except 429             RejectedError       cascade now, 0 retries
     429 (rate limited)          LeadBuyerError      retry with backoff
     ConnectTimeout / refused    LeadBuyerError      retry with backoff
@@ -118,6 +121,46 @@ class LeadBuyerRejectedError(LeadBuyerError):
     still catch it, which means a handler testing the BASE first makes this
     inert. Order: LeadBuyerAmbiguousError, then LeadBuyerRejectedError, then
     LeadBuyerError.
+
+    NOT every 4xx is this — see LeadBuyerCapacityError for the exception a
+    connector can carve out.
+    """
+
+
+class LeadBuyerCapacityError(LeadBuyerError):
+    """The buyer refused to ROUTE this lead — they never evaluated it.
+
+    A 4xx that means "I have nowhere to put this right now": no desk/hub
+    open for the lead's geo, a cap filled, a destination paused. The
+    distinction from LeadBuyerRejectedError is not cosmetic — it is the
+    difference between a verdict on THIS LEAD and a statement about the
+    buyer's own current state:
+
+    * A rejection is a property of the payload. The identical payload will
+      be refused identically in 60 seconds, so retrying is pure latency.
+    * A capacity refusal is a property of the BUYER, and it is temporary by
+      construction. Caps reset, paused desks resume, working-hours routing
+      opens. The identical payload may well be accepted later, and the lead
+      is otherwise perfectly good.
+
+    Treating the second as the first silently destroys good leads. That is
+    not hypothetical: on 2026-08-07 ChainPulse sent 10 real Brazilian leads
+    to Hypernet-desperados in 40 minutes and every one was answered
+    ``[404] {"error": "No hubs available for this lead."}`` — an hour after
+    the box had happily accepted a lead with a byte-identical payload. All
+    10 landed on Rejected with Attempts: 1 and no way back.
+
+    SUBCLASSES THE BASE, NOT LeadBuyerRejectedError — deliberately, and it
+    matters. A handler that has never heard of this class falls through to
+    its ``except LeadBuyerError`` and retries, which is the safe default. If
+    this subclassed RejectedError instead, every existing terminal handler
+    would silently swallow it and the distinction would buy nothing. It is a
+    SIBLING of RejectedError, so the two are order-independent in an
+    ``except`` chain; only the base must come after both.
+
+    Never raised on the connector's own judgement of what a status code
+    "probably" means — a connector opts in per box by overriding
+    is_capacity_error(), which is default-deny.
     """
 
 
@@ -288,6 +331,45 @@ class LeadBuyerConnector:
     def _build_url(self, path: str) -> str:
         return urljoin(self.buyer.base_url.rstrip('/') + '/', path.lstrip('/'))
 
+    def is_capacity_error(self, status_code: int, response) -> bool:
+        """Is this failing 4xx a "no capacity right now", rather than a
+        verdict on the lead? See LeadBuyerCapacityError.
+
+        DEFAULT-DENY, and it stays that way. Every box says "full" in its own
+        words on its own status code, and there is no cross-vendor convention
+        to generalise from — so the base class claims nothing and every
+        existing buyer keeps today's exact behaviour. A connector opts in for
+        ITS box only, by overriding this.
+
+        Consulted only for a 4xx that is not 429 (429 is already retryable),
+        and only from _request(). `response` is the raw requests.Response, so
+        an override can read the body it needs; it MUST NOT raise — an
+        override that blows up on an unexpected body would turn every
+        rejection into a crash, so treat anything unrecognised as False.
+        """
+        return False
+
+    def _is_capacity_error(self, status_code: int, response) -> bool:
+        """is_capacity_error() with its "must not raise" contract actually
+        enforced, rather than left to each override to remember.
+
+        A subclass reads a buyer's error body here — the least predictable
+        input in the system. If an override throws on some shape nobody
+        anticipated, the exception would escape _request() from inside its
+        own error handling and replace a clean rejection with a crash, on
+        the one path that exists to classify failures. Falling back to False
+        degrades to today's behaviour (terminal rejection), which is the
+        safe direction: a lead that cascades when it could have waited is
+        recoverable; a task that dies mid-classification is not.
+        """
+        try:
+            return bool(self.is_capacity_error(status_code, response))
+        except Exception:  # noqa: BLE001 — see docstring; never crash the classifier
+            logger.exception(
+                'is_capacity_error() raised for buyer %s on a %s; treating as a rejection.',
+                self.buyer.slug, status_code)
+            return False
+
     def _request(self, method: str, path: str, *, json: dict | None = None, params: dict | None = None):
         """Rate-limited, timeout-bounded, sanitized-on-error request. Blocks
         (via TokenBucket.acquire) if the client-side bucket is empty — only
@@ -333,6 +415,13 @@ class LeadBuyerConnector:
             if code in AMBIGUOUS_STATUS_CODES:
                 raise LeadBuyerAmbiguousError(detail, status_code=code)
             if 400 <= code < 500 and code != RATE_LIMITED_STATUS_CODE:
+                # Carve-out first: a 4xx meaning "no room right now" is about
+                # the BUYER's state, not about this lead, and clears on its
+                # own — see LeadBuyerCapacityError. Default-deny, so a box
+                # that has not opted in falls straight through to the
+                # rejection below exactly as before.
+                if self._is_capacity_error(code, resp):
+                    raise LeadBuyerCapacityError(detail, status_code=code)
                 # They evaluated the payload and refused it. The identical
                 # payload will be refused identically in 60 seconds, so the
                 # retry budget is pure added latency on a lead's
@@ -613,11 +702,57 @@ class HypernetConnector(LeadBuyerConnector):
     # TTL-aware, access-controlled) — NOT a quiet addition to this set.
     AUDIT_RESPONSE_ALLOWLIST = frozenset({'success', 'leadId'})
 
+    # The one 4xx from this box that means "no room right now" rather than
+    # "no" — see is_capacity_error() below and LeadBuyerCapacityError.
+    CAPACITY_ERROR_STATUS = 404
+    CAPACITY_ERROR_PATTERN = re.compile(r'no\s+hubs?\s+available', re.IGNORECASE)
+
     # Mapped names (the RIGHT-hand side of field_mapping) whose value must
     # be normalized to a bare international MSISDN. Hypernet's docs are
     # explicit that the phone carries no plus sign; Lead.phone usually has
     # one, and is not guaranteed E.164 at all (see _normalize_msisdn).
     PHONE_KEYS = ('profile.phone',)
+
+    def is_capacity_error(self, status_code: int, response) -> bool:
+        """True for desperados' ``[404] {"error": "No hubs available for this
+        lead."}`` — their router saying it has no open hub for this lead's
+        geo/vertical right now, which is temporary. Everything else this box
+        can answer stays a rejection.
+
+        WHY THIS MATCHES ON THEIR MESSAGE TEXT, which is normally a bad idea:
+        there is nothing better to match on. The status code alone is too
+        broad — a 404 is also what a wrong single_endpoint_path returns, and
+        retrying that for hours instead of failing loudly would hide a
+        misconfiguration. They send no error code on this envelope
+        (``{"success", "redirectUrl", "leadId", "error"}``; their `code` field
+        appears only on validation errors, which come back as 400s shaped
+        ``{"message", "code", "statusCode"}``). So the message is the only
+        signal that separates the two.
+
+        What makes it acceptable here is the direction it fails in. If
+        Hypernet rewords the string, this returns False and the lead takes
+        the CURRENT path — a terminal rejection. That is today's behaviour,
+        not a new failure mode: we lose the improvement, quietly, and nothing
+        breaks. The pattern is deliberately loose about whitespace and
+        singular/plural for the same reason, and deliberately does NOT anchor
+        or match the whole message, so a suffix like "...for this lead
+        (geo: BR)" still hits.
+
+        The opposite bias — matching every 404 — fails in the dangerous
+        direction, so it is not what this does.
+        """
+        if status_code != self.CAPACITY_ERROR_STATUS:
+            return False
+        try:
+            body = response.json()
+        except ValueError:
+            # Their 404s are JSON. A non-JSON one is some intermediary
+            # (proxy, WAF, wrong host) answering instead of the box, which is
+            # not a statement about capacity.
+            return False
+        if not isinstance(body, dict):
+            return False
+        return bool(self.CAPACITY_ERROR_PATTERN.search(str(body.get('error') or '')))
 
     def _static_fields(self) -> dict:
         """This box's fixed per-request constants (affc/bxc/vtc, and any

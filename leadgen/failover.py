@@ -46,6 +46,27 @@ def _next_untried_buyer(lead, chain):
     return None
 
 
+def has_untried_buyer(lead) -> bool:
+    """Is there another buyer in this lead's chain that has not been tried?
+
+    Read-only twin of the lookup advance_chain() does — asks "would advancing
+    actually go somewhere?" WITHOUT advancing. tasks.inject_lead_task needs
+    that question answered before it decides how to handle a capacity refusal
+    (connectors.LeadBuyerCapacityError): with a buyer left to try, cascading
+    now beats waiting hours on a closed hub, because time-to-contact is what
+    decides whether a lead converts. With nowhere to go, waiting is the only
+    thing standing between the lead and the bin.
+
+    Deliberately re-derives the chain rather than caching it — same reasoning
+    as advance_chain: the chain is a function of current routing config, and
+    a stale cursor is how a lead gets skipped or double-sent.
+    """
+    from .routing import resolve_buyer_chain
+
+    chain = resolve_buyer_chain(lead)
+    return bool(chain) and _next_untried_buyer(lead, chain) is not None
+
+
 def advance_chain(lead_id):
     """Given a lead, either start the next untried buyer in its resolved
     chain, or settle it into a final state:
