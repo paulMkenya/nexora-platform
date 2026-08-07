@@ -470,3 +470,108 @@ def sync_buyer_statuses():
                 logger.info('sync_buyer_statuses: updated %s lead(s) for buyer %s', count, buyer.slug)
         except Exception:
             logger.exception('sync_buyer_statuses failed for buyer %s', buyer.slug)
+
+
+# How far past its scheduled time an injection must be before the sweep will
+# touch it. Celery normally fires an ETA task within seconds, so anything
+# this stale is almost certainly orphaned — but "almost" is doing real work
+# in that sentence, and the cost of being wrong is sending a lead to a buyer
+# twice. The margin is what buys the certainty: a worker would have to be
+# five minutes behind on its own scheduled queue for a live task to look
+# abandoned, and a worker that far behind has bigger problems than this.
+#
+# Recovery latency is therefore (backoff + up to SWEEP_GRACE + up to the beat
+# interval), which against backoffs measured in hours is noise.
+SWEEP_GRACE = timedelta(minutes=5)
+
+# When a sweep claims a row it pushes next_retry_at out by this much rather
+# than clearing it. Clearing would be a one-shot: if the dispatch itself were
+# lost (broker blip, worker killed between claim and enqueue), the row would
+# have no due time left and would never be swept again — the exact permanent
+# orphan this task exists to prevent, reintroduced by its own fix. Pushing it
+# forward means a lost dispatch simply comes due again.
+SWEEP_RECLAIM_AFTER = timedelta(minutes=10)
+
+# Bound on one sweep's dispatch batch. Pacing to the buyer is NOT this task's
+# job — LeadBuyerConnector's per-buyer token bucket already serialises
+# requests, and a second pacing policy here would fight the backoff schedule
+# it is meant to be restoring.
+SWEEP_BATCH_LIMIT = 200
+
+
+@_celery.task(ignore_result=True)
+def sweep_due_injections(limit: int = SWEEP_BATCH_LIMIT) -> int:
+    """Re-dispatch injections whose scheduled retry was lost.
+
+    THE PROBLEM THIS SOLVES: a retry lives in the worker's MEMORY. Celery's
+    self.retry() hands the task back to the broker with an ETA, the worker
+    prefetches it, and there it sits until it fires. Restart the worker — a
+    deploy, an OOM, a crash — and every one of those pending retries is
+    silently gone. LeadInjection.next_retry_at still reads like a promise,
+    the console still shows a time, and nothing will ever run it.
+
+    Observed, not theorised: deploying 2b6913f on 2026-08-07 dropped all 31
+    in-flight capacity retries for ChainPulse. The rows looked healthy
+    afterwards. Not one of those leads would have been sent again.
+
+    That was survivable only because a human happened to be watching. This
+    task is what makes the database, rather than a worker process, the thing
+    that remembers — so a deploy in the middle of a multi-hour retry schedule
+    stops being an event anyone has to notice.
+
+    DELIBERATELY A SAFETY NET, NOT THE MECHANISM. Celery's ETA remains the
+    primary path and normally fires long before SWEEP_GRACE elapses; this
+    only ever picks up what that path dropped. Reconciling rather than
+    replacing keeps the common case exactly as it was, and means a bug here
+    degrades to "retries are late" instead of "retries stop".
+
+    Every row it finds is a symptom, so each one is logged at WARNING with
+    how late it was — a quiet sweep is the healthy state, and a noisy one
+    says a worker died holding work.
+    """
+    from django.utils import timezone
+
+    from .models import LeadInjection
+
+    now = timezone.now()
+    cutoff = now - SWEEP_GRACE
+
+    due = list(
+        LeadInjection.objects.filter(
+            status=LeadInjection.STATUS_PENDING,
+            next_retry_at__isnull=False,
+            next_retry_at__lte=cutoff,
+        )
+        .order_by('next_retry_at')
+        .values_list('pk', 'next_retry_at')[:limit]
+    )
+    if not due:
+        return 0
+
+    dispatched = 0
+    for injection_pk, scheduled_for in due:
+        # Compare-and-set on the value we read: whoever changes it owns the
+        # dispatch. Two overlapping sweeps (a slow one still running when the
+        # next fires) therefore cannot both enqueue the same injection, and
+        # neither can a sweep racing the real task as it reschedules.
+        claimed = LeadInjection.objects.filter(
+            pk=injection_pk,
+            status=LeadInjection.STATUS_PENDING,
+            next_retry_at=scheduled_for,
+        ).update(next_retry_at=now + SWEEP_RECLAIM_AFTER)
+        if not claimed:
+            continue
+
+        late = (now - scheduled_for).total_seconds()
+        logger.warning(
+            'sweep_due_injections: injection #%s was scheduled for %s and never ran '
+            '(%.0fs late) — its worker almost certainly restarted. Re-dispatching.',
+            injection_pk, scheduled_for.isoformat(), late)
+        inject_lead_task.delay(injection_pk)
+        dispatched += 1
+
+    if dispatched:
+        logger.error(
+            'sweep_due_injections re-dispatched %s orphaned injection(s). Each one is a '
+            'retry that would otherwise never have run.', dispatched)
+    return dispatched

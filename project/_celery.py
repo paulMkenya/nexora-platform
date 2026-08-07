@@ -93,4 +93,14 @@ _celery.conf.beat_schedule = {
         'task': 'leadgen.tasks.sync_buyer_statuses',
         'schedule': 1800,  # every 30 minutes
     },
+    # Every minute, because this is what makes a lead injection's retry
+    # schedule survive a worker restart — see leadgen.tasks.
+    # sweep_due_injections. The query is a single indexed lookup that
+    # returns nothing in the healthy case, so a tight interval costs
+    # essentially nothing and keeps recovery from a deploy down to minutes
+    # rather than however long until the next sweep.
+    'sweep-due-lead-injections': {
+        'task': 'leadgen.tasks.sweep_due_injections',
+        'schedule': 60,
+    },
 }

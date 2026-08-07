@@ -586,6 +586,24 @@ class LeadInjection(models.Model):
 
     class Meta:
         ordering = ('-created_at',)
+        indexes = [
+            # For leadgen.tasks.sweep_due_injections, which runs every 60
+            # seconds and asks "any pending injection whose retry time has
+            # passed?". This table gains a row per delivery ATTEMPT, so it
+            # grows faster than the lead table and a per-minute sequential
+            # scan over it would get steadily more expensive forever.
+            #
+            # Partial, on next_retry_at IS NOT NULL: only rows that are
+            # actually waiting on a retry can ever match, and in the healthy
+            # steady state that is a handful out of everything ever
+            # delivered. The index therefore stays small no matter how large
+            # the table gets.
+            models.Index(
+                fields=['status', 'next_retry_at'],
+                condition=models.Q(next_retry_at__isnull=False),
+                name='leadinj_pending_retry_idx',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.lead_id} -> {self.buyer.name} [{self.status}]'
