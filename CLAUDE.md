@@ -39,6 +39,17 @@ docker compose -f /opt/nexora-platform/docker-compose.prod.yml <command>
 ```
 Required vars: `DJ_SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `TRACKER_URL`, `IPSTACK_TOKEN` (optional), `SENTRY_DSN` (optional).
 
+**Never quote a value in this file** — not `'single'`, not `"double"`. Docker
+Compose strips surrounding quotes; `docker run --env-file` passes them through
+literally. A quoted value therefore means one-off containers get a *different*
+value than the running stack, and for `DJ_SECRET_KEY` that is silently
+destructive: `nexora.crypto` derives its Fernet key from `SECRET_KEY`, and
+`decrypt_secret` swallows `InvalidToken` and returns `''` rather than raising.
+The symptom is a management command run exactly as documented below getting a
+zero-length API key and the buyer answering `401`, with nothing in any log
+saying why. `DJ_SECRET_KEY` was quoted until 2026-08-07. The file now carries a
+`# DO NOT QUOTE` comment above it.
+
 ### Secrets
 ```
 /root/nexora-platform-secrets.txt   (chmod 600, owned by root)
