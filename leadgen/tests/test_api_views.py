@@ -199,6 +199,118 @@ class TestIdempotency:
         assert second.status_code == 200
         assert first.data['id'] == second.data['id']
 
+    def test_created_response_says_it_is_not_a_duplicate(self, affiliate_api_key, eligible_offer):
+        client = _client_with_key(affiliate_api_key)
+        with patch('leadgen.api_views.maybe_auto_inject'):
+            resp = client.post(SUBMIT_URL, {
+                'email': 'fresh@test.com', 'phone': '+15550001111',
+                'offer_id': eligible_offer.pk, 'source_id': 'fresh-1',
+            }, format='json')
+        assert resp.status_code == 201
+        assert resp.data['duplicate'] is False
+
+    def test_retry_of_same_person_is_flagged_duplicate_not_conflict(
+            self, affiliate_api_key, eligible_offer):
+        """The legitimate spec §4.5 case: a timed-out POST resent verbatim
+        must stay idempotent — 200, the original lead, no second row — but it
+        now says so explicitly instead of leaving the client to infer it."""
+        client = _client_with_key(affiliate_api_key)
+        payload = {
+            'email': 'retry2@test.com', 'phone': '+15551234567',
+            'offer_id': eligible_offer.pk, 'source_id': 'retry-same-1',
+        }
+        with patch('leadgen.api_views.maybe_auto_inject'):
+            first = client.post(SUBMIT_URL, payload, format='json')
+            second = client.post(SUBMIT_URL, payload, format='json')
+        assert (first.status_code, second.status_code) == (201, 200)
+        assert second.data['duplicate'] is True
+        assert first.data['id'] == second.data['id']
+
+    def test_reformatted_phone_on_retry_is_still_the_same_person(
+            self, affiliate_api_key, eligible_offer):
+        """A retry that drops the leading + or changes email case must not be
+        mistaken for a collision — a false 409 would push the affiliate to
+        resend under a new source_id and get the lead injected (and paid for)
+        twice. `+` and case are the only variances _PHONE_RE and EmailField
+        let through; anything else is already a 400 at validation."""
+        client = _client_with_key(affiliate_api_key)
+        with patch('leadgen.api_views.maybe_auto_inject'):
+            first = client.post(SUBMIT_URL, {
+                'email': 'fmt@test.com', 'phone': '+15551239999',
+                'offer_id': eligible_offer.pk, 'source_id': 'fmt-1',
+            }, format='json')
+            second = client.post(SUBMIT_URL, {
+                'email': 'FMT@test.com', 'phone': '15551239999',
+                'offer_id': eligible_offer.pk, 'source_id': 'fmt-1',
+            }, format='json')
+        assert (first.status_code, second.status_code) == (201, 200)
+        assert second.data['duplicate'] is True
+
+    def test_reused_source_id_for_a_different_person_is_409_and_stores_nothing(
+            self, affiliate_api_key, eligible_offer):
+        client = _client_with_key(affiliate_api_key)
+        with patch('leadgen.api_views.maybe_auto_inject'):
+            first = client.post(SUBMIT_URL, {
+                'email': 'personA@test.com', 'phone': '+15551110000',
+                'offer_id': eligible_offer.pk, 'source_id': 'collide-1',
+            }, format='json')
+            second = client.post(SUBMIT_URL, {
+                'email': 'personB@test.com', 'phone': '+15552220000',
+                'offer_id': eligible_offer.pk, 'source_id': 'collide-1',
+            }, format='json')
+        assert first.status_code == 201
+        assert second.status_code == 409
+        assert second.data['stored'] is False
+        assert second.data['existing_lead_id'] == first.data['id']
+        assert 'must be unique per lead' in second.data['detail']
+        # The rejected person was never written, and the original is untouched.
+        assert not Lead.objects.filter(email='personB@test.com').exists()
+        assert Lead.objects.filter(source_id='collide-1').count() == 1
+
+    def test_constant_source_id_regression_chainpulse_20260807(
+            self, affiliate_api_key, eligible_offer):
+        """Regression for the 2026-08-07 incident: an integration sending a
+        constant source_id ("1") for every consumer had ~30 real leads
+        silently dropped, every response a 200 that looked like success.
+        Only the first may be stored; the rest must be loud failures."""
+        client = _client_with_key(affiliate_api_key)
+        people = [
+            ('clb.bona@example.com', '+5511900000001'),
+            ('lidia.bonadies@example.com', '+5511900000002'),
+            ('domingos@example.com', '+5511900000003'),
+        ]
+        with patch('leadgen.api_views.maybe_auto_inject'):
+            codes = [
+                client.post(SUBMIT_URL, {
+                    'email': email, 'phone': phone,
+                    'offer_id': eligible_offer.pk, 'source_id': '1',
+                }, format='json').status_code
+                for email, phone in people
+            ]
+        assert codes == [201, 409, 409]
+        assert Lead.objects.filter(source_id='1').count() == 1
+        # The decisive property: nothing was lost QUIETLY. Every submission
+        # that was not stored reported a non-2xx.
+        assert all(c == 201 or c >= 400 for c in codes)
+
+    def test_batch_puts_a_source_id_conflict_in_failed_not_added(
+            self, affiliate_api_key, eligible_offer):
+        client = _client_with_key(affiliate_api_key)
+        with patch('leadgen.api_views.maybe_auto_inject'):
+            resp = client.post(BATCH_URL, {'leads': [
+                {'email': 'b1@test.com', 'phone': '+15553330001',
+                 'offer_id': eligible_offer.pk, 'source_id': 'batch-collide'},
+                {'email': 'b2@test.com', 'phone': '+15553330002',
+                 'offer_id': eligible_offer.pk, 'source_id': 'batch-collide'},
+            ]}, format='json')
+        assert resp.status_code == 201  # partial success
+        assert len(resp.data['addedLeads']) == 1
+        assert len(resp.data['failedToAddLeads']) == 1
+        failure = resp.data['failedToAddLeads'][0]
+        assert failure['input']['email'] == 'b2@test.com'
+        assert 'source_id' in failure['errors']
+        assert not Lead.objects.filter(email='b2@test.com').exists()
+
     def test_different_source_id_is_a_genuinely_new_lead(self, affiliate_api_key, eligible_offer):
         client = _client_with_key(affiliate_api_key)
         with patch('leadgen.api_views.maybe_auto_inject'):

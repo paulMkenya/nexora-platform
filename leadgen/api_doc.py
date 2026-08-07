@@ -204,7 +204,7 @@ def _error_rows():
     """The responses an integrator must actually handle, quoting the real
     messages from leadgen.api_views and public_api.authentication so the doc
     matches what the endpoint returns byte for byte."""
-    from .api_views import MAX_BATCH_SIZE, IsAffiliate
+    from .api_views import MAX_BATCH_SIZE, SOURCE_ID_CONFLICT_DETAIL, IsAffiliate
 
     return [
         {'status': 400, 'when': 'A required field is missing, or a value fails validation.',
@@ -223,6 +223,12 @@ def _error_rows():
          'body': f'{{"detail": "{IsAffiliate.message}"}}'},
         {'status': 404, 'when': 'A lead id that does not exist, or is not yours.',
          'body': '{"detail": "Not found."}'},
+        {'status': 409, 'when': 'source_id is already in use by a different one of your leads. '
+                                'The submission was NOT stored — resend it with a source_id you '
+                                'have not used before. Resending the SAME person under the same '
+                                'source_id is a retry and still returns 200.',
+         'body': '{"detail": "%s", "stored": false, "existing_lead_id": 1024}' % (
+             SOURCE_ID_CONFLICT_DETAIL.format(source_id='your-own-tracking-id', lead_id=1024))},
         {'status': 429, 'when': 'Your key exceeded its rate limit.',
          'body': '{"detail": "Request was throttled. Expected available in N seconds."}'},
     ]

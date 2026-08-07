@@ -40,6 +40,24 @@ MAX_BATCH_SIZE = 200
 # same lead.
 DEDUPE_WINDOW_HOURS = 24
 
+# What _submit_one decided about one submission.
+OUTCOME_CREATED = 'created'      # a fresh Lead row exists
+OUTCOME_DUPLICATE = 'duplicate'  # a retry of the SAME person; original returned
+OUTCOME_CONFLICT = 'conflict'    # source_id already spoken for by someone else
+
+# Why this is a hard error rather than another quiet 200: on 2026-08-07 an
+# affiliate integration sent a constant source_id ("1") for every consumer.
+# Each POST matched the first lead, returned 200 with that lead's body, and
+# ~30 real leads were silently discarded — indistinguishable from success to
+# a client that checks res.ok. Deduping a genuine retry is still correct
+# (spec §4.5); deduping two DIFFERENT people never was.
+SOURCE_ID_CONFLICT_DETAIL = (
+    'source_id "{source_id}" is already in use by a different lead (id {lead_id}). '
+    'A source_id must be unique per lead — reusing one is treated as a retry of the '
+    'original, so THIS SUBMISSION WAS NOT STORED. Resend it with a source_id you have '
+    'not used before, or omit source_id entirely to fall back to phone+email matching.'
+)
+
 
 class IsAffiliate(BasePermission):
     """The inbound lead API is affiliate-facing only — an API key issued for
@@ -87,6 +105,25 @@ def _find_duplicate_lead(user, data):
     )
 
 
+def _digits(value):
+    """Just the digits of a phone number, so a retry that drops or adds the
+    leading + (+15551234567 vs 15551234567 — the only formatting variance
+    LeadSubmitSerializer._PHONE_RE actually lets through) is still recognised
+    as the same person. Deliberately lenient: a missed match here would send
+    a genuine retry back as a 409, the affiliate would resend under a fresh
+    source_id, and the lead would be injected — and paid for — twice."""
+    return ''.join(ch for ch in (value or '') if ch.isdigit())
+
+
+def _is_same_person(lead, data):
+    """True if `data` is a retry of `lead` rather than a different consumer
+    submitted under a source_id that is already taken."""
+    return (
+        (lead.email or '').strip().lower() == (data.get('email') or '').strip().lower()
+        and _digits(lead.phone) == _digits(data.get('phone'))
+    )
+
+
 def _create_lead(request, data, *, offer):
     lead = Lead.objects.create(
         brand=getattr(request, 'brand', None),
@@ -119,19 +156,30 @@ def _create_lead(request, data, *, offer):
 
 
 def _submit_one(request, data):
-    """(lead, created) for one already-validated submission — created=False
-    means this was a dedupe hit (the ORIGINAL lead, per spec §4.5, not a new
-    row), created=True means a fresh Lead was made. Returns (None, None,
-    error_detail) if offer_id doesn't resolve."""
+    """(lead, outcome, error_detail) for one already-validated submission.
+
+    outcome is OUTCOME_CREATED (a fresh Lead), OUTCOME_DUPLICATE (a retry of
+    the same person — the ORIGINAL lead comes back, per spec §4.5) or
+    OUTCOME_CONFLICT (the source_id belongs to a DIFFERENT person; nothing
+    was stored and the caller must surface that loudly). error_detail is set
+    for CONFLICT and for an unresolvable offer_id, None otherwise.
+    """
     offer = _resolve_offer(request, data['offer_id'])
     if offer is None:
         return None, None, 'offer_id does not resolve to an offer you can send to.'
 
     duplicate = _find_duplicate_lead(request.user, data)
     if duplicate is not None:
-        return duplicate, False, None
+        # Only the explicit-source_id path can collide across people. The
+        # phone+email fallback matched ON those fields, so its hit is a same
+        # -person retry by construction.
+        if data.get('source_id') and not _is_same_person(duplicate, data):
+            return duplicate, OUTCOME_CONFLICT, SOURCE_ID_CONFLICT_DETAIL.format(
+                source_id=data['source_id'], lead_id=duplicate.pk,
+            )
+        return duplicate, OUTCOME_DUPLICATE, None
 
-    return _create_lead(request, data, offer=offer), True, None
+    return _create_lead(request, data, offer=offer), OUTCOME_CREATED, None
 
 
 class LeadSubmitView(APIView):
@@ -151,13 +199,23 @@ class LeadSubmitView(APIView):
         serializer = AffiliateLeadSubmitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        lead, created, error = _submit_one(request, serializer.validated_data)
+        lead, outcome, error = _submit_one(request, serializer.validated_data)
+        if outcome == OUTCOME_CONFLICT:
+            return Response(
+                {'detail': error, 'stored': False, 'existing_lead_id': lead.pk},
+                status=status.HTTP_409_CONFLICT,
+            )
         if error:
             return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
 
+        body = LeadOutSerializer(lead).data
+        # `duplicate` is present on BOTH outcomes, always. A client must never
+        # have to infer "was this stored?" from the status code alone — that
+        # inference is exactly what lost ~30 leads on 2026-08-07.
+        body['duplicate'] = outcome == OUTCOME_DUPLICATE
         return Response(
-            LeadOutSerializer(lead).data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            body,
+            status=status.HTTP_200_OK if outcome == OUTCOME_DUPLICATE else status.HTTP_201_CREATED,
         )
 
 
@@ -185,11 +243,19 @@ class LeadBatchSubmitView(APIView):
                 failed.append({'input': raw, 'errors': item_serializer.errors})
                 continue
 
-            lead, _created, error = _submit_one(request, item_serializer.validated_data)
+            lead, outcome, error = _submit_one(request, item_serializer.validated_data)
+            if outcome == OUTCOME_CONFLICT:
+                # A conflict is a FAILURE to store, so it belongs in
+                # failedToAddLeads — putting it in addedLeads would recreate
+                # the silent-loss bug inside the batch envelope.
+                failed.append({'input': raw, 'errors': {'source_id': [error]}})
+                continue
             if error:
                 failed.append({'input': raw, 'errors': {'offer_id': [error]}})
                 continue
-            added.append(LeadOutSerializer(lead).data)
+            item = LeadOutSerializer(lead).data
+            item['duplicate'] = outcome == OUTCOME_DUPLICATE
+            added.append(item)
 
         response_status = status.HTTP_201_CREATED if added else status.HTTP_400_BAD_REQUEST
         return Response({'addedLeads': added, 'failedToAddLeads': failed}, status=response_status)

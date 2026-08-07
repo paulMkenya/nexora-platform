@@ -165,9 +165,14 @@ class TestErrorsAndExamples:
         from leadgen.api_views import IsAffiliate
 
         errors = {e['status']: e for e in _doc(affiliate_user)['errors']}
-        assert {400, 401, 403, 404, 429} <= set(errors)
+        assert {400, 401, 403, 404, 409, 429} <= set(errors)
         assert IsAffiliate.message in errors[403]['body']
         assert 'Invalid or inactive API key.' in errors[401]['body']
+        # A source_id collision is the one error an integrator can hit while
+        # believing everything succeeded, so the doc must spell out both that
+        # nothing was stored and what to do about it.
+        assert 'must be unique per lead' in errors[409]['body']
+        assert '"stored": false' in errors[409]['body']
 
     def test_examples_use_a_real_approved_offer_id(self, affiliate_user, doc_offer):
         doc = _doc(affiliate_user)
