@@ -27,23 +27,51 @@
   </div>
 
   {# ── Summary cards ── #}
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-    <div class="bg-white rounded-lg shadow p-4">
-      <p class="text-xs text-gray-500 uppercase tracking-wide">Total Clicks</p>
-      <p class="text-3xl font-bold text-gray-900 mt-1">{{ total_clicks_24h }}</p>
+  <div class="nx-grid nx-grid--4 mb-4">
+    <div class="nx-stat">
+      <div class="nx-stat__label">Total Clicks</div>
+      <div class="nx-stat__value">{{ total_clicks_24h }}</div>
     </div>
-    <div class="bg-white rounded-lg shadow p-4">
-      <p class="text-xs text-gray-500 uppercase tracking-wide">Flagged Clicks</p>
-      <p class="text-3xl font-bold text-yellow-600 mt-1">{{ total_flagged_clicks }}</p>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Flagged Clicks</div>
+      <div class="nx-stat__value{% if total_flagged_clicks %} nx-stat__value--warn{% endif %}">{{ total_flagged_clicks }}</div>
     </div>
-    <div class="bg-white rounded-lg shadow p-4">
-      <p class="text-xs text-gray-500 uppercase tracking-wide">Flagged Convs</p>
-      <p class="text-3xl font-bold text-orange-600 mt-1">{{ total_flagged_convs }}</p>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Flagged Convs</div>
+      <div class="nx-stat__value{% if total_flagged_convs %} nx-stat__value--warn{% endif %}">{{ total_flagged_convs }}</div>
     </div>
-    <div class="bg-white rounded-lg shadow p-4">
-      <p class="text-xs text-gray-500 uppercase tracking-wide">Auto-Rejected</p>
-      <p class="text-3xl font-bold text-red-600 mt-1">{{ auto_rejected }}</p>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Auto-Rejected</div>
+      <div class="nx-stat__value{% if auto_rejected %} nx-stat__value--neg{% endif %}">{{ auto_rejected }}</div>
     </div>
+  </div>
+
+  {# ── Trend + reason mix ── #}
+  <div class="nx-grid nx-grid--main mb-8">
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Flagged Volume</h2>
+          <p class="nx-panel__sub">Flagged clicks per day over the last week.</p>
+        </div>
+        <span class="nx-panel__tag">7d</span>
+      </div>
+      {% include 'partials/charts/bars.html' with chart=trend value_label="Flagged clicks" table_caption="Flagged clicks per day, last 7 days" %}
+    </section>
+
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Flag Reasons</h2>
+          <p class="nx-panel__sub">Which rules are firing, last 24 hours.</p>
+        </div>
+      </div>
+      {% include 'partials/charts/donut.html' with chart=reason_mix center_value=total_flagged_clicks center_label="Flagged" table_caption="Flagged clicks by rule" %}
+
+      <div style="margin-top:var(--space-3)">
+        {% include 'partials/charts/meter.html' with meter=flag_rate label="Share of clicks flagged" value_text=flag_rate.pct|stringformat:"s"|add:"%" %}
+      </div>
+    </section>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">

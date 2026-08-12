@@ -9,10 +9,12 @@ Role hierarchy enforced here (server-side, never trusting the UI):
     and payouts but may NOT approve/reject/suspend or assign managers.
 """
 import logging
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from brands.email import send_brand_mail
@@ -87,6 +89,10 @@ def _notify_approved(request, user):
 def affiliate_list(request):
     qs = _scoped_affiliates(request)
 
+    # Roster figures come off the unfiltered set — a status filter narrows the
+    # table, it does not mean the other affiliates stopped existing.
+    roster = _affiliate_roster_stats(qs)
+
     status_filter = request.GET.get('status', '')
     if status_filter:
         qs = qs.filter(affiliate_status=status_filter)
@@ -105,7 +111,47 @@ def affiliate_list(request):
         'managers': managers,
         'shell_role': 'admin',
         'page_title': 'Affiliates',
+        'roster': roster,
     })
+
+
+def _affiliate_roster_stats(profiles):
+    """Headline numbers for the affiliate roster.
+
+    ``active_this_month`` counts affiliates who actually sent traffic this
+    calendar month, not merely those whose account is approved — an approved
+    account that never sends a click is not an active publisher, and conflating
+    the two makes the roster look healthier than it is.
+    """
+    from django.db.models import Sum
+    from tracker.models import Click, Conversion, APPROVED_STATUS
+
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    user_ids = list(profiles.values_list('user_id', flat=True))
+    total = len(user_ids)
+
+    pending = profiles.filter(affiliate_status=Profile.AffiliateStatus.PENDING).count()
+
+    active = (
+        Click.objects.filter(affiliate_id__in=user_ids, created_at__gte=month_start)
+        .values('affiliate_id').distinct().count()
+    ) if user_ids else 0
+
+    clicks = Click.objects.filter(affiliate_id__in=user_ids).count() if user_ids else 0
+    earned = (
+        Conversion.objects.filter(affiliate_id__in=user_ids, status=APPROVED_STATUS)
+        .aggregate(t=Sum('payout'))['t'] or 0
+    ) if user_ids else 0
+
+    return {
+        'total': total,
+        'pending': pending,
+        'active_this_month': active,
+        'avg_epc': (Decimal(earned) / clicks) if clicks else Decimal('0'),
+        'period': month_start.strftime('%B'),
+    }
 
 
 @affiliate_console_required

@@ -89,6 +89,23 @@ def roles_home(request):
         )
         ctx['managers'] = _scoped_managers(request).order_by('user__username')
 
+    ctx['roster'] = {
+        'brand_admins': ctx['brand_admins'].count(),
+        'managers': ctx['managers'].count(),
+        'brands': ctx['brands'].count() if owner else 1,
+    }
+
+    # The nearest thing to an audit trail this platform keeps. There is no
+    # general admin-action log — impersonation is the one privileged action
+    # that records itself — so this panel says exactly what it is rather than
+    # implying a fuller history exists.
+    from impersonation.models import ImpersonationLog
+
+    recent = ImpersonationLog.objects.select_related('impersonator', 'target').order_by('-id')
+    if not owner:
+        recent = recent.filter(target__profile__brand=operator_brand(request.user))
+    ctx['recent_impersonations'] = recent[:8]
+
     return render(request, 'brands/admin/roles.html', ctx)
 
 

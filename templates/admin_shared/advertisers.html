@@ -10,10 +10,26 @@
 {% block content %}
 <div class="container-fluid py-4">
 
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">Advertisers
-      <span class="text-muted fs-6">({{ advertisers|length }})</span>
-    </h1>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div>
+      <h1 class="h3 mb-0">Advertisers</h1>
+      <p class="nx-panel__sub">Manage buyer companies, approvals, and delivery configuration.</p>
+    </div>
+  </div>
+
+  <div class="nx-grid nx-grid--3 mb-4">
+    <div class="nx-stat">
+      <div class="nx-stat__label">Total Advertisers</div>
+      <div class="nx-stat__value">{{ roster.total }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Approved</div>
+      <div class="nx-stat__value">{{ roster.approved }}</div>
+    </div>
+    <a class="nx-stat" href="?status={{ PENDING }}">
+      <div class="nx-stat__label">Pending Approval</div>
+      <div class="nx-stat__value{% if roster.pending %} nx-stat__value--warn{% endif %}">{{ roster.pending }}</div>
+    </a>
   </div>
 
   {% if messages %}

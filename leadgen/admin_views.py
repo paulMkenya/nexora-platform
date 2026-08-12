@@ -7,22 +7,28 @@ power-user fallback and test surface — this console is the primary one.
 Every view here is brand-scoped exactly like brands.views.admin_views.
 dashboard: a superuser (platform owner) sees/acts across every brand, an
 ordinary operator only ever sees/touches their own."""
+import datetime
 import json
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from brands.scoping import scope_brand, sees_all_brands
+from nexora import charts
 
 from . import canonical_status
 from .connectors import MAPPABLE_LEAD_FIELDS, LeadBuyerError, get_connector
 from .forms import LeadBuyerForm, RoutingRuleForm
-from .models import AffiliateOfferLink, BoxType, Lead, LeadBuyer, LeadStatusEvent, RoutingRule
+from .models import (
+    AffiliateOfferLink, BoxType, Lead, LeadBuyer, LeadInjection, LeadStatusEvent, RoutingRule,
+)
 from .routing import attach_computed_chains
 from .services import attach_latest_injections
 from .status_sync import StatusAuthorityError, apply_status_change, attach_affiliate_phase, go_live, revert_to_testing
@@ -220,13 +226,124 @@ def _leads_redirect_url(request):
 @staff_member_required
 def buyers_list(request):
     buyers, brand, show_all_brands = _scoped_buyers(request)
+    buyers = list(buyers)
     return render(request, 'leadgen/console/buyers_list.html', {
         'shell_role': 'admin',
         'page_title': 'Buyers',
         'buyers': buyers,
         'show_all_brands': show_all_brands,
         'brand': brand,
+        'health': _buyer_health(brand, show_all_brands=show_all_brands),
+        'active_buyers': sum(1 for b in buyers if b.is_active),
+        'auto_inject_buyers': sum(1 for b in buyers if b.auto_inject),
     })
+
+
+def _injection_window(brand, *, show_all_brands, days=1):
+    """Injections in the trailing window, brand-scoped through the lead.
+
+    ``LeadInjection`` has no brand of its own — a buyer is brand-owned and the
+    lead carries the brand — so scoping goes through ``lead__brand`` rather
+    than a column on the injection itself.
+    """
+    since = timezone.now() - datetime.timedelta(days=days)
+    qs = LeadInjection.objects.filter(created_at__gte=since)
+    if not show_all_brands:
+        qs = qs.filter(lead__brand=brand)
+    return qs
+
+
+def _delivery_latency(qs):
+    """Mean wall time from injection created to delivered, in milliseconds.
+
+    Derived from the two timestamps the model already keeps rather than a
+    stored duration — there is no latency column, and adding one would mean a
+    migration plus a write on a hot path for a number this can compute.
+    Rows that never delivered are excluded: counting them as zero would make a
+    dead buyer look like the fastest one on the page.
+    """
+    delivered = qs.filter(delivered_at__isnull=False)
+    row = delivered.annotate(
+        latency=ExpressionWrapper(F('delivered_at') - F('created_at'), output_field=DurationField())
+    ).aggregate(avg=Avg('latency'))
+    avg = row['avg']
+    if avg is None:
+        return None
+    return int(avg.total_seconds() * 1000)
+
+
+def _buyer_health(brand, *, show_all_brands):
+    """Delivery quality across buyers for the last 24 hours.
+
+    Accept rate and latency are real, derived numbers. Note there is no cap
+    utilisation here: LeadBuyer has no daily/hourly cap or concurrency field —
+    throughput is governed by the token-bucket rate limit
+    (rate_limit_burst / refill) and batch_max_size instead.
+    """
+    qs = _injection_window(brand, show_all_brands=show_all_brands)
+    total = qs.count()
+    delivered = qs.filter(status=LeadInjection.STATUS_DELIVERED).count()
+    failed = qs.filter(status=LeadInjection.STATUS_FAILED).count()
+    duplicate = qs.filter(status=LeadInjection.STATUS_DUPLICATE).count()
+    pending = qs.filter(status=LeadInjection.STATUS_PENDING).count()
+
+    return {
+        'total': total,
+        'delivered': delivered,
+        'accept_rate': charts.meter(delivered, total, tone='teal'),
+        'latency_ms': _delivery_latency(qs),
+        'retrying': qs.filter(next_retry_at__isnull=False).count(),
+        'outcomes': charts.donut([
+            ('Delivered', delivered, 'pos'),
+            ('Pending', pending, 'warn'),
+            ('Duplicate', duplicate, 'muted'),
+            ('Failed', failed, 'neg'),
+        ]),
+    }
+
+
+def _routing_stats(brand, *, show_all_brands):
+    """What routing actually did in the last 24 hours.
+
+    "Matched" is leads that reached at least one buyer, against every lead
+    taken in — the complement is the four terminal states the Lead model keeps
+    deliberately separate (unrouted / held / exhausted / quarantined), so a
+    low number here points at a real configuration gap rather than noise.
+    """
+    since = timezone.now() - datetime.timedelta(days=1)
+
+    leads = Lead.objects.filter(created_at__gte=since)
+    if not show_all_brands:
+        leads = leads.filter(brand=brand)
+
+    injections = _injection_window(brand, show_all_brands=show_all_brands)
+    delivered = injections.filter(status=LeadInjection.STATUS_DELIVERED)
+
+    leads_total = leads.count()
+    leads_matched = leads.filter(injections__isnull=False).distinct().count()
+
+    # A "fallback" is a lead the first buyer did not take, so routing moved
+    # down the waterfall — i.e. more than one injection exists for it.
+    fallbacks = (
+        leads.annotate(n=Count('injections'))
+        .filter(n__gt=1)
+        .count()
+    )
+
+    by_buyer = list(
+        delivered.values('buyer__name')
+        .annotate(n=Count('id'))
+        .order_by('-n')[:6]
+    )
+
+    return {
+        'distributed': delivered.count(),
+        'matched': charts.meter(leads_matched, leads_total, tone='blue'),
+        'matched_text': f'{leads_matched} / {leads_total}',
+        'latency_ms': _delivery_latency(injections),
+        'fallbacks': fallbacks,
+        'by_buyer': charts.bar_chart([(r['buyer__name'], r['n']) for r in by_buyer]),
+    }
 
 
 def _buyer_form_context(*, page_title, form, instance, test_result=None):
@@ -319,12 +436,48 @@ def routing_rules_list(request):
     qs = RoutingRule.objects.select_related('brand', 'buyer', 'offer', 'affiliate').order_by('priority', 'id')
     if not show_all_brands:
         qs = qs.filter(brand=brand)
+
+    # Counts are taken before filtering: the header describes the rule set, not
+    # the current view of it, so narrowing the table doesn't make it look like
+    # rules disappeared.
+    total_rules = qs.count()
+    active_rules = qs.filter(is_active=True).count()
+
+    verticals = sorted(v for v in qs.exclude(vertical='').values_list('vertical', flat=True).distinct())
+    buyers_for_filter, _, _ = _scoped_buyers(request)
+
+    selected = {
+        'vertical': request.GET.get('vertical', ''),
+        'buyer': request.GET.get('buyer', ''),
+        'status': request.GET.get('status', ''),
+        'q': request.GET.get('q', '').strip(),
+    }
+
+    if selected['vertical']:
+        qs = qs.filter(vertical=selected['vertical'])
+    if selected['buyer'].isdigit():
+        qs = qs.filter(buyer_id=selected['buyer'])
+    if selected['status'] == 'active':
+        qs = qs.filter(is_active=True)
+    elif selected['status'] == 'paused':
+        qs = qs.filter(is_active=False)
+    if selected['q']:
+        qs = qs.filter(Q(name__icontains=selected['q']) | Q(buyer__name__icontains=selected['q']))
+
     return render(request, 'leadgen/console/routing_rules_list.html', {
         'shell_role': 'admin',
         'page_title': 'Routing Rules',
         'rules': qs,
         'show_all_brands': show_all_brands,
         'brand': brand,
+        'total_rules': total_rules,
+        'active_rules': active_rules,
+        'paused_rules': total_rules - active_rules,
+        'verticals': verticals,
+        'buyers_for_filter': buyers_for_filter,
+        'selected': selected,
+        'is_filtered': any(selected.values()),
+        'stats': _routing_stats(brand, show_all_brands=show_all_brands),
     })
 
 
