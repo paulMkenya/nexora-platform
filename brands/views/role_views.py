@@ -18,7 +18,7 @@ from django.db.models import Q
 from django.shortcuts import redirect, render
 
 from brands.models import Brand
-from brands.permissions import brand_admin_required, platform_owner_required
+from brands.permissions import brand_admin_required
 from brands.scoping import is_platform_owner, operator_brand, scope_brand, sees_all_brands
 from user_profile.models import Profile
 

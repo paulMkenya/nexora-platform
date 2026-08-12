@@ -392,13 +392,14 @@ class LeadBuyerConnector:
         """
         return {}
 
-    def _request(self, method: str, path: str, *, json: dict | None = None, params: dict | None = None):
-        """Rate-limited, timeout-bounded, sanitized-on-error request. Blocks
-        (via TokenBucket.acquire) if the client-side bucket is empty — only
-        ever call this from a background task, never a request/response cycle."""
-        url = self._build_url(path)
+    def _auth(self, params: dict) -> tuple[dict, dict]:
+        """Headers and query params carrying this box's credential.
+
+        Split out of ``_request`` so the credential-placement rules sit in one
+        readable place; ``params`` is mutated and returned rather than copied
+        again, the caller having already copied it.
+        """
         headers = {'Content-Type': 'application/json'}
-        params = dict(params or {})
         api_key = self.buyer.get_api_key()
         box_type = self.box_type
 
@@ -410,6 +411,45 @@ class LeadBuyerConnector:
             headers['Authorization'] = f'Bearer {api_key}'
 
         headers.update(self.extra_auth_headers())
+        return headers, params
+
+    def _raise_for_status(self, method: str, path: str, resp) -> None:
+        """Translate a non-2xx response into the right exception class.
+
+        Always raises. Which class it raises decides whether the lead is
+        retried, cascaded to the next buyer, or quarantined — so the ordering
+        below is behaviour, not style, and mirrors the table in
+        LeadBuyerError's docstring (most specific first). 500 is checked
+        before the 4xx branch purely so the sequence reads the same way
+        callers must write their own ``except`` chain.
+        """
+        code = resp.status_code
+        detail = f'{method} {path} -> {_sanitize_body(resp)}'
+
+        if code in AMBIGUOUS_STATUS_CODES:
+            raise LeadBuyerAmbiguousError(detail, status_code=code)
+        if 400 <= code < 500 and code != RATE_LIMITED_STATUS_CODE:
+            # Carve-out first: a 4xx meaning "no room right now" is about
+            # the BUYER's state, not about this lead, and clears on its
+            # own — see LeadBuyerCapacityError. Default-deny, so a box
+            # that has not opted in falls straight through to the
+            # rejection below exactly as before.
+            if self._is_capacity_error(code, resp):
+                raise LeadBuyerCapacityError(detail, status_code=code)
+            # They evaluated the payload and refused it. The identical
+            # payload will be refused identically in 60 seconds, so the
+            # retry budget is pure added latency on a lead's
+            # time-to-contact. Cascade now instead.
+            raise LeadBuyerRejectedError(detail, status_code=code)
+        # 429 and every 5xx that is not 500: retryable.
+        raise LeadBuyerError(detail, status_code=code)
+
+    def _request(self, method: str, path: str, *, json: dict | None = None, params: dict | None = None):
+        """Rate-limited, timeout-bounded, sanitized-on-error request. Blocks
+        (via TokenBucket.acquire) if the client-side bucket is empty — only
+        ever call this from a background task, never a request/response cycle."""
+        url = self._build_url(path)
+        headers, params = self._auth(dict(params or {}))
 
         self._bucket.acquire()
         try:
@@ -430,29 +470,7 @@ class LeadBuyerConnector:
             raise LeadBuyerError(f'request to {path} failed: {exc.__class__.__name__}') from exc
 
         if not resp.ok:
-            code = resp.status_code
-            detail = f'{method} {path} -> {_sanitize_body(resp)}'
-            # Order mirrors the table in LeadBuyerError's docstring, most
-            # specific first. 500 is checked before the 4xx branch purely so
-            # the sequence reads the same way callers must write their
-            # `except` chain.
-            if code in AMBIGUOUS_STATUS_CODES:
-                raise LeadBuyerAmbiguousError(detail, status_code=code)
-            if 400 <= code < 500 and code != RATE_LIMITED_STATUS_CODE:
-                # Carve-out first: a 4xx meaning "no room right now" is about
-                # the BUYER's state, not about this lead, and clears on its
-                # own — see LeadBuyerCapacityError. Default-deny, so a box
-                # that has not opted in falls straight through to the
-                # rejection below exactly as before.
-                if self._is_capacity_error(code, resp):
-                    raise LeadBuyerCapacityError(detail, status_code=code)
-                # They evaluated the payload and refused it. The identical
-                # payload will be refused identically in 60 seconds, so the
-                # retry budget is pure added latency on a lead's
-                # time-to-contact. Cascade now instead.
-                raise LeadBuyerRejectedError(detail, status_code=code)
-            # 429 and every 5xx that is not 500: retryable.
-            raise LeadBuyerError(detail, status_code=code)
+            self._raise_for_status(method, path, resp)
         if not resp.content:
             return {}
         try:
