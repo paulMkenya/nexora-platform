@@ -1,0 +1,18 @@
+{% comment %}
+  A labelled progress bar. Pass `meter` = nexora.charts.meter(...), plus
+  `label` and optionally `value_text` (defaults to "value / total").
+
+  The written value is always present beside the bar — the fill is the
+  secondary encoding, not the only one.
+{% endcomment %}
+<div class="nx-meter">
+  <div class="nx-meter__head">
+    <span class="nx-meter__label">{{ label }}</span>
+    <span class="nx-meter__value">{% if value_text %}{{ value_text }}{% else %}{{ meter.value|floatformat:"-2" }} / {{ meter.total|floatformat:"-2" }}{% endif %}</span>
+  </div>
+  <div class="nx-meter__track" role="progressbar"
+       aria-valuenow="{{ meter.width_pct }}" aria-valuemin="0" aria-valuemax="100"
+       aria-label="{{ label }}">
+    <div class="nx-meter__fill" style="width: {{ meter.width_pct }}%; background: {{ meter.color }}"></div>
+  </div>
+</div>

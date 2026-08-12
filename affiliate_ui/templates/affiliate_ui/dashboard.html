@@ -23,33 +23,104 @@
 </div>
 {% endif %}
 
-<h1 class="mb-4">Dashboard</h1>
+<h1 class="mb-1">Dashboard</h1>
+<p class="nx-panel__sub mb-4">Affiliate performance overview.</p>
 
-<div class="row">
-    <div class="col-md-4">
-        <div class="card text-center">
-            <div class="card-body">
-                <h5 class="card-title ds-stat-label">Total Clicks</h5>
-                <p class="card-text fs-2 ds-num">{{ clicks_count }}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card text-center">
-            <div class="card-body">
-                <h5 class="card-title ds-stat-label">Total Conversions</h5>
-                <p class="card-text fs-2 ds-num">{{ conversions_count }}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card text-center">
-            <div class="card-body">
-                <h5 class="card-title ds-stat-label">Total Earnings</h5>
-                <p class="card-text fs-2 ds-money">${{ total_earnings }}</p>
-            </div>
-        </div>
-    </div>
+{# ── Headline figures ── #}
+<div class="nx-grid nx-grid--3 mb-4">
+  <div class="nx-stat">
+    <div class="nx-stat__label">Total Clicks</div>
+    <div class="nx-stat__value ds-num">{{ clicks_count }}</div>
+  </div>
+  <div class="nx-stat">
+    <div class="nx-stat__label">Total Conversions</div>
+    <div class="nx-stat__value ds-num">{{ conversions_count }}</div>
+  </div>
+  <div class="nx-stat">
+    <div class="nx-stat__label">Total Earnings</div>
+    <div class="nx-stat__value nx-stat__value--money ds-money">${{ total_earnings }}</div>
+  </div>
 </div>
 
+<div class="nx-grid nx-grid--main">
+
+  {# ── Offer performance ── #}
+  <section class="nx-panel">
+    <div class="nx-panel__head">
+      <div>
+        <h2 class="nx-panel__title">Offer Performance</h2>
+        <p class="nx-panel__sub">Your top offers by clicks, conversions, and EPC.</p>
+      </div>
+    </div>
+
+    {% if offer_rows %}
+      <div style="overflow-x:auto">
+        <table class="nx-viz-table" style="margin-top:0">
+          <thead>
+            <tr>
+              <th scope="col">Offer</th>
+              <th scope="col">Clicks</th>
+              <th scope="col">Conv.</th>
+              <th scope="col">EPC</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in offer_rows %}
+              <tr>
+                <td>
+                  <a href="{% url 'affiliate_ui:offer_detail' row.offer.pk %}">{{ row.offer.name }}</a>
+                </td>
+                <td>{{ row.clicks }}</td>
+                <td>{{ row.conversions }}</td>
+                <td>${{ row.epc|floatformat:2 }}</td>
+                <td>
+                  {# Status is a word first; the tint behind it is secondary. #}
+                  <span class="nx-panel__tag{% if row.state_tone == 'pos' %} nx-panel__tag--live{% elif row.state_tone == 'warn' %} nx-panel__tag--warn{% endif %}">{{ row.state }}</span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="nx-empty">
+        No offers assigned yet. <a href="{% url 'affiliate_ui:offer_list' %}">Browse offers</a> to get started.
+      </p>
+    {% endif %}
+  </section>
+
+  {# ── Payout timeline ── #}
+  <section class="nx-panel">
+    <div class="nx-panel__head">
+      <div>
+        <h2 class="nx-panel__title">Payout Timeline</h2>
+        <p class="nx-panel__sub">Progress toward your next payout.</p>
+      </div>
+      {% if payout_timeline.on_track %}
+        <span class="nx-panel__tag nx-panel__tag--live">Threshold met</span>
+      {% else %}
+        <span class="nx-panel__tag">Accruing</span>
+      {% endif %}
+    </div>
+
+    {% include 'partials/charts/meter.html' with meter=payout_timeline.clicks label="Clicks verified" value_text=payout_timeline.clicks_text %}
+    {% include 'partials/charts/meter.html' with meter=payout_timeline.conversions label="Conversions approved" value_text=payout_timeline.conversions_text %}
+    {% include 'partials/charts/meter.html' with meter=payout_timeline.threshold label="Payout threshold" value_text=payout_timeline.threshold_text %}
+
+    <div class="nx-feed__item" style="margin-top:var(--space-4)">
+      <span class="nx-feed__icon nx-feed__icon--info">
+        {% include 'partials/icon.html' with name='payouts' cls='nx-nav__icon' %}
+      </span>
+      <div class="nx-feed__body">
+        <div class="nx-feed__title">Next payout window</div>
+        <div class="nx-feed__meta">
+          Released {{ payout_timeline.net_terms }} day{{ payout_timeline.net_terms|pluralize }} after approval.
+          <a href="{% url 'affiliate_ui:payouts' %}">View payouts</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
 {% endblock %}

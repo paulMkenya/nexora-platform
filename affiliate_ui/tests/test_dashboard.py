@@ -38,7 +38,13 @@ class DashboardTest(TestCase):
         self.assertEqual(response.context['conversions_count'], 3)
         self.assertEqual(response.context['total_earnings'], '15.75')
 
-        # Check rendered HTML (DS stat-card classes added in the design-system pass)
-        self.assertContains(response, '<p class="card-text fs-2 ds-num">2</p>', html=True)
-        self.assertContains(response, '<p class="card-text fs-2 ds-num">3</p>', html=True)
-        self.assertContains(response, '<p class="card-text fs-2 ds-money">$15.75</p>', html=True)
+        # Check rendered HTML. The ds-num/ds-money hooks are kept from the
+        # design-system pass; the surrounding tile moved to the shared
+        # .nx-stat component when the dashboard was rebuilt to the new screens.
+        self.assertContains(response, '<div class="nx-stat__value ds-num">2</div>', html=True)
+        self.assertContains(response, '<div class="nx-stat__value ds-num">3</div>', html=True)
+        self.assertContains(
+            response,
+            '<div class="nx-stat__value nx-stat__value--money ds-money">$15.75</div>',
+            html=True,
+        )

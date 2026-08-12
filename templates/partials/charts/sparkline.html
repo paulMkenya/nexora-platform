@@ -1,0 +1,15 @@
+{% comment %}
+  Trend line for a stat tile. Pass `chart` = nexora.charts.sparkline(...).
+  `tone` optionally names a status token; default is categorical slot 1.
+
+  Purely decorative — the tile's own number carries the value, so this is
+  aria-hidden with no axes, labels or table. Do not use it as the only
+  representation of data a reader needs.
+{% endcomment %}
+{% if not chart.empty %}
+<svg class="nx-spark" viewBox="0 0 {{ chart.width }} {{ chart.height }}"
+     preserveAspectRatio="none" height="{{ chart.height }}" aria-hidden="true" focusable="false">
+  <path class="nx-spark__area" d="{{ chart.area }}" fill="{{ color|default:'var(--viz-1)' }}"></path>
+  <polyline class="nx-spark__line" points="{{ chart.points }}" stroke="{{ color|default:'var(--viz-1)' }}"></polyline>
+</svg>
+{% endif %}

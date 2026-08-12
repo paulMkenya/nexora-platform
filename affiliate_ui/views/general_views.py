@@ -2,13 +2,14 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q, Sum, Prefetch
+from django.db.models import Count, Q, Sum, Prefetch
 from django.shortcuts import redirect, render, get_object_or_404
 from django.contrib.auth.views import LoginView
 from django.views.decorators.http import require_POST
 
 from affiliate_ui.gates import require_approved_affiliate
 from brands.links import affiliate_click_link
+from nexora import charts
 from offer.models import Advertiser, Offer, Category, Payout, TrafficSource, ACTIVE_STATUS, revenue_models
 from user_profile.geo import country_choices
 from tracker.models import Click, Conversion, APPROVED_STATUS
@@ -42,8 +43,111 @@ def dashboard(request):
         'conversions_count': conversions_count,
         'total_earnings': f'{total_earnings:.2f}',
         'is_pending': is_pending,
+        'offer_rows': _offer_leaderboard(request.user),
+        'payout_timeline': _payout_timeline(
+            request.user,
+            clicks_count=clicks_count,
+            conversions=conversions,
+            total_earnings=total_earnings,
+        ),
     }
     return render(request, 'affiliate_ui/dashboard.html', context)
+
+
+def _offer_leaderboard(affiliate, *, limit=5):
+    """Top offers for this affiliate by clicks, with conversions and EPC.
+
+    Scoped through ``offers_for_affiliate`` rather than "every offer I have a
+    click on", so a click recorded before a brand reassignment can't surface an
+    offer the affiliate is no longer entitled to see (see that function's
+    docstring for why host-independent brand scoping is the rule here).
+
+    Two grouped queries and a dict merge — not one query per offer.
+    """
+    offers = list(offers_for_affiliate(affiliate))
+    if not offers:
+        return []
+
+    clicks_by_offer = {
+        row['offer']: row['n']
+        for row in Click.objects.filter(affiliate=affiliate, offer__in=offers)
+        .values('offer').annotate(n=Count('id'))
+    }
+    conv_by_offer = {
+        row['offer']: row
+        for row in Conversion.objects.filter(affiliate=affiliate, offer__in=offers)
+        .values('offer').annotate(
+            n=Count('id'),
+            approved=Count('id', filter=Q(status=APPROVED_STATUS)),
+            earned=Sum('payout', filter=Q(status=APPROVED_STATUS)),
+        )
+    }
+
+    rows = []
+    for offer in offers:
+        clicks = clicks_by_offer.get(offer.pk, 0)
+        conv = conv_by_offer.get(offer.pk) or {}
+        approved = conv.get('approved') or 0
+        earned = conv.get('earned') or Decimal('0')
+
+        # EPC is earnings per click — undefined with no clicks, and shown as
+        # 0.00 rather than a divide-by-zero or a blank cell.
+        epc = (Decimal(earned) / clicks) if clicks else Decimal('0')
+
+        if clicks == 0:
+            state, tone = 'Idle', 'muted'
+        elif approved == 0:
+            state, tone = 'Pending', 'warn'
+        else:
+            state, tone = 'Earning', 'pos'
+
+        rows.append({
+            'offer': offer,
+            'clicks': clicks,
+            'conversions': conv.get('n') or 0,
+            'approved': approved,
+            'earned': earned,
+            'epc': epc,
+            'state': state,
+            'state_tone': tone,
+        })
+
+    rows.sort(key=lambda r: (r['clicks'], r['earned']), reverse=True)
+    return rows[:limit]
+
+
+def _payout_timeline(affiliate, *, clicks_count, conversions, total_earnings):
+    """Progress toward this affiliate's next payout.
+
+    Every number here is derived from data the affiliate can already see
+    elsewhere (clicks, conversions, earnings, their own payout settings) — this
+    panel reorganises it, it does not introduce a new source of truth.
+    """
+    from payouts.models import PayoutSettings
+
+    settings_row = PayoutSettings.objects.filter(affiliate=affiliate).first()
+    threshold = settings_row.min_threshold if settings_row else Decimal('50.00')
+    net_terms = settings_row.net_terms if settings_row else 15
+
+    # "Verified" = the click carried none of the automated fraud signals. This
+    # mirrors what the fraud console counts as clean, so the two never disagree.
+    verified_clicks = Click.objects.filter(
+        affiliate=affiliate, is_bot=False, is_proxy=False, is_datacenter=False,
+    ).count()
+
+    conversions_total = conversions.count()
+    conversions_approved = conversions.filter(status=APPROVED_STATUS).count()
+
+    return {
+        'clicks': charts.meter(verified_clicks, clicks_count, tone='blue'),
+        'clicks_text': f'{verified_clicks} / {clicks_count}',
+        'conversions': charts.meter(conversions_approved, conversions_total, tone='blue'),
+        'conversions_text': f'{conversions_approved} / {conversions_total}',
+        'threshold': charts.meter(total_earnings, threshold, tone='teal'),
+        'threshold_text': f'${total_earnings:.2f} / ${threshold:.2f}',
+        'net_terms': net_terms,
+        'on_track': Decimal(total_earnings) >= threshold,
+    }
 
 
 def offers_for_affiliate(affiliate, *, historical=False):
