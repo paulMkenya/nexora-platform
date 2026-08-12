@@ -69,7 +69,7 @@
             {% for row in offer_rows %}
               <tr>
                 <td>
-                  <a href="{% url 'affiliate_ui:offer_detail' row.offer.pk %}">{{ row.offer.name }}</a>
+                  <a href="{% url 'affiliate_ui:offer_detail' row.offer.pk %}">{{ row.offer.title }}</a>
                 </td>
                 <td>{{ row.clicks }}</td>
                 <td>{{ row.conversions }}</td>

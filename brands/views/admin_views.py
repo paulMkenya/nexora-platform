@@ -224,7 +224,7 @@ def _lead_feed(brand, *, show_all_brands, limit=6):
             'tone': 'info',
             'icon': 'leads',
             'title': 'New lead received',
-            'detail': f'Offer: {lead.offer.name}' if lead.offer_id else 'Unrouted',
+            'detail': f'Offer: {lead.offer.title}' if lead.offer_id else 'Unrouted',
         })
 
     for conv in conversions.filter(status=APPROVED_STATUS).select_related(

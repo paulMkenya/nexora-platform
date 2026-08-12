@@ -120,7 +120,8 @@
               <tr class="border-b border-gray-100">
                 <td class="py-2 pl-4 pr-3"><input type="checkbox" class="console-lead-check" name="lead_ids" value="{{ lead.pk }}"></td>
                 <td class="py-2 pr-3">
-                  <div class="font-medium text-gray-800">{{ lead.full_name|default:'—' }}</div>
+                  <a href="{% url 'leadgen_console:lead_detail' lead.pk %}"
+                     class="font-medium text-indigo-600 hover:underline">{{ lead.full_name|default:'—' }}</a>
                   <div class="text-gray-500 text-xs">{{ lead.email }} · {{ lead.phone }}</div>
                 </td>
                 <td class="py-2 pr-3 text-gray-500">{{ lead.get_intake_channel_display }}</td>

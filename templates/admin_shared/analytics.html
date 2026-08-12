@@ -1,0 +1,147 @@
+{% extends '_shell/base_shell.html' %}
+
+{% block title %}Analytics — {{ brand.name|default:"Nexora" }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.tailwindcss.com"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+  <div class="mb-6 flex items-start justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-800">
+        Analytics Overview
+        {% if show_all_brands %}
+          <span class="ml-2 inline-flex items-center rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-medium text-white align-middle"
+                title="Superuser view: figures span every brand">All brands</span>
+        {% endif %}
+      </h1>
+      <p class="text-gray-500 text-sm mt-1">
+        Lead flow, conversion efficiency, and traffic quality over the last {{ days }} days.
+      </p>
+    </div>
+
+    {# Range picker — a plain GET form, no JS. #}
+    <form method="get" class="flex items-center gap-2">
+      {% for choice in window_choices %}
+        <button type="submit" name="days" value="{{ choice }}"
+                class="rounded-md px-3 py-1.5 text-sm font-medium transition
+                       {% if days == choice %}bg-indigo-600 text-white{% else %}bg-white border border-gray-300 text-gray-700 hover:bg-gray-50{% endif %}">
+          {{ choice }} days
+        </button>
+      {% endfor %}
+    </form>
+  </div>
+
+  {# ── Headline figures ── #}
+  <div class="nx-grid nx-grid--4 mb-4">
+    <div class="nx-stat">
+      <div class="nx-stat__label">Total Clicks</div>
+      <div class="nx-stat__row">
+        <div class="nx-stat__value">{{ totals.clicks }}</div>
+        {% if deltas.clicks is not None %}
+          <span class="nx-stat__delta nx-stat__delta--{% if deltas.clicks >= 0 %}up{% else %}down{% endif %}">
+            {{ deltas.clicks }}%
+          </span>
+        {% endif %}
+      </div>
+      {% include 'partials/charts/sparkline.html' with chart=sparks.clicks color='var(--viz-1)' %}
+    </div>
+
+    <div class="nx-stat">
+      <div class="nx-stat__label">Conversions</div>
+      <div class="nx-stat__row">
+        <div class="nx-stat__value">{{ totals.conversions }}</div>
+        {% if deltas.conversions is not None %}
+          <span class="nx-stat__delta nx-stat__delta--{% if deltas.conversions >= 0 %}up{% else %}down{% endif %}">
+            {{ deltas.conversions }}%
+          </span>
+        {% endif %}
+      </div>
+      {% include 'partials/charts/sparkline.html' with chart=sparks.conversions color='var(--viz-3)' %}
+    </div>
+
+    <div class="nx-stat">
+      <div class="nx-stat__label">Conversion Rate</div>
+      <div class="nx-stat__row">
+        <div class="nx-stat__value">{{ totals.conversion_rate|floatformat:2 }}%</div>
+        {% if deltas.conversion_rate is not None %}
+          <span class="nx-stat__delta nx-stat__delta--{% if deltas.conversion_rate >= 0 %}up{% else %}down{% endif %}">
+            {{ deltas.conversion_rate }}%
+          </span>
+        {% endif %}
+      </div>
+      <div class="nx-panel__sub" style="margin-top:var(--space-2)">
+        Avg. payout ${{ totals.avg_payout|floatformat:2 }}
+      </div>
+    </div>
+
+    <div class="nx-stat">
+      <div class="nx-stat__label">Approved Revenue</div>
+      <div class="nx-stat__row">
+        <div class="nx-stat__value nx-stat__value--money">${{ totals.revenue|floatformat:2 }}</div>
+        {% if deltas.revenue is not None %}
+          <span class="nx-stat__delta nx-stat__delta--{% if deltas.revenue >= 0 %}up{% else %}down{% endif %}">
+            {{ deltas.revenue }}%
+          </span>
+        {% endif %}
+      </div>
+      <div class="nx-panel__sub" style="margin-top:var(--space-2)">
+        Approved conversions only
+      </div>
+    </div>
+  </div>
+
+  {# ── Trend ── #}
+  <section class="nx-panel mb-4">
+    <div class="nx-panel__head">
+      <div>
+        <h2 class="nx-panel__title">Clicks &amp; Conversions Over Time</h2>
+        <p class="nx-panel__sub">Daily volume across the selected window, on one shared scale.</p>
+      </div>
+    </div>
+    {% include 'partials/charts/area.html' with chart=trend table_caption="Daily clicks and conversions" %}
+  </section>
+
+  <div class="nx-grid nx-grid--main">
+
+    {# ── Top offers ── #}
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Top Performing Offers</h2>
+          <p class="nx-panel__sub">By approved revenue, shown relative to the leader.</p>
+        </div>
+      </div>
+
+      {% if top_offers %}
+        {% for offer in top_offers %}
+          {% include 'partials/charts/meter.html' with meter=offer.share label=offer.name value_text=offer.revenue_display %}
+          <p class="nx-panel__sub" style="margin:2px 0 var(--space-2)">
+            {{ offer.clicks }} click{{ offer.clicks|pluralize }} ·
+            {{ offer.conversions }} conversion{{ offer.conversions|pluralize }} ·
+            EPC ${{ offer.epc|floatformat:2 }}
+          </p>
+        {% endfor %}
+      {% else %}
+        <p class="nx-empty">No approved conversions in this window.</p>
+      {% endif %}
+    </section>
+
+    {# ── Traffic mix ── #}
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Traffic Source Breakdown</h2>
+          <p class="nx-panel__sub">Share of clicks by source.</p>
+        </div>
+      </div>
+      {% include 'partials/charts/donut.html' with chart=traffic_mix center_value=totals.clicks center_label="Clicks" table_caption="Clicks by traffic source" %}
+    </section>
+
+  </div>
+
+</div>
+{% endblock %}
