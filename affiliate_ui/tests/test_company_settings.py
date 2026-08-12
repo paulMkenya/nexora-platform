@@ -7,7 +7,6 @@ ones asserting a sensitive value cannot be written from here even when it is
 posted — "we just don't render an input for it" is not a control, because the
 form is not what stops a hand-rolled POST.
 """
-import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 

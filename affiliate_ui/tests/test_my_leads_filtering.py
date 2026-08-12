@@ -13,7 +13,6 @@ empty.
 """
 from datetime import timedelta
 
-import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.utils import timezone

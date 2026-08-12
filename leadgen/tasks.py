@@ -107,7 +107,29 @@ _MAX_INJECTION_RETRIES = 5
 
 
 @_celery.task(bind=True, max_retries=_MAX_INJECTION_RETRIES, ignore_result=True)
-def inject_lead_task(self, injection_id: int):
+def inject_lead_task(self, injection_id: int):  # noqa: C901 — see below
+    # C901 is suppressed here deliberately, not deferred.
+    #
+    # The branch count IS the specification. This function is a dispatch over
+    # mutually-exclusive buyer outcomes — delivered, duplicate, rejected,
+    # ambiguous, no-capacity, transient — and each arm chooses one of retry /
+    # cascade to the next buyer / quarantine / stop. Getting an arm wrong
+    # double-sells a lead or strands it, which is why every one of them
+    # carries a comment explaining what it must NOT be collapsed into, and why
+    # the `except` ordering is load-bearing (LeadBuyerAmbiguousError must
+    # precede its own subclasses; test_error_classification.py pins that).
+    #
+    # The mechanical way to satisfy the threshold is to lift each handler into
+    # a helper returning a sentinel the caller re-dispatches on. That trades a
+    # documented, linear, top-to-bottom reading of the outcome table for
+    # indirection plus a hand-rolled control-flow protocol — on the one path
+    # in this codebase where being wrong costs real money. The complexity does
+    # not go away; it just stops being visible in one place.
+    #
+    # The three other C901s in this app WERE refactored rather than suppressed
+    # (connectors._auth/_raise_for_status, tasks._apply_status_sync_result,
+    # resanitize_injection_payloads._connector_for) because each of those was
+    # a genuinely separable concern, not a control-flow protocol.
     from .connectors import (
         LeadBuyerAmbiguousError, LeadBuyerCapacityError, LeadBuyerError,
         LeadBuyerRejectedError, get_connector,
@@ -366,8 +388,7 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
     goal. An unmapped buyer status sets Lead.canonical_status_needs_review
     instead of guessing."""
     from .connectors import LeadBuyerError, get_connector
-    from .models import Lead, LeadInjection
-    from .status_sync import LeadStatusEvent, apply_status_change, map_buyer_status
+    from .models import LeadInjection
 
     connector = get_connector(buyer)
     if not connector.supports_status_sync:
@@ -402,58 +423,69 @@ def sync_buyer_statuses_for_buyer(buyer, *, chunk_size=200):
             injection = by_external_id.get(result['external_id'])
             if injection is None:
                 continue
-
-            updated_at = _parse_buyer_timestamp(result['updated_at'])
-            injection.buyer_status = result['buyer_status']
-            injection.buyer_status_updated_at = updated_at
-            injection.save(update_fields=['buyer_status', 'buyer_status_updated_at'])
-
-            lead_updates = {'buyer_status': result['buyer_status'], 'buyer_status_updated_at': updated_at}
-            if result['deposit']:
-                lead_updates['deposit'] = True
-                lead_updates['status'] = Lead.STATUS_DEPOSIT
-            Lead.objects.filter(pk=injection.lead_id).touch(**lead_updates)
-
-            # Free byproduct of this same call — backfill country_iso2 for
-            # any lead geolocate_lead didn't already resolve (no IPSTACK
-            # token, private/bad IP, etc). Never overwrites an existing value.
-            if result.get('country_iso2'):
-                Lead.objects.filter(pk=injection.lead_id, country_iso2='').touch(
-                    country_iso2=result['country_iso2'])
-
-            canonical, needs_review = map_buyer_status(buyer, result['buyer_status'])
-            if needs_review:
-                Lead.objects.filter(pk=injection.lead_id).touch(canonical_status_needs_review=True)
-                logger.warning(
-                    'sync_buyer_statuses: buyer %s status %r has no status_mapping entry (lead #%s)',
-                    buyer.slug, result['buyer_status'], injection.lead_id)
-            elif canonical:
-                # The flag means "this lead's CURRENT buyer status did not
-                # resolve — a human should look". Once it resolves, that is no
-                # longer true, so clear it. Setting without ever clearing made
-                # the flag one-way: adding the missing status_mapping entry
-                # fixed the mapping but left every already-flagged lead sitting
-                # in the operator's review queue forever with nothing left to
-                # review. A queue that fills with resolved rows stops being
-                # worth opening, which costs more than the flag ever bought.
-                #
-                # Only on a REAL resolution, not on the (None, False) that
-                # map_buyer_status returns for a blank status — "the buyer has
-                # not reported yet" is no evidence that an earlier unmapped
-                # status has been dealt with.
-                #
-                # Filtered on the flag being set so an ordinary sync does not
-                # write to every row it touches.
-                Lead.objects.filter(
-                    pk=injection.lead_id, canonical_status_needs_review=True,
-                ).touch(canonical_status_needs_review=False)
-                apply_status_change(
-                    injection.lead, canonical, source=LeadStatusEvent.SOURCE_BUYER,
-                    raw_payload=result)
-
+            _apply_status_sync_result(buyer, injection, result)
             updated += 1
 
     return updated
+
+
+def _apply_status_sync_result(buyer, injection, result):
+    """Write one buyer-reported status onto its injection and lead.
+
+    Split out of ``sync_buyer_statuses_for_buyer`` so the chunking/fetch loop
+    and the per-result write are separately readable; behaviour is unchanged
+    and this is only ever called from that loop.
+    """
+    from .models import Lead
+    from .status_sync import LeadStatusEvent, apply_status_change, map_buyer_status
+
+    updated_at = _parse_buyer_timestamp(result['updated_at'])
+    injection.buyer_status = result['buyer_status']
+    injection.buyer_status_updated_at = updated_at
+    injection.save(update_fields=['buyer_status', 'buyer_status_updated_at'])
+
+    lead_updates = {'buyer_status': result['buyer_status'], 'buyer_status_updated_at': updated_at}
+    if result['deposit']:
+        lead_updates['deposit'] = True
+        lead_updates['status'] = Lead.STATUS_DEPOSIT
+    Lead.objects.filter(pk=injection.lead_id).touch(**lead_updates)
+
+    # Free byproduct of this same call — backfill country_iso2 for
+    # any lead geolocate_lead didn't already resolve (no IPSTACK
+    # token, private/bad IP, etc). Never overwrites an existing value.
+    if result.get('country_iso2'):
+        Lead.objects.filter(pk=injection.lead_id, country_iso2='').touch(
+            country_iso2=result['country_iso2'])
+
+    canonical, needs_review = map_buyer_status(buyer, result['buyer_status'])
+    if needs_review:
+        Lead.objects.filter(pk=injection.lead_id).touch(canonical_status_needs_review=True)
+        logger.warning(
+            'sync_buyer_statuses: buyer %s status %r has no status_mapping entry (lead #%s)',
+            buyer.slug, result['buyer_status'], injection.lead_id)
+    elif canonical:
+        # The flag means "this lead's CURRENT buyer status did not
+        # resolve — a human should look". Once it resolves, that is no
+        # longer true, so clear it. Setting without ever clearing made
+        # the flag one-way: adding the missing status_mapping entry
+        # fixed the mapping but left every already-flagged lead sitting
+        # in the operator's review queue forever with nothing left to
+        # review. A queue that fills with resolved rows stops being
+        # worth opening, which costs more than the flag ever bought.
+        #
+        # Only on a REAL resolution, not on the (None, False) that
+        # map_buyer_status returns for a blank status — "the buyer has
+        # not reported yet" is no evidence that an earlier unmapped
+        # status has been dealt with.
+        #
+        # Filtered on the flag being set so an ordinary sync does not
+        # write to every row it touches.
+        Lead.objects.filter(
+            pk=injection.lead_id, canonical_status_needs_review=True,
+        ).touch(canonical_status_needs_review=False)
+        apply_status_change(
+            injection.lead, canonical, source=LeadStatusEvent.SOURCE_BUYER,
+            raw_payload=result)
 
 
 @_celery.task(ignore_result=True)

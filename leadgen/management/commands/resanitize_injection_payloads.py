@@ -60,6 +60,25 @@ class Command(BaseCommand):
         parser.add_argument('--verbose-diff', action='store_true',
                             help='Print full before/after JSON for every changed row.')
 
+    def _connector_for(self, injection):
+        """The connector for this row's buyer, or None if it can't be built.
+
+        Returning None rather than raising keeps one unresolvable buyer from
+        aborting a scan over the whole table; the caller counts it as skipped.
+        Both reasons warn on stderr so a skipped row is never silent.
+        """
+        if injection.buyer.box_type_id is None:
+            self.stderr.write(self.style.WARNING(
+                f'#{injection.pk}: buyer {injection.buyer.slug!r} has no box_type; '
+                'cannot resolve a connector. Skipped.'))
+            return None
+        try:
+            return get_connector(injection.buyer)
+        except Exception as exc:  # noqa: BLE001 — a bad connector_class must not abort the run
+            self.stderr.write(self.style.WARNING(
+                f'#{injection.pk}: could not build connector ({exc.__class__.__name__}: {exc}). Skipped.'))
+            return None
+
     def handle(self, *args, **options):
         # Bulk guard: a single-row redaction is a considered act; rewriting
         # every audit row in the table should never be one keystroke away.
@@ -84,18 +103,8 @@ class Command(BaseCommand):
 
         for injection in qs.order_by('pk'):
             scanned += 1
-            if injection.buyer.box_type_id is None:
-                self.stderr.write(self.style.WARNING(
-                    f'#{injection.pk}: buyer {injection.buyer.slug!r} has no box_type; '
-                    'cannot resolve a connector. Skipped.'))
-                skipped += 1
-                continue
-
-            try:
-                connector = get_connector(injection.buyer)
-            except Exception as exc:  # noqa: BLE001 — a bad connector_class must not abort the run
-                self.stderr.write(self.style.WARNING(
-                    f'#{injection.pk}: could not build connector ({exc.__class__.__name__}: {exc}). Skipped.'))
+            connector = self._connector_for(injection)
+            if connector is None:
                 skipped += 1
                 continue
 
