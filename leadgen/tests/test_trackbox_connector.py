@@ -83,7 +83,7 @@ def trackbox_box_type(db):
 def trackbox_buyer(db, brand, trackbox_box_type):
     buyer = LeadBuyer.objects.create(
         brand=brand, box_type=trackbox_box_type,
-        name='TrackBox - Traffix (test)', slug='trackbox-traffix-test',
+        name='TrackBox - Traffix World (test)', slug='trackbox-traffixworld-test',
         is_active=True, auto_inject=False,
         base_url='https://platform.traffixworld.com',
         extra_payload_fields={'ai': AI, 'ci': CI, 'gi': GI, 'so': SO, 'lg': 'EN'},

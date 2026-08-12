@@ -83,8 +83,8 @@ class Command(BaseCommand):
         parser.add_argument('--buyer', action='store_true',
                             help='Also create/update a LeadBuyer row (needs --brand and the codes).')
         parser.add_argument('--brand', help='Brand slug the buyer belongs to.')
-        parser.add_argument('--slug', default='trackbox-traffix', help='LeadBuyer slug.')
-        parser.add_argument('--name', default='TrackBox - Traffix', help='LeadBuyer display name.')
+        parser.add_argument('--slug', default='trackbox-traffixworld', help='LeadBuyer slug.')
+        parser.add_argument('--name', default='TrackBox - Traffix World', help='LeadBuyer display name.')
         parser.add_argument('--base-url', default='https://platform.traffixworld.com')
         parser.add_argument('--ai', help='TrackBox affiliate id for this box ("ask your trackbox partner").')
         parser.add_argument('--ci', default='1', help='TrackBox campaign id.')
