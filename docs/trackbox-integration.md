@@ -24,6 +24,13 @@ Verified against the live box on 2026-08-12 by POSTing to
 | username + password, no `x-api-key` | `200` | same as above |
 | username + password + junk `x-api-key` | `200` | `{"status": false, "message": "User and password doesnt match, please supply support with case ID: …", "code": 401}` |
 | junk username + password + junk `x-api-key` | `200` | same as above |
+| username + password + the **doc's placeholder** key `2643889w34df345676ssdas323tgc738` | `200` | same as above — byte-identical to a random invalid key |
+
+**Their error text is misleading and has already cost time once.** "User and
+password doesnt match" is what the box says when the **`x-api-key`** is
+wrong, even though the username and password are correct. Do not go back to
+the vendor asking about the password on the strength of that message —
+check the API key first.
 
 The generic `LeadBuyerConnector` classifies on the HTTP status line (see
 `LeadBuyerError`'s table). On this box it would therefore read a flat
@@ -88,8 +95,16 @@ probe table above shows it is mandatory — without it the box answers `401`
 regardless of whether the username and password are correct.
 
 So the integration is complete and configurable, but **cannot be verified
-end-to-end until Traffix supplies the API key**. Ask their team for the
-`x-api-key` value for the `DanTVSnew` account, then see §6.
+end-to-end until Traffix supplies the API key**.
+
+What to ask for, precisely: *the `x-api-key` value issued for the API user
+`DanTVSnew` on platform.traffixworld.com*. It is a per-account secret their
+side generates. It is **not** `ai`, `ci` or `gi`, and it is **not** the
+placeholder printed in their public documentation — that value
+(`2643889w34df345676ssdas323tgc738`) was tried against the live box on
+2026-08-12 and rejected exactly like a random string.
+
+Once it arrives, see §7.
 
 ---
 
