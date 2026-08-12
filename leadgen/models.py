@@ -17,6 +17,7 @@ base_url + encrypted API key, and field-name overrides on top of the
 BoxType's defaults. Onboarding a new brand on a KNOWN box is a LeadBuyer
 row, no code.
 """
+import json
 import secrets
 from datetime import timedelta
 
@@ -181,6 +182,30 @@ class LeadBuyer(models.Model):
     base_url = models.URLField(max_length=500)
     api_key_encrypted = models.CharField(max_length=512, blank=True, default='')
 
+    # Additional NAMED secrets for a box whose auth is not a single key.
+    # A Fernet-encrypted JSON object (nexora.crypto, exactly like
+    # api_key_encrypted above) — see set_extra_credentials/
+    # get_extra_credentials.
+    #
+    # WHY THIS EXISTS: BoxType.auth_type models one credential in one place
+    # (a query param, a header, or a bearer token), which covers op-brandy
+    # and Hypernet. TrackBox does not fit it — every request carries THREE
+    # headers (``x-trackbox-username``, ``x-trackbox-password``,
+    # ``x-api-key``), and only the third has somewhere to live today.
+    #
+    # WHY NOT extra_payload_fields: that field is plaintext JSON, is edited
+    # in the operator console, and is rendered back to operators. A password
+    # in it would be a plaintext credential on a page — which is the exact
+    # exposure LeadBuyer.api_key_encrypted exists to avoid. Encrypting the
+    # whole object rather than adding a username column and a password
+    # column keeps the next multi-credential box a config change instead of
+    # another migration, matching field_mapping/extra_payload_fields'
+    # precedent.
+    #
+    # NEVER put the box's primary API key here — it belongs in
+    # api_key_encrypted, which is what BoxType.auth_type reads.
+    extra_credentials_encrypted = models.CharField(max_length=2048, blank=True, default='')
+
     # Our field name -> the buyer's field name — OVERRIDES on top of
     # box_type.default_field_mapping (see get_effective_field_mapping). A
     # brand with zero quirks vs. the platform's canonical field set can
@@ -234,6 +259,41 @@ class LeadBuyer(models.Model):
 
     def get_api_key(self):
         return decrypt_secret(self.api_key_encrypted)
+
+    def set_extra_credentials(self, values):
+        """Replace the whole extra-credential object (see
+        extra_credentials_encrypted). Pass ``{}`` or None to clear it.
+
+        Whole-object replacement rather than a per-key setter on purpose: a
+        credential SET is what a box is configured with, and a partial write
+        that leaves a stale username beside a fresh password produces an
+        auth failure nobody can read off the row.
+        """
+        self.extra_credentials_encrypted = encrypt_secret(json.dumps(values or {}))
+
+    def get_extra_credentials(self):
+        """The decrypted extra-credential object, or ``{}``.
+
+        Returns {} rather than raising on an undecryptable value, matching
+        nexora.crypto.decrypt_secret's own behaviour (it swallows
+        InvalidToken and returns ''). The caller that actually needs a
+        specific key — TrackBoxConnector._auth_headers — is the one that
+        raises a named error, because only it knows which keys are required
+        and can say so in the message. Deciding that here would mean this
+        method has to know every box's requirements.
+
+        A SECRET_KEY rotation therefore surfaces as "TrackBox credentials
+        are not configured", not as a crash — see CLAUDE.md's warning about
+        quoting DJ_SECRET_KEY, which produced exactly this failure once.
+        """
+        raw = decrypt_secret(self.extra_credentials_encrypted)
+        if not raw:
+            return {}
+        try:
+            values = json.loads(raw)
+        except ValueError:
+            return {}
+        return values if isinstance(values, dict) else {}
 
     def get_effective_field_mapping(self):
         """box_type.default_field_mapping merged with this instance's own

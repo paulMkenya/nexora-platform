@@ -370,6 +370,28 @@ class LeadBuyerConnector:
                 self.buyer.slug, status_code)
             return False
 
+    def extra_auth_headers(self) -> dict:
+        """Additional headers every request to this box must carry, beyond
+        the single credential BoxType.auth_type describes.
+
+        Empty by default, so nothing changes for op-brandy or Hypernet.
+        BoxType.auth_type models exactly ONE credential in one place, which
+        is all most boxes need; TrackBox needs three headers at once and
+        overrides this rather than reimplementing _request() and losing its
+        rate limiting, timeout bounding and error classification.
+
+        Returned values are merged into the headers AFTER the BoxType's own
+        auth header, so an override cannot silently displace the primary
+        API key — a box wanting a different primary credential should change
+        its BoxType instead.
+
+        MUST NOT be logged or recorded anywhere: like the API key, whatever
+        this returns is a credential. _request() keeps it off the audit
+        trail by building LeadInjection.request_payload from mapped lead
+        fields only, never from the outgoing headers.
+        """
+        return {}
+
     def _request(self, method: str, path: str, *, json: dict | None = None, params: dict | None = None):
         """Rate-limited, timeout-bounded, sanitized-on-error request. Blocks
         (via TokenBucket.acquire) if the client-side bucket is empty — only
@@ -386,6 +408,8 @@ class LeadBuyerConnector:
             headers[box_type.auth_param_name] = api_key
         elif box_type.auth_type == box_type.AUTH_BEARER:
             headers['Authorization'] = f'Bearer {api_key}'
+
+        headers.update(self.extra_auth_headers())
 
         self._bucket.acquire()
         try:
@@ -581,6 +605,41 @@ def _normalize_msisdn(raw) -> tuple[str, bool]:
     return digits, digits.startswith('0')
 
 
+def _first_present(row: dict, *keys):
+    """The first of ``keys`` present in ``row`` with a non-empty value, else
+    None.
+
+    For reading a box whose response schema is undocumented: each field is
+    expressed as the set of spellings it plausibly arrives under, and the
+    reader survives whichever one the box actually uses. ``False`` and ``0``
+    count as PRESENT — a deposit flag of False is a real answer, not a
+    missing one — so the emptiness test is deliberately against None/''/[]
+    rather than plain falsiness.
+    """
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, '', []):
+            return value
+    return None
+
+
+def _truthy(value) -> bool:
+    """Whether an undocumented box's flag means yes.
+
+    JSON booleans, numbers and the string spellings ("1", "true", "yes", "Y")
+    that boxes of this class use interchangeably for the same flag. Anything
+    unrecognised is False, which is the safe direction for the one caller
+    that matters: TrackBoxConnector reads a DEPOSIT flag through this, and a
+    lead wrongly marked as deposited bills an affiliate for a conversion
+    that did not happen.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or '').strip().lower() in {'1', 'true', 'yes', 'y', 't'}
+
+
 def _set_path(target: dict, dotted_key: str, value):
     """Assign ``value`` into ``target`` at a dotted path, creating the
     intervening dicts. ``_set_path(d, 'profile.firstName', 'Jane')`` gives
@@ -605,7 +664,240 @@ def _set_path(target: dict, dotted_key: str, value):
     node[parts[-1]] = value
 
 
-class HypernetConnector(LeadBuyerConnector):
+class BrokerPasswordMixin:
+    """A password for boxes that require one in the signup body.
+
+    Extracted from HypernetConnector when TrackBox turned out to need the
+    identical thing (its ``/api/signup/procform`` body carries a
+    ``password``): both boxes create a real broker account for the lead, and
+    neither Nexora nor the affiliate ever collects a consumer password.
+
+    What replaces it in an audit trail. The real value is substituted into
+    the wire body by the connector's own inject_lead(), so build_payload()
+    — and therefore LeadInjection.request_payload, and therefore the
+    console — only ever sees the marker.
+    """
+
+    REDACTED_PASSWORD = REDACTED
+
+    def get_or_create_password(self, lead) -> str:
+        """The password the lead's broker account is provisioned with —
+        generated ONCE, at first delivery, and stored encrypted at rest.
+
+        Neither box collects a consumer-supplied password and both require
+        one, so it is synthesized: ``secrets.token_urlsafe``, encrypted with
+        the same nexora.crypto helper that protects
+        LeadBuyer.api_key_encrypted, and persisted to
+        ``Lead.broker_password_encrypted``.
+
+        Generated once rather than derived, because a derived password
+        (e.g. HMAC over lead.pk) would let anyone holding SECRET_KEY compute
+        every lead's broker credential from a sequential integer,
+        retroactively and forever.
+
+        Read-back, never regeneration: once a value is stored, an
+        undecryptable one raises instead of silently minting a replacement.
+        A regenerated password would diverge from what the broker actually
+        stored, locking the lead out of the account with no record of why —
+        exactly the failure mode SECRET_KEY rotation would otherwise cause
+        (nexora.crypto is keyed off SECRET_KEY; see its module docstring).
+
+        THE FIELD IS SHARED ACROSS BOXES, and that is correct: a lead is
+        only ever sold to one buyer at a time, so the stored password
+        belongs to whichever box actually provisioned the account. A lead
+        that cascades from one box to another after a rejection reuses the
+        same password at the second box, which is harmless — the first box
+        never created an account for it.
+
+        An UNSAVED lead (the console's Test Connection, admin_views.
+        buyer_test_connection) gets an ephemeral password that is never
+        persisted — nothing real is created at the buyer by that path.
+        """
+        stored = getattr(lead, 'broker_password_encrypted', '')
+        if stored:
+            raw = decrypt_secret(stored)
+            if not raw:
+                raise LeadBuyerError(
+                    f'Stored broker password for lead #{lead.pk} could not be decrypted '
+                    '(SECRET_KEY rotated?). Refusing to mint a replacement — the buyer '
+                    'already has the original.')
+            return raw
+
+        raw = secrets.token_urlsafe(12)
+        encrypted = encrypt_secret(raw)
+        # hasattr on the model CLASS is the feature detect for "the field's
+        # migration has landed" — Django installs a descriptor per field.
+        # Until then the password is still sent, just not retained.
+        if lead.pk and hasattr(type(lead), 'broker_password_encrypted'):
+            from .models import Lead
+
+            lead.broker_password_encrypted = encrypted
+            # .touch(), never .update(): provisioning a broker credential is a
+            # lead mutation, and LeadQuerySet.touch() is the one sanctioned
+            # way to write a Lead (see its docstring — QuerySet.update()
+            # leaves updated_at frozen and hides the change from the
+            # ?updated_since= reconcile poll). Imported here rather than at
+            # module scope both to avoid a circular import and so the write
+            # reads as `Lead.objects...`, which is the shape
+            # tests/test_no_untouched_lead_writes.py can actually see.
+            Lead.objects.filter(pk=lead.pk).touch(broker_password_encrypted=encrypted)
+        return raw
+
+
+class DateWindowStatusSyncMixin:
+    """Status sync for a box whose read endpoint has NO id filter.
+
+    Extracted from HypernetConnector when TrackBox turned out to have the
+    same shape of problem. Both boxes expose a read endpoint that filters
+    only by a DATE RANGE over the lead's REGISTRATION date — neither offers
+    "give me these ids" and neither offers "give me what changed since".
+
+    THE TRAP THIS EXISTS TO AVOID: the intuitive "pull the last hour of
+    changes" is wrong on such a box. A lead that registered in March and
+    deposits today appears in a MARCH window, never in a today window.
+    Written that way the sync looks perfectly healthy and silently misses
+    almost every deposit — the event that actually bills.
+
+    What we do instead: our own injection timestamp is the closest thing we
+    have to their registration date, so we window by THAT, generously
+    padded (STATUS_SYNC_WINDOW_PAD). The requested ids are grouped by the
+    UTC day they were injected, those day windows are padded and then
+    coalesced where they overlap (_merged_windows), and each resulting
+    range is pulled once. Days with no leads are never requested, so cost
+    scales with how many contiguous RUNS of days the caller's chunk spans,
+    not with how far back the oldest lead is — which is also why a backfill
+    of arbitrarily old leads costs about the same per lead as a live sync.
+
+    A subclass supplies the two box-specific pieces: _pull_window(), which
+    knows that box's pagination, and ROWS_KEY, the envelope key its rows
+    arrive under (and which its own parse_status_sync_results reads back).
+    """
+
+    # Widen each window by this much at both ends, because the box's
+    # registration date is NOT our injection timestamp and the gap is not
+    # small. See HypernetConnector for the measured 18h24m skew that set
+    # this figure; a box with its own evidence overrides it.
+    STATUS_SYNC_WINDOW_PAD = timedelta(hours=48)
+
+    # Runaway guard, so a misbehaving page count cannot spin a worker forever.
+    STATUS_SYNC_MAX_PAGES = 50
+
+    # The envelope key rows come back under, for both the value this returns
+    # and the subclass's parse_status_sync_results.
+    ROWS_KEY = 'rows'
+
+    def _row_id(self, row) -> str:
+        """The external id on one row of this box's read endpoint.
+
+        Overridable because the read side and the write side of these boxes
+        routinely disagree about the name — Hypernet RESPONDS to an
+        injection with ``leadId`` but keys the same value as ``id`` when
+        reading, and reading the wrong one silently yields nothing while
+        every lead looks absent.
+        """
+        return str((row or {}).get('id') or '')
+
+    def _pull_window(self, start, end):
+        """Every row this box has in [start, end], pagination included.
+
+        Abstract: pagination is the one thing these boxes never share
+        (Hypernet pages by skip/take against a total count, TrackBox by an
+        incrementing page number against a last-page marker).
+        """
+        raise NotImplementedError
+
+    def fetch_lead_statuses(self, external_ids) -> dict:
+        """Pull statuses for `external_ids` by DATE WINDOW, matching on row id.
+
+        Returns this box's own envelope narrowed to the requested ids:
+        ``{'count': n, <ROWS_KEY>: [...]}``. Rows are deduplicated by id
+        because STATUS_SYNC_WINDOW_PAD makes adjacent days overlap by
+        design.
+
+        A lead the box still does not return after all that is logged as a
+        discrepancy rather than guessed at — see the `missing` branch.
+        """
+        from .models import LeadInjection
+
+        wanted = {str(e) for e in (external_ids or []) if e}
+        if not wanted:
+            return {'count': 0, self.ROWS_KEY: []}
+
+        # Their registration date is not stored on our side; our injection
+        # timestamp is the closest thing we have to it, and
+        # STATUS_SYNC_WINDOW_PAD covers the difference. Scoped to this buyer
+        # so a shared external_id string can never pull another box's window.
+        injected_at = LeadInjection.objects.filter(
+            buyer=self.buyer, external_id__in=wanted
+        ).values_list('external_id', 'created_at')
+
+        days = {created.astimezone(dt_timezone.utc).date() for _, created in injected_at}
+        if not days:
+            # Nothing of ours to look up — no injection rows for these ids on
+            # this buyer. Not an error: return empty rather than pulling a
+            # window we have no basis for.
+            logger.warning(
+                '%s status sync: no injections on buyer %s for %s external_id(s); '
+                'nothing to pull.', type(self).__name__, self.buyer.slug, len(wanted))
+            return {'count': 0, self.ROWS_KEY: []}
+
+        rows_by_id = {}
+        for start, end in self._merged_windows(days):
+            for row in self._pull_window(start, end):
+                row_id = self._row_id(row)
+                if row_id in wanted:
+                    rows_by_id[row_id] = row
+
+        missing = wanted - rows_by_id.keys()
+        if missing:
+            # NOT an error, and deliberately not raised: a lead we delivered
+            # that their read endpoint does not return is a real, open
+            # discrepancy (see docs/hypernet-status-endpoint.md, where 2 of
+            # the first 3 deliveries were absent from the buyer's side
+            # entirely despite their API returning success and an id for
+            # each). Absence cannot be read as "no change" OR as "lost" — so
+            # log it plainly and sync what we did get.
+            logger.warning(
+                '%s status sync: %s of %s requested lead(s) absent from buyer %s: %s',
+                type(self).__name__, len(missing), len(wanted), self.buyer.slug,
+                sorted(missing)[:20])
+
+        return {'count': len(rows_by_id), self.ROWS_KEY: list(rows_by_id.values())}
+
+    def _merged_windows(self, days):
+        """The padded windows for `days`, with overlapping ones coalesced.
+
+        Each day becomes [midnight - PAD, end-of-day + PAD]. At a 48h pad two
+        consecutive days overlap by about four of their five days, so pulling
+        them separately would re-fetch the same rows several times over and
+        multiply requests against a box that already answers slowly. Merging
+        first makes a contiguous run of days cost one range instead of one per
+        day, which is what keeps a wide pad affordable.
+
+        Returns (start, end) tuples in ascending order. Purely arithmetic — no
+        I/O — so the merge itself is cheap and unit-testable. The result set is
+        identical to pulling each day separately: the caller keys rows by id
+        and keeps only the ones it asked for.
+        """
+        windows = sorted(
+            (
+                datetime.combine(day, time.min, tzinfo=dt_timezone.utc) - self.STATUS_SYNC_WINDOW_PAD,
+                datetime.combine(day, time.max, tzinfo=dt_timezone.utc) + self.STATUS_SYNC_WINDOW_PAD,
+            )
+            for day in days
+        )
+        merged = []
+        for start, end in windows:
+            if merged and start <= merged[-1][1]:
+                # Overlaps (or exactly abuts) the run we're building — extend
+                # it rather than opening a second request for the same span.
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+        return [(start, end) for start, end in merged]
+
+
+class HypernetConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuyerConnector):
     """Connector for Hypernet-CRM-style boxes (HTN-AFF-SDK) — the second box
     onboarded after op-brandy, and the first that genuinely needed its own
     connector_class rather than just a LeadBuyer row.
@@ -636,11 +928,15 @@ class HypernetConnector(LeadBuyerConnector):
        what we send to the live op-brandy box, so they are assembled here
        instead — see build_payload() / get_or_create_password().
 
-    5. **Status sync by date window.** Their GET has no ID filter — every
-       variant 400s — and its date window filters on REGISTRATION date, not on
-       when a status changed. So fetch_lead_statuses() windows by each lead's
-       injection date and matches on the row's ``id`` (not ``leadId``). See
-       fetch_lead_statuses() and docs/hypernet-status-endpoint.md.
+    5. **Status sync by date window.** Their GET has no ID filter —
+       id/ids/Ids/leadId/leadIds/externalId, every variant 400s (probed; see
+       docs/hypernet-status-endpoint.md) — and its date window filters on
+       REGISTRATION date, not on when a status changed. The base class's
+       ``Ids=`` call therefore cannot work here. DateWindowStatusSyncMixin
+       supplies the replacement (window by our own injection date, padded and
+       coalesced); this class supplies only the two box-specific pieces,
+       _pull_window() for their skip/take pagination and the ``id``-not-
+       ``leadId`` row key inherited from the mixin's default _row_id().
     """
 
     # Measured against the live desperados box: a successful POST took 11.8s,
@@ -673,22 +969,18 @@ class HypernetConnector(LeadBuyerConnector):
     # logged as healthy. 48h clears the observed skew by better than 2x in
     # both directions.
     #
-    # The cost is bounded by _merged_windows() below: a wide pad makes adjacent
-    # days' windows overlap almost entirely, so they are merged into one range
-    # before any request goes out. Widening the pad therefore costs roughly one
-    # extra window's worth of rows per contiguous run of days, not a multiple
-    # of every day pulled. Too NARROW silently drops leads; that is the failure
-    # mode worth paying to avoid.
+    # The cost is bounded by DateWindowStatusSyncMixin._merged_windows(): a
+    # wide pad makes adjacent days' windows overlap almost entirely, so they
+    # are merged into one range before any request goes out. Widening the pad
+    # therefore costs roughly one extra window's worth of rows per contiguous
+    # run of days, not a multiple of every day pulled. Too NARROW silently
+    # drops leads; that is the failure mode worth paying to avoid.
     STATUS_SYNC_WINDOW_PAD = timedelta(hours=48)
 
     # Runaway guard. At 500/page this is 25k rows for a single merged window —
     # orders of magnitude past anything this box does, even at a 48h pad. It
     # exists so a misbehaving `count` cannot spin a Celery worker forever.
     STATUS_SYNC_MAX_PAGES = 50
-
-    # What build_payload() puts where the password goes. The real value is
-    # substituted in inject_lead() and never appears in the audit trail.
-    REDACTED_PASSWORD = REDACTED
 
     # Default-deny allowlist for LeadInjection.response_payload.
     #
@@ -765,62 +1057,6 @@ class HypernetConnector(LeadBuyerConnector):
         it lands this becomes ``self.buyer.extra_payload_fields or {}``.
         """
         return dict(getattr(self.buyer, 'extra_payload_fields', None) or {})
-
-    def get_or_create_password(self, lead) -> str:
-        """The password Hypernet creates the lead's broker account with —
-        generated ONCE, at first delivery, and stored encrypted at rest.
-
-        Nexora has no consumer-supplied password and Hypernet's documented
-        profile requires one, so it is synthesized: ``secrets.token_urlsafe``,
-        encrypted with the same nexora.crypto helper that protects
-        LeadBuyer.api_key_encrypted, and persisted to
-        ``Lead.broker_password_encrypted``.
-
-        Generated once rather than derived, because a derived password
-        (e.g. HMAC over lead.pk) would let anyone holding SECRET_KEY compute
-        every lead's broker credential from a sequential integer,
-        retroactively and forever.
-
-        Read-back, never regeneration: once a value is stored, an
-        undecryptable one raises instead of silently minting a replacement.
-        A regenerated password would diverge from what the broker actually
-        stored, locking the lead out of the account with no record of why —
-        exactly the failure mode SECRET_KEY rotation would otherwise cause
-        (nexora.crypto is keyed off SECRET_KEY; see its module docstring).
-
-        An UNSAVED lead (the console's Test Connection, admin_views.
-        buyer_test_connection) gets an ephemeral password that is never
-        persisted — nothing real is created at the buyer by that path.
-        """
-        stored = getattr(lead, 'broker_password_encrypted', '')
-        if stored:
-            raw = decrypt_secret(stored)
-            if not raw:
-                raise LeadBuyerError(
-                    f'Stored broker password for lead #{lead.pk} could not be decrypted '
-                    '(SECRET_KEY rotated?). Refusing to mint a replacement — the buyer '
-                    'already has the original.')
-            return raw
-
-        raw = secrets.token_urlsafe(12)
-        encrypted = encrypt_secret(raw)
-        # hasattr on the model CLASS is the feature detect for "the field's
-        # migration has landed" — Django installs a descriptor per field.
-        # Until then the password is still sent, just not retained.
-        if lead.pk and hasattr(type(lead), 'broker_password_encrypted'):
-            from .models import Lead
-
-            lead.broker_password_encrypted = encrypted
-            # .touch(), never .update(): provisioning a broker credential is a
-            # lead mutation, and LeadQuerySet.touch() is the one sanctioned
-            # way to write a Lead (see its docstring — QuerySet.update()
-            # leaves updated_at frozen and hides the change from the
-            # ?updated_since= reconcile poll). Imported here rather than at
-            # module scope both to avoid a circular import and so the write
-            # reads as `Lead.objects...`, which is the shape
-            # tests/test_no_untouched_lead_writes.py can actually see.
-            Lead.objects.filter(pk=lead.pk).touch(broker_password_encrypted=encrypted)
-        return raw
 
     def build_payload(self, lead) -> dict:
         """Hypernet's nested body: the base connector's flat mapped output
@@ -968,118 +1204,6 @@ class HypernetConnector(LeadBuyerConnector):
         defensive, so send only what is known good)."""
         return dt.astimezone(dt_timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    def fetch_lead_statuses(self, external_ids) -> dict:
-        """Pull statuses for `external_ids` by DATE WINDOW, matching on row id.
-
-        Hypernet has no ID filter at all — id/ids/Ids/leadId/leadIds/externalId
-        every one returns 400 (probed; see docs/hypernet-status-endpoint.md).
-        So the base class's ``Ids=`` call cannot work here, and this override
-        reconstructs the same answer from the only filters they do offer.
-
-        THE THING THAT MAKES THIS NON-OBVIOUS: their ``from``/``to`` filter on
-        the lead's REGISTRATION date (createdAt), not on when its status last
-        changed. So the intuitive "pull the last hour of changes" is wrong — a
-        lead that registered in March and deposits today appears in a MARCH
-        window, never in a today window. Written that way the sync would look
-        perfectly healthy and silently miss almost every deposit.
-
-        What we do instead: our own injection timestamp is the closest thing we
-        have to their registration date, so we window by THAT, generously
-        padded — see STATUS_SYNC_WINDOW_PAD, which is 48h precisely because the
-        two are NOT interchangeable (one observed lead is stamped 18h late, on
-        the following UTC day). The requested ids are grouped by the UTC day
-        they were injected, those day windows are padded and then coalesced
-        where they overlap (_merged_windows), and each resulting range is
-        pulled once, paginated. Days with no leads are never requested, so cost
-        scales with how many contiguous RUNS of days the caller's chunk spans,
-        not with how far back the oldest lead is. This is also why a backfill
-        of arbitrarily old leads costs about the same per lead as a live sync.
-
-        A lead their GET still does not return after all that is logged as a
-        discrepancy rather than guessed at — see the `missing` branch below.
-
-        Returns Hypernet's own envelope, narrowed to the requested ids:
-        ``{'count': n, 'rows': [...]}``. Rows are deduplicated by id because
-        STATUS_SYNC_WINDOW_PAD makes adjacent days overlap by design.
-        """
-        from .models import LeadInjection
-
-        wanted = {str(e) for e in (external_ids or []) if e}
-        if not wanted:
-            return {'count': 0, 'rows': []}
-
-        # Their createdAt is not stored on our side; our injection timestamp is
-        # the closest thing we have to it, and STATUS_SYNC_WINDOW_PAD covers
-        # the difference. Scoped to this buyer so a shared external_id string
-        # can never pull another box's window.
-        injected_at = LeadInjection.objects.filter(
-            buyer=self.buyer, external_id__in=wanted
-        ).values_list('external_id', 'created_at')
-
-        days = {created.astimezone(dt_timezone.utc).date() for _, created in injected_at}
-        if not days:
-            # Nothing of ours to look up — no injection rows for these ids on
-            # this buyer. Not an error: return empty rather than pulling a
-            # window we have no basis for.
-            logger.warning(
-                'Hypernet status sync: no injections on buyer %s for %s external_id(s); '
-                'nothing to pull.', self.buyer.slug, len(wanted))
-            return {'count': 0, 'rows': []}
-
-        rows_by_id = {}
-        for start, end in self._merged_windows(days):
-            for row in self._pull_window(start, end):
-                row_id = str(row.get('id') or '')
-                if row_id in wanted:
-                    rows_by_id[row_id] = row
-
-        missing = wanted - rows_by_id.keys()
-        if missing:
-            # NOT an error, and deliberately not raised: a lead we delivered
-            # that their GET does not return is a real, open discrepancy on
-            # this box (see docs/hypernet-status-endpoint.md — 2 of our first 3
-            # deliveries are absent from their side entirely, despite their API
-            # returning success and a UUID for each). Until Hypernet explains
-            # that, absence cannot be read as "no change" OR as "lost" — so log
-            # it plainly and sync what we did get.
-            logger.warning(
-                'Hypernet status sync: %s of %s requested lead(s) absent from buyer %s: %s',
-                len(missing), len(wanted), self.buyer.slug, sorted(missing)[:20])
-
-        return {'count': len(rows_by_id), 'rows': list(rows_by_id.values())}
-
-    def _merged_windows(self, days):
-        """The padded windows for `days`, with overlapping ones coalesced.
-
-        Each day becomes [midnight - PAD, end-of-day + PAD]. At a 48h pad two
-        consecutive days overlap by about four of their five days, so pulling
-        them separately would re-fetch the same rows several times over and
-        multiply requests against a box that already answers slowly. Merging
-        first makes a contiguous run of days cost one range instead of one per
-        day, which is what keeps a wide pad affordable.
-
-        Returns (start, end) tuples in ascending order. Purely arithmetic — no
-        I/O — so the merge itself is cheap and unit-testable. The result set is
-        identical to pulling each day separately: the caller keys rows by id
-        and keeps only the ones it asked for.
-        """
-        windows = sorted(
-            (
-                datetime.combine(day, time.min, tzinfo=dt_timezone.utc) - self.STATUS_SYNC_WINDOW_PAD,
-                datetime.combine(day, time.max, tzinfo=dt_timezone.utc) + self.STATUS_SYNC_WINDOW_PAD,
-            )
-            for day in days
-        )
-        merged = []
-        for start, end in windows:
-            if merged and start <= merged[-1][1]:
-                # Overlaps (or exactly abuts) the run we're building — extend
-                # it rather than opening a second request for the same span.
-                merged[-1][1] = max(merged[-1][1], end)
-            else:
-                merged.append([start, end])
-        return [(start, end) for start, end in merged]
-
     def _pull_window(self, start, end):
         """Every row in [start, end], following their skip/take pagination.
 
@@ -1159,5 +1283,505 @@ class HypernetConnector(LeadBuyerConnector):
                 'deposit': bool(row.get('isDeposited')),
                 'updated_at': row.get('depositedAt') or '',
                 'country_iso2': (row.get('geo') or '')[:2],
+            })
+        return results
+
+
+# --- TrackBox (Tigloo) ---------------------------------------------------------
+
+class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuyerConnector):
+    """Connector for TrackBox-by-Tigloo boxes — the third box onboarded,
+    after op-brandy and Hypernet.
+
+    Public docs: https://intercom.help/tigloo/en/articles/9349579-trackbox-api-documentation
+    They cover REQUEST shapes only; every response fact below was established
+    by probing a live instance. See docs/trackbox-integration.md.
+
+    Four things about TrackBox the generic connector cannot express:
+
+    1. **FAILURES ARRIVE AS HTTP 200.** This is the one that matters most,
+       and it is not in their docs. Every outcome — including a flat auth
+       rejection — comes back ``200 OK`` with the real result in the body::
+
+           {"status": false,
+            "message": "Cant Pull Data, please contact support with caseID: ...",
+            "code": 401}
+
+       The base connector classifies on the HTTP status line (see
+       LeadBuyerError's table), so on this box it would read a 401 as a
+       SUCCESS and hand a credentials failure to parse_injection_result as
+       though the buyer had answered. _raise_for_soft_error() below restores
+       the classification from the body.
+
+    2. **Three auth headers, not one.** ``x-trackbox-username`` /
+       ``x-trackbox-password`` / ``x-api-key``. BoxType.auth_type models a
+       single credential, so the API key uses that as normal and the other
+       two come from LeadBuyer.extra_credentials_encrypted via
+       extra_auth_headers() — encrypted at rest, never in the audit trail.
+
+    3. **Static per-buyer constants.** Every signup body carries this box's
+       ``ai`` (affiliate id), ``ci`` (campaign id) and ``gi``, which their
+       docs describe only as "ask from your trackbox partner". They are
+       properties of the BUYER, not of the lead, so they live in
+       LeadBuyer.extra_payload_fields alongside ``so`` and ``lg`` — nothing
+       build_payload() maps.
+
+    4. **The read endpoint is a POST with a date window and no id filter.**
+       Same shape of problem Hypernet has, so status sync comes from
+       DateWindowStatusSyncMixin; this class supplies only their page-number
+       pagination (_pull_window) and their ``data``/``meta`` envelope.
+
+    A note on what is deliberately NOT claimed here: their docs publish no
+    response schema at all, and the credentials in hand cannot complete a
+    request (see the module doc referenced above — the ``x-api-key`` is
+    still outstanding). So every response-side key name below is a
+    CANDIDATE SET rather than a single known key, and each one logs loudly
+    when nothing matches. That is the honest encoding of what is known, and
+    it makes the first real delivery self-diagnosing instead of silent.
+    """
+
+    # Their pull path answers in ~0.35s, but that is the auth-reject
+    # short-circuit and is not representative. /api/signup/procform proxies
+    # SYNCHRONOUSLY to the brand's own API and returns the brand's response
+    # embedded in its own, so a push costs TrackBox's latency plus the
+    # brand's — the same reason HypernetConnector runs at 60s after
+    # measuring 11.8s there.
+    #
+    # This matters more than an ordinary tuning knob: a timeout that fires
+    # while the brand is still processing produces an AMBIGUOUS outcome and
+    # quarantines a lead that may well have been accepted. Revise this from
+    # observed push latency once real traffic has flowed, not before.
+    default_timeout = 45
+
+    supports_status_sync = True
+
+    # Their pull envelope is {"data": [...], "meta": {...}} — see
+    # _pull_window(). DateWindowStatusSyncMixin returns rows under this key
+    # and parse_status_sync_results() reads them back from it.
+    ROWS_KEY = 'data'
+
+    # meta.limit in their own documented example. Their pagination is a
+    # 1-based page NUMBER against meta.lastPage, not an offset.
+    STATUS_SYNC_PAGE_SIZE = 500
+
+    # Their pull filters on registration date, so the window is built from
+    # our injection timestamp — see DateWindowStatusSyncMixin. Inheriting
+    # Hypernet's measured 48h rather than guessing a tighter one: too NARROW
+    # silently drops leads, which is the failure mode worth paying to avoid,
+    # and the cost of a wide pad is bounded by window coalescing.
+    STATUS_SYNC_WINDOW_PAD = timedelta(hours=48)
+
+    # Keys under which a successful signup response may carry the id we must
+    # store as LeadInjection.external_id — the handle every later status
+    # pull matches on. Ordered by how likely each is; the first present,
+    # non-empty one wins.
+    #
+    # A LIST rather than one key because their docs publish no response
+    # schema and the live box will not authenticate yet. Getting this wrong
+    # is not cosmetic: an empty external_id means the lead is excluded from
+    # every future status sync (tasks.sync_buyer_statuses filters
+    # .exclude(external_id='')), so a deposit would never come back. Hence
+    # the loud log in _extract_external_id() rather than a silent ''.
+    EXTERNAL_ID_KEYS = ('orderid', 'orderId', 'customerid', 'customerId',
+                        'leadOrderId', 'uniqueid', 'id')
+
+    # Same problem on the read side, and the same trap Hypernet has: a box's
+    # write and read sides routinely disagree about the name of the same
+    # value. Reading the wrong one yields nothing while every lead looks
+    # absent, so this is a candidate set too.
+    ROW_ID_KEYS = EXTERNAL_ID_KEYS
+
+    # Body `code` values that are a verdict on OUR CREDENTIALS rather than
+    # on the lead. Deliberately RETRYABLE (plain LeadBuyerError), not
+    # LeadBuyerRejectedError: an auth failure is a property of this
+    # platform's configuration, not of the payload, and it is fixable — once
+    # the key is corrected the identical lead succeeds. Cascading it would
+    # burn a good lead through the whole buyer chain over a typo in a
+    # credential, which is exactly the loss LeadBuyerCapacityError exists to
+    # prevent in the other direction.
+    AUTH_ERROR_CODES = frozenset({401, 403})
+
+    # Their wording for "no room right now", matched the same way and for
+    # the same reasons as HypernetConnector.CAPACITY_ERROR_PATTERN: loose
+    # about whitespace and plurals, unanchored, and failing CLOSED (a
+    # reword returns False and the lead takes today's path — a terminal
+    # rejection — rather than retrying forever against a real misconfig).
+    CAPACITY_ERROR_PATTERN = re.compile(
+        r'(no\s+(available\s+)?(box|boxes|brand|brands|integration|integrations)'
+        r'|cap(acity)?\s+(is\s+)?(full|reached|exceeded)'
+        r'|daily\s+limit)', re.IGNORECASE)
+
+    # Their wording for "we already have this person".
+    DUPLICATE_PATTERN = re.compile(r'(duplicat|already\s+(exist|registered)|exists)', re.IGNORECASE)
+
+    # Mapped names whose value must be a bare international MSISDN — their
+    # own example is "4407012259886", no plus sign.
+    PHONE_KEYS = ('phone',)
+
+    # Default-deny allowlist for LeadInjection.response_payload.
+    #
+    # ``data`` IS allowed, which looks like the opposite of Hypernet's rule
+    # and is not. Allowlisting a key means "recurse into it", not "publish
+    # it wholesale" — see _sanitize_for_audit. So the id keys inside `data`
+    # survive and every OTHER key inside it is redacted by default, which is
+    # the point: their `data` object carries autologin URLs (their own docs
+    # call them "masked" auto-login links, with an `autoLoginUrl` beside
+    # them holding the real brand URL), and an autologin URL is a bearer
+    # credential that logs the lead straight into the broker. Because this
+    # is default-deny, that URL stays redacted WITHOUT this code having to
+    # know which of the several names they use for it — which is exactly the
+    # property needed when the response schema is undocumented.
+    #
+    # ``message`` is allowed deliberately: on a failure it is the only
+    # operator-readable explanation the box gives, and it carries their
+    # support caseID, which is what a human needs to open a ticket. It is
+    # not a credential.
+    AUDIT_RESPONSE_ALLOWLIST = frozenset(
+        {'status', 'code', 'message', 'data'} | set(EXTERNAL_ID_KEYS))
+
+    # --- auth ------------------------------------------------------------------
+
+    def extra_auth_headers(self) -> dict:
+        """The username/password pair that rides alongside the API key.
+
+        Stored Fernet-encrypted in LeadBuyer.extra_credentials_encrypted
+        (never extra_payload_fields, which is plaintext and rendered in the
+        console). The API key itself is NOT here — it goes through
+        BoxType.auth_type/auth_param_name like every other box's.
+
+        Raises rather than sending a half-authenticated request. Because
+        this box answers 200 to everything, a missing credential would come
+        back as an ordinary-looking body and be recorded against the LEAD as
+        a rejection — burning a real lead to report a configuration error.
+        A raised LeadBuyerError is retryable and says what is wrong.
+        """
+        credentials = self.buyer.get_extra_credentials()
+        username = str(credentials.get('username') or '').strip()
+        password = str(credentials.get('password') or '')
+        if not username or not password:
+            raise LeadBuyerError(
+                f'TrackBox buyer {self.buyer.slug!r} has no username/password configured '
+                '(LeadBuyer.extra_credentials_encrypted). Set them with '
+                '`manage.py seed_trackbox_box --buyer`, or the console\'s "Extra credentials" '
+                'field, before injecting.')
+        return {'x-trackbox-username': username, 'x-trackbox-password': password}
+
+    # --- transport -------------------------------------------------------------
+
+    def _request(self, method: str, path: str, *, json: dict | None = None, params: dict | None = None):
+        """The base request, plus this box's in-body error classification.
+
+        Everything the base does — rate limiting, timeout bounds, HTTP-status
+        classification — still applies and runs first; a genuine 500 or a
+        read timeout is classified exactly as it is for every other box.
+        This only adds the layer the base cannot see, because on TrackBox
+        the HTTP status line is not where the answer is.
+        """
+        parsed = super()._request(method, path, json=json, params=params)
+        self._raise_for_soft_error(parsed, path)
+        return parsed
+
+    @staticmethod
+    def _is_soft_error(parsed) -> bool:
+        """Is this body an error despite its 200?
+
+        Tests for an explicitly falsy ``status`` KEY rather than a missing
+        one, because their two endpoints differ: the documented successful
+        pull response is ``{"data": [...], "meta": {...}}`` with no
+        ``status`` key at all, while every error carries ``status: false``.
+        Treating "absent" as failure would make every successful pull look
+        like an outage.
+        """
+        return isinstance(parsed, dict) and 'status' in parsed and not parsed['status']
+
+    def _raise_for_soft_error(self, parsed, path: str) -> None:
+        """Translate a ``status: false`` body into the shared taxonomy.
+
+        Only raises for outcomes that are NOT a verdict on the lead:
+
+        * auth/permission (AUTH_ERROR_CODES) -> retryable LeadBuyerError.
+          Our configuration is wrong; the lead is fine and must survive it.
+        * "no room right now" -> LeadBuyerCapacityError, so the lead retries
+          on the long schedule or cascades, rather than dying. Same
+          reasoning as HypernetConnector.is_capacity_error.
+
+        A lead-level verdict (invalid data, duplicate) is deliberately NOT
+        raised here. It is a real answer about this lead, and
+        parse_injection_result() renders it as duplicate/failed with the
+        buyer's own message attached — which is what puts a readable reason
+        on the LeadInjection row instead of a stack trace. Raising would
+        also lose the response_payload the operator needs.
+
+        The PULL path has no such caller, so _pull_window() checks
+        _is_soft_error() itself — an unhandled error body there must never
+        be mistaken for "this window has no rows".
+        """
+        if not self._is_soft_error(parsed):
+            return
+
+        message = str(parsed.get('message') or '')
+        try:
+            code = int(parsed.get('code') or 0)
+        except (TypeError, ValueError):
+            code = 0
+
+        if code in self.AUTH_ERROR_CODES:
+            # Loud, and deliberately not a lead-level failure: every lead
+            # this buyer is handed will fail identically until a human fixes
+            # the credentials, so this must read as an outage, not as a
+            # string of coincidentally bad leads.
+            logger.error(
+                'TrackBox buyer %s rejected our CREDENTIALS (code %s) on %s: %s — '
+                'no lead sent to this buyer can succeed until this is fixed.',
+                self.buyer.slug, code, path, message)
+            raise LeadBuyerError(
+                f'{path}: TrackBox authentication failed (code {code}): {message}',
+                status_code=code)
+
+        if self.CAPACITY_ERROR_PATTERN.search(message):
+            raise LeadBuyerCapacityError(
+                f'{path}: TrackBox has no capacity right now: {message}', status_code=code)
+
+    # --- payload ----------------------------------------------------------------
+
+    def build_payload(self, lead) -> dict:
+        """Their flat signup body: the base's mapped output, plus this box's
+        static constants (ai/ci/gi/so/lg), plus the lead attributes the base
+        cannot reach.
+
+        Flat, unlike Hypernet — TrackBox takes every field at the top level,
+        so no _set_path() is involved.
+
+        The password is REDACTED here, deliberately, and substituted onto
+        the wire only in inject_lead(). This method's result is what
+        leadgen.tasks.inject_lead_task records as
+        LeadInjection.request_payload; an audit trail needs to show what was
+        sent, and a redaction marker shows exactly that. See
+        BrokerPasswordMixin.
+
+        Precedence matches HypernetConnector: a mapped LEAD value always
+        wins over a static constant of the same name, so a box-level default
+        can never overwrite what we actually know about this specific lead.
+        """
+        payload = dict(getattr(self.buyer, 'extra_payload_fields', None) or {})
+
+        for key, value in super().build_payload(lead).items():
+            if key in self.PHONE_KEYS:
+                value, ambiguous = _normalize_msisdn(value)
+                if ambiguous:
+                    # Deliberately not raised: inject_lead_task calls
+                    # build_payload() OUTSIDE its try block, so an exception
+                    # here escapes the task unhandled — no LeadInjection
+                    # update, no failure_reason, nothing an operator can
+                    # read. Warn and send; the fix belongs at intake.
+                    logger.warning(
+                        'TrackBox payload for lead #%s carries a national-format phone number '
+                        '(no country code) — buyer will likely reject or misdial it.', lead.pk)
+            payload[key] = value
+
+        # Their documented `userip`. Outside MAPPABLE_LEAD_FIELDS, like
+        # Hypernet's `ip` — adding it there would change what we send to the
+        # live op-brandy box.
+        if getattr(lead, 'ip', None):
+            payload['userip'] = str(lead.ip)
+
+        payload['password'] = self.REDACTED_PASSWORD
+        return payload
+
+    def inject_lead(self, lead) -> dict:
+        """POST one lead, substituting the real password into the wire body.
+
+        This is the ONLY place the plaintext password exists —
+        build_payload() (and therefore the audit trail, and therefore the
+        console) sees the redaction marker instead. Overridden rather than
+        folded into build_payload() precisely so that separation is
+        structural rather than a convention someone has to remember.
+        """
+        payload = self.build_payload(lead)
+        payload['password'] = self.get_or_create_password(lead)
+        return self._request('POST', self.box_type.single_endpoint_path, json=payload)
+
+    def inject_batch(self, leads):
+        """TrackBox documents no batch endpoint. The base class would happily
+        POST ``{"leads": [...]}`` to whatever batch path a BoxType had
+        configured, so refuse explicitly rather than relying on
+        ``batch_max_size=1`` staying set."""
+        raise LeadBuyerError('TrackBox has no batch injection endpoint; inject leads one at a time.')
+
+    # --- response parsing ---------------------------------------------------------
+
+    def _extract_external_id(self, container) -> str:
+        """The first present, non-empty id in EXTERNAL_ID_KEYS, searched one
+        level into a nested ``data`` object as well as at the top level.
+
+        Returns '' when nothing matches, having logged the keys that WERE
+        present. That log is the point: an empty external_id silently
+        excludes the lead from every future status sync, so the first real
+        delivery on this box should hand an operator the exact key name to
+        add rather than leaving them to discover a missing deposit weeks
+        later.
+        """
+        if not isinstance(container, dict):
+            return ''
+        candidates = [container]
+        data = container.get('data')
+        if isinstance(data, dict):
+            candidates.append(data)
+        elif isinstance(data, list) and data and isinstance(data[0], dict):
+            candidates.append(data[0])
+
+        for scope in candidates:
+            for key in self.EXTERNAL_ID_KEYS:
+                value = scope.get(key)
+                if value not in (None, '', []):
+                    return str(value)
+
+        seen = sorted({key for scope in candidates for key in scope})
+        logger.error(
+            'TrackBox buyer %s returned a success with no recognisable lead id. Keys present: '
+            '%s. Add the right one to TrackBoxConnector.EXTERNAL_ID_KEYS — until then this '
+            'lead cannot receive status or deposit updates.', self.buyer.slug, seen)
+        return ''
+
+    def parse_injection_result(self, response: dict) -> tuple[str, str, str]:
+        """``{"status": ..., "data": {...}, "message": ...}`` -> our
+        (external_id, status, failure_reason).
+
+        Reached only for outcomes _raise_for_soft_error() left alone: a
+        success, or a verdict on this lead. Auth failures and capacity
+        refusals raised before getting here.
+
+        Note what is NOT returned: anything from ``data`` other than the id.
+        That object carries autologin URLs — see AUDIT_RESPONSE_ALLOWLIST.
+        """
+        if not isinstance(response, dict) or not response:
+            # _request() returns {} for a 2xx with an empty body. This box
+            # always answers with a JSON envelope, so an empty body is
+            # unexplained — not a success.
+            return '', 'failed', 'Empty response body from TrackBox (expected a JSON result).'
+
+        if response.get('status'):
+            return self._extract_external_id(response), 'delivered', ''
+
+        message = str(response.get('message') or response.get('error') or '')
+        code = response.get('code')
+        detail = f'[{code}] {message}' if code else (message or str(response))
+        status = 'duplicate' if self.DUPLICATE_PATTERN.search(message) else 'failed'
+        return '', status, detail[:255]
+
+    # --- status sync ----------------------------------------------------------------
+
+    def _row_id(self, row) -> str:
+        """The external id on one pull row — a candidate set, for the same
+        reason EXTERNAL_ID_KEYS is one."""
+        if not isinstance(row, dict):
+            return ''
+        for key in self.ROW_ID_KEYS:
+            value = row.get(key)
+            if value not in (None, '', []):
+                return str(value)
+        return ''
+
+    @staticmethod
+    def _window_param(dt) -> str:
+        """Their documented wire format: ``YYYY-MM-DD HH:MM:SS``, no timezone
+        marker. Sent as UTC, matching how the windows are built."""
+        return dt.astimezone(dt_timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+    def fetch_leads(self, **filters) -> dict:
+        """Their pull endpoint is a POST with a JSON BODY, not the base
+        class's GET with a query string — override, or every status sync
+        would send its window as query params the box ignores and get an
+        unfiltered (or empty) answer back."""
+        return self._request('POST', self.box_type.fetch_endpoint_path, json=dict(filters))
+
+    def _pull_window(self, start, end):
+        """Every row in [start, end], following their page-number pagination.
+
+        Their ``meta`` carries ``currentPage``/``lastPage``, so this pages
+        until the last page is reached rather than until a short page comes
+        back. Stops early on an empty page too, so a wrong ``lastPage``
+        cannot loop; STATUS_SYNC_MAX_PAGES bounds it either way.
+
+        ``type: "3"`` is Leads + Deposits — we want the status of every
+        delivered lead, not only the ones that already deposited. Asking for
+        type 4 (deposits only) would make a lead's status invisible until it
+        converted, which is precisely the progression the sync exists to
+        report.
+
+        An error body here is RAISED rather than read as an empty window:
+        this box answers 200 to failures, so a silent `data: []` fallback
+        would turn an auth outage into "no leads changed" and the sync would
+        log as healthy while reporting nothing. _raise_for_soft_error()
+        already handles auth and capacity; this catches everything else.
+        """
+        collected = []
+        page = 1
+        for _ in range(self.STATUS_SYNC_MAX_PAGES):
+            response = self.fetch_leads(**{
+                'from': self._window_param(start),
+                'to': self._window_param(end),
+                'type': '3',
+                'page': str(page),
+            })
+            if self._is_soft_error(response):
+                raise LeadBuyerError(
+                    f'TrackBox pull failed for window {start}..{end}: '
+                    f'{str(response.get("message") or response)[:200]}')
+
+            rows = (response or {}).get('data') or []
+            collected.extend(rows)
+
+            meta = (response or {}).get('meta') or {}
+            last_page = meta.get('lastPage')
+            if not rows or not isinstance(last_page, int) or page >= last_page:
+                return collected
+            page += 1
+
+        logger.warning(
+            'TrackBox status sync: hit STATUS_SYNC_MAX_PAGES (%s) for window %s..%s on buyer %s; '
+            'results may be incomplete.',
+            self.STATUS_SYNC_MAX_PAGES, start, end, self.buyer.slug)
+        return collected
+
+    def parse_status_sync_results(self, response: dict) -> list[dict]:
+        """TrackBox rows -> the shared status-sync contract.
+
+        Every source key here is a CANDIDATE SET, for the reason given in
+        the class docstring: their docs publish no row schema. Each getter
+        below falls back through the plausible spellings and yields a benign
+        empty value rather than inventing one.
+
+        ``deposit`` is the field that bills, so it is read conservatively:
+        only an explicitly truthy deposit flag — or a status string that
+        says "deposit" — counts. An unrecognised row reports deposit=False
+        and its raw status, which leaves the lead visible and unconverted
+        rather than falsely converted.
+
+        ``updated_at`` follows Hypernet's compromise: a real timestamp when
+        the box gives one, '' otherwise. tasks._parse_buyer_timestamp turns
+        '' into None, which reads as "we do not know when" — the honest
+        encoding. Stamping sync time instead would assert the status changed
+        at the moment we happened to poll, which is false.
+        """
+        results = []
+        for row in (response or {}).get(self.ROWS_KEY) or []:
+            if not isinstance(row, dict):
+                continue
+            external_id = self._row_id(row)
+            if not external_id:
+                continue
+
+            buyer_status = str(_first_present(
+                row, 'status', 'statusName', 'leadStatus', 'saleStatus') or '')
+            deposit_flag = _first_present(row, 'deposit', 'isDeposited', 'ftd', 'isFtd')
+
+            results.append({
+                'external_id': external_id,
+                'buyer_status': buyer_status,
+                'deposit': _truthy(deposit_flag) or 'deposit' in buyer_status.lower(),
+                'updated_at': str(_first_present(
+                    row, 'depositDate', 'depositedAt', 'statusDate', 'updatedAt') or ''),
+                'country_iso2': str(_first_present(row, 'country', 'geo', 'countryCode') or '')[:2],
             })
         return results
