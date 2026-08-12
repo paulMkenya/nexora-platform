@@ -1377,13 +1377,28 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
     # non-empty one wins.
     #
     # A LIST rather than one key because their docs publish no response
-    # schema and the live box will not authenticate yet. Getting this wrong
-    # is not cosmetic: an empty external_id means the lead is excluded from
-    # every future status sync (tasks.sync_buyer_statuses filters
-    # .exclude(external_id='')), so a deposit would never come back. Hence
-    # the loud log in _extract_external_id() rather than a silent ''.
+    # schema. Getting this wrong is not cosmetic: an empty external_id means
+    # the lead is excluded from every future status sync
+    # (tasks.sync_buyer_statuses filters .exclude(external_id='')), so a
+    # deposit would never come back. Hence the loud log in
+    # _extract_external_id() rather than a silent ''.
+    #
+    # CONFIRMED against the live Traffix box on 2026-08-12: a real accepted
+    # lead carries all three of customerId / uniqueid / id, holding the SAME
+    # value, nested at ``addonData.data`` — see RESPONSE_ID_SCOPES.
     EXTERNAL_ID_KEYS = ('orderid', 'orderId', 'customerid', 'customerId',
                         'leadOrderId', 'uniqueid', 'id')
+
+    # Where in the response an id may be found, as paths walked in order.
+    # ``()`` is the top level.
+    #
+    # ``('addonData', 'data')`` is where the live box actually puts it, and
+    # nothing in their documentation suggests it. The first real delivery
+    # returned an id ONLY there — the top level and ``data`` both had none,
+    # so a search of those alone came back empty and logged the lead as
+    # unsyncable. Do not narrow this list on the assumption that a shallower
+    # scope is "the" location.
+    RESPONSE_ID_SCOPES = ((), ('data',), ('addonData', 'data'), ('addonData',))
 
     # Same problem on the read side, and the same trap Hypernet has: a box's
     # write and read sides routinely disagree about the name of the same
@@ -1420,24 +1435,45 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
 
     # Default-deny allowlist for LeadInjection.response_payload.
     #
-    # ``data`` IS allowed, which looks like the opposite of Hypernet's rule
-    # and is not. Allowlisting a key means "recurse into it", not "publish
-    # it wholesale" — see _sanitize_for_audit. So the id keys inside `data`
-    # survive and every OTHER key inside it is redacted by default, which is
-    # the point: their `data` object carries autologin URLs (their own docs
-    # call them "masked" auto-login links, with an `autoLoginUrl` beside
-    # them holding the real brand URL), and an autologin URL is a bearer
-    # credential that logs the lead straight into the broker. Because this
-    # is default-deny, that URL stays redacted WITHOUT this code having to
-    # know which of the several names they use for it — which is exactly the
-    # property needed when the response schema is undocumented.
+    # Allowlisting a key means "RECURSE INTO IT", not "publish it" — see
+    # _sanitize_for_audit — so a container key here is safe and every
+    # unrecognised child inside it is still redacted. That is what keeps
+    # their autologin URLs out of the audit trail without this code having
+    # to know which of several names they arrive under.
+    #
+    # A SCALAR key is the exact opposite, and that distinction cost a real
+    # leak. ``data`` was originally listed here on the assumption it was a
+    # container. On the live box a successful signup returns ``data`` as a
+    # STRING — the autologin URL itself — and allowlisting a scalar
+    # publishes it verbatim. It landed unredacted on response_payload, which
+    # affiliate_ui/templates/affiliate_ui/leads.html renders to affiliates.
+    # An autologin URL is a bearer credential that logs the lead straight
+    # into the broker's client area.
+    #
+    # ``data`` stays here, but it is no longer TRUSTED here: it must also
+    # appear as a container to survive, because sanitize_response_for_audit()
+    # below replaces any SCALAR value under these names before the walk
+    # begins. Keeping it allowlisted is what lets the nested
+    # ``addonData.data`` object be recursed into — so customerId/uniqueid/id
+    # survive while their siblings ``loginURL`` and ``brokerUrl`` are
+    # redacted by default-deny — while the top-level scalar ``data`` is
+    # neutralised by SHAPE rather than by name.
+    #
+    # THE GENERAL RULE, for the next box: only allowlist a key you know to
+    # be a CONTAINER. A key whose value might be a scalar credential must be
+    # handled structurally, never by trusting its name.
     #
     # ``message`` is allowed deliberately: on a failure it is the only
     # operator-readable explanation the box gives, and it carries their
     # support caseID, which is what a human needs to open a ticket. It is
     # not a credential.
     AUDIT_RESPONSE_ALLOWLIST = frozenset(
-        {'status', 'code', 'message', 'data'} | set(EXTERNAL_ID_KEYS))
+        {'status', 'code', 'message', 'data', 'addonData'} | set(EXTERNAL_ID_KEYS))
+
+    # Keys whose value is a bare autologin URL rather than an object, and so
+    # can never be made safe by recursing into them. Replaced wholesale
+    # before the default-deny walk — see sanitize_response_for_audit().
+    SCALAR_CREDENTIAL_KEYS = ('data', 'loginURL', 'fallbackURL', 'brokerUrl')
 
     # --- auth ------------------------------------------------------------------
 
@@ -1610,38 +1646,82 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
 
     # --- response parsing ---------------------------------------------------------
 
-    def _extract_external_id(self, container) -> str:
-        """The first present, non-empty id in EXTERNAL_ID_KEYS, searched one
-        level into a nested ``data`` object as well as at the top level.
+    def _resolve_scope(self, response, path):
+        """Walk ``path`` into ``response``, or None if it does not lead to a
+        dict. A single-element list is unwrapped, since these boxes return
+        one-item collections where a bare object would do."""
+        node = response
+        for part in path:
+            if isinstance(node, list) and len(node) == 1:
+                node = node[0]
+            if not isinstance(node, dict):
+                return None
+            node = node.get(part)
+        if isinstance(node, list) and len(node) == 1:
+            node = node[0]
+        return node if isinstance(node, dict) else None
+
+    def _extract_external_id(self, response) -> str:
+        """The first present, non-empty id in EXTERNAL_ID_KEYS, searched
+        through every scope in RESPONSE_ID_SCOPES in order.
+
+        Searching several scopes rather than one is not defensive padding.
+        The live box puts the id at ``addonData.data`` and NOWHERE else on a
+        successful signup — a search of the top level and ``data`` alone
+        came back empty on the first real delivery.
 
         Returns '' when nothing matches, having logged the keys that WERE
-        present. That log is the point: an empty external_id silently
-        excludes the lead from every future status sync, so the first real
-        delivery on this box should hand an operator the exact key name to
-        add rather than leaving them to discover a missing deposit weeks
-        later.
+        present at every scope. That log is the point: an empty external_id
+        silently excludes the lead from every future status sync, so a
+        delivery should hand an operator the exact key name to add rather
+        than leaving them to discover a missing deposit weeks later.
         """
-        if not isinstance(container, dict):
+        if not isinstance(response, dict):
             return ''
-        candidates = [container]
-        data = container.get('data')
-        if isinstance(data, dict):
-            candidates.append(data)
-        elif isinstance(data, list) and data and isinstance(data[0], dict):
-            candidates.append(data[0])
 
-        for scope in candidates:
+        searched = []
+        for path in self.RESPONSE_ID_SCOPES:
+            scope = self._resolve_scope(response, path)
+            if scope is None:
+                continue
+            searched.append((path, scope))
             for key in self.EXTERNAL_ID_KEYS:
                 value = scope.get(key)
                 if value not in (None, '', []):
                     return str(value)
 
-        seen = sorted({key for scope in candidates for key in scope})
         logger.error(
-            'TrackBox buyer %s returned a success with no recognisable lead id. Keys present: '
-            '%s. Add the right one to TrackBoxConnector.EXTERNAL_ID_KEYS — until then this '
-            'lead cannot receive status or deposit updates.', self.buyer.slug, seen)
+            'TrackBox buyer %s returned a success with no recognisable lead id. Searched %s. '
+            'Add the right key to TrackBoxConnector.EXTERNAL_ID_KEYS (or the right scope to '
+            'RESPONSE_ID_SCOPES) — until then this lead cannot receive status or deposit '
+            'updates.',
+            self.buyer.slug,
+            {'.'.join(path) or '<top level>': sorted(scope) for path, scope in searched})
         return ''
+
+    def sanitize_response_for_audit(self, response):
+        """Default-deny filtering, with this box's SCALAR credentials
+        neutralised structurally first.
+
+        The allowlist can only express "recurse into this key". That is safe
+        for a container and actively harmful for a scalar: a successful
+        signup returns ``data`` as the autologin URL itself, and allowlisting
+        it published that URL verbatim to response_payload — which is
+        rendered to affiliates. Redacting by VALUE SHAPE rather than by name
+        means a key that is a credential today and an object tomorrow is
+        handled correctly either way, and vice versa.
+
+        Non-dict responses fall straight through to the base class.
+        """
+        if isinstance(response, dict):
+            replaced = {}
+            for key, value in response.items():
+                if key in self.SCALAR_CREDENTIAL_KEYS and not isinstance(value, (dict, list)):
+                    replaced[key] = REDACTED
+                else:
+                    replaced[key] = value
+            response = replaced
+        return super().sanitize_response_for_audit(response)
 
     def parse_injection_result(self, response: dict) -> tuple[str, str, str]:
         """``{"status": ..., "data": {...}, "message": ...}`` -> our

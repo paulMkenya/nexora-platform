@@ -685,3 +685,112 @@ class TestBuyerSecretsForms:
         })
         assert not form.is_valid()
         assert 'extra_credentials' in form.errors
+
+
+# --- the real live response ------------------------------------------------
+
+# VERBATIM from the first real accepted lead on the live Traffix box
+# (2026-08-12), with the autologin token replaced by a placeholder and the
+# customer id rewritten — both are live credentials/identifiers and a test
+# fixture is the last place either belongs.
+#
+# Keep this literal in sync with the box, not tidy. Three things about it
+# were not guessable from their documentation and each broke a first
+# implementation:
+#   * `data` is a STRING (the autologin URL), not an object;
+#   * the lead id lives at `addonData.data`, two levels down, and NOWHERE
+#     else on the response;
+#   * `error` is an empty LIST on success, not null or absent.
+LIVE_SUCCESS = {
+    'status': True,
+    'data': 'https://platform.traffixworld.com/u/d/PLACEHOLDERTOKEN',
+    'error': [],
+    'addonData': {
+        'status': 'successful',
+        'data': {
+            'loginURLIsForm': False,
+            'customerId': 'PLACEHOLDERCUSTOMERID',
+            'uniqueid': 'PLACEHOLDERCUSTOMERID',
+            'brokerUrl': 'xxx',
+            'id': 'PLACEHOLDERCUSTOMERID',
+            'loginURL': 'https://platform.traffixworld.com/u/d/PLACEHOLDERTOKEN',
+        },
+        'failLog': True,
+        'fallbackURL': False,
+    },
+    'originalData': [],
+}
+
+
+class TestLiveSuccessResponse:
+    """Pinned against a real accepted lead, not against a guess."""
+
+    def test_the_lead_id_is_found_two_levels_down(self, trackbox_buyer):
+        """It lives ONLY at addonData.data. Searching the top level and
+        `data` alone returned empty on the first real delivery, which would
+        have excluded the lead from every future status sync."""
+        external_id, status, reason = TrackBoxConnector(
+            trackbox_buyer).parse_injection_result(LIVE_SUCCESS)
+        assert external_id == 'PLACEHOLDERCUSTOMERID'
+        assert status == 'delivered'
+        assert reason == ''
+
+    def test_no_id_warning_is_not_emitted_for_a_real_success(self, trackbox_buyer, caplog):
+        TrackBoxConnector(trackbox_buyer).parse_injection_result(LIVE_SUCCESS)
+        assert 'no recognisable lead id' not in caplog.text
+
+
+class TestAutologinUrlIsNeverAudited:
+    """THE REGRESSION THIS FILE EXISTS FOR.
+
+    `data` on a successful signup is the autologin URL as a bare STRING — a
+    bearer credential that logs the lead straight into the broker's client
+    area. It was originally allowlisted on the assumption it was a container
+    to recurse into, and allowlisting a scalar publishes it verbatim onto
+    LeadInjection.response_payload, which
+    affiliate_ui/templates/affiliate_ui/leads.html renders to affiliates.
+
+    These tests exist to stop someone "helpfully" re-trusting the key later.
+    """
+
+    def test_the_top_level_autologin_url_is_redacted(self, trackbox_buyer):
+        from leadgen.connectors import REDACTED
+
+        audited = TrackBoxConnector(trackbox_buyer).sanitize_response_for_audit(LIVE_SUCCESS)
+        assert audited['data'] == REDACTED
+
+    def test_the_nested_autologin_url_is_redacted(self, trackbox_buyer):
+        from leadgen.connectors import REDACTED
+
+        audited = TrackBoxConnector(trackbox_buyer).sanitize_response_for_audit(LIVE_SUCCESS)
+        assert audited['addonData']['data']['loginURL'] == REDACTED
+
+    def test_the_token_appears_nowhere_in_the_audit_copy(self, trackbox_buyer):
+        """The whole-object assertion — the one that would have caught the
+        original leak regardless of which key carried it."""
+        audited = TrackBoxConnector(trackbox_buyer).sanitize_response_for_audit(LIVE_SUCCESS)
+        assert 'PLACEHOLDERTOKEN' not in str(audited)
+
+    def test_the_lead_id_still_survives_sanitization(self, trackbox_buyer):
+        """Redaction must not cost the identifier an operator needs to
+        reconcile a lead against the buyer's own console."""
+        audited = TrackBoxConnector(trackbox_buyer).sanitize_response_for_audit(LIVE_SUCCESS)
+        assert audited['addonData']['data']['customerId'] == 'PLACEHOLDERCUSTOMERID'
+
+    def test_a_scalar_under_an_allowlisted_key_is_redacted_by_shape(self, trackbox_buyer):
+        """The general rule: only a CONTAINER may be trusted to a name. A key
+        that is an object today and a credential tomorrow must still be
+        safe."""
+        from leadgen.connectors import REDACTED
+
+        audited = TrackBoxConnector(trackbox_buyer).sanitize_response_for_audit(
+            {'status': True, 'data': 'https://broker/auto?token=LEAKED'})
+        assert audited['data'] == REDACTED
+        assert 'LEAKED' not in str(audited)
+
+    def test_broker_url_and_fallback_url_never_survive(self, trackbox_buyer):
+        from leadgen.connectors import REDACTED
+
+        audited = TrackBoxConnector(trackbox_buyer).sanitize_response_for_audit(LIVE_SUCCESS)
+        assert audited['addonData']['data']['brokerUrl'] == REDACTED
+        assert audited['addonData']['fallbackURL'] == REDACTED

@@ -87,15 +87,41 @@ credential on a page.
 request. Because the box answers 200 to a bad credential, sending anyway
 would produce an ordinary-looking body recorded against the lead.
 
+### ⚠️ The two endpoints do NOT authenticate the same way
+
+Established by a live end-to-end injection on 2026-08-12, using the username
+and password plus the **placeholder** key from their public docs:
+
+| Endpoint | Result with an invalid `x-api-key` |
+|---|---|
+| `POST /api/pull/customers` | **rejected** — `code 401` |
+| `POST /api/signup/procform` | **ACCEPTED** — `status: true`, a real customer created |
+
+So the push path either does not validate `x-api-key` at all or validates it
+differently. Nothing in their documentation says this, and it has a sharp
+operational consequence:
+
+> **We can deliver leads to this box today, but we cannot read their statuses
+> back.** Status sync runs against the pull endpoint, which still 401s. A lead
+> delivered now would never receive a status or a deposit — no FTD would ever
+> return, so nothing would bill.
+
+Treat that as the reason to keep `auto_inject=False` until the real key
+arrives, not merely as a nice-to-have. Delivering untrackable leads is worse
+than delivering none.
+
+A single test lead (`Nexora Testlead / nexora.testlead@example.com`,
+`+254700000000`) was created on Traffix during this verification. Their side
+should be asked to remove it.
+
 ### ⚠️ Open blocker: no `x-api-key`
 
 The credentials supplied for Traffix are username `DanTVSnew`, a password,
-`ai=2958839`, `ci=1`, `gi=843`. **No `x-api-key` was supplied**, and the
-probe table above shows it is mandatory — without it the box answers `401`
-regardless of whether the username and password are correct.
+`ai=2958839`, `ci=1`, `gi=843`. **No valid `x-api-key` was supplied.**
 
-So the integration is complete and configurable, but **cannot be verified
-end-to-end until Traffix supplies the API key**.
+Pushing leads works without it (see above). **Status sync does not**, so the
+integration cannot be run in production until Traffix supplies the key —
+otherwise we deliver leads whose deposits never come back.
 
 What to ask for, precisely: *the `x-api-key` value issued for the API user
 `DanTVSnew` on platform.traffixworld.com*. It is a per-account secret their
@@ -166,52 +192,98 @@ brand that wants the lead's vertical on TrackBox should map it to one of the
 
 ---
 
-## 5. What is NOT known, and how the code handles it
+## 5. The signup response — captured live
 
-Their docs publish **no response schema at all**, and the credentials in hand
-cannot complete an authenticated request. So every response-side key name is
-a **candidate set** rather than a single known key:
+Their docs publish **no response schema at all**. This is a real accepted
+lead, 2026-08-12, tokens replaced:
 
-- `TrackBoxConnector.EXTERNAL_ID_KEYS` — where a successful signup carries
-  the id we store as `LeadInjection.external_id`.
-- `TrackBoxConnector.ROW_ID_KEYS` — the same value on a pull row. (The write
-  and read sides of these boxes routinely disagree about the name — on
-  Hypernet the injection responds with `leadId` but the read side keys it as
-  `id`, and reading the wrong one silently yields nothing while every lead
-  looks absent.)
+```json
+{
+  "status": true,
+  "data": "https://platform.traffixworld.com/u/d/<AUTOLOGIN-TOKEN>",
+  "error": [],
+  "addonData": {
+    "status": "successful",
+    "data": {
+      "loginURLIsForm": false,
+      "customerId": "<CUSTOMER-ID>",
+      "uniqueid":   "<CUSTOMER-ID>",
+      "brokerUrl":  "xxx",
+      "id":         "<CUSTOMER-ID>",
+      "loginURL": "https://platform.traffixworld.com/u/d/<AUTOLOGIN-TOKEN>"
+    },
+    "failLog": true,
+    "fallbackURL": false
+  },
+  "originalData": []
+}
+```
+
+Three things here were **not** guessable, and each broke a first
+implementation:
+
+1. **`data` is a STRING**, not an object — it is the autologin URL itself.
+2. **The lead id is at `addonData.data`**, two levels down, and nowhere else.
+   `customerId`, `uniqueid` and `id` all carry the same value.
+3. **`error` is an empty LIST** on success, not null or absent.
+
+### The leak this caused, and the rule that came out of it
+
+`AUDIT_RESPONSE_ALLOWLIST` originally included `data`, on the assumption it
+was a container to recurse into. Allowlisting a key means *recurse into it* —
+which is safe for a container and **publishes a scalar verbatim**. The
+autologin URL therefore landed unredacted on
+`LeadInjection.response_payload`, which
+`affiliate_ui/templates/affiliate_ui/leads.html` renders to affiliates. An
+autologin URL is a bearer credential that logs the lead straight into the
+broker's client area.
+
+> **Rule for the next box: only allowlist a key you know to be a CONTAINER.
+> A key whose value might be a scalar credential must be neutralised by
+> SHAPE, never trusted by name.**
+
+`sanitize_response_for_audit()` now replaces any scalar under
+`SCALAR_CREDENTIAL_KEYS` before the default-deny walk begins, so a key that
+is an object today and a credential tomorrow is handled correctly either
+way. Pinned by `TestAutologinUrlIsNeverAudited`, including a whole-object
+assertion that the token appears nowhere in the audit copy — the check that
+would have caught the original leak regardless of which key carried it.
+
+### Still-unknown keys
+
+The signup response is now confirmed (above). The **pull-side row shape is
+not** — that endpoint still 401s — so those key names remain **candidate
+sets** rather than known keys:
+
+- `TrackBoxConnector.ROW_ID_KEYS` — the lead id on a pull row. (The write and
+  read sides of these boxes routinely disagree about the name: on Hypernet
+  the injection responds with `leadId` while the read side keys it as `id`,
+  and reading the wrong one silently yields nothing while every lead looks
+  absent. TrackBox's write side offers `customerId`/`uniqueid`/`id`, all
+  identical — which of those the read side uses is unverified.)
 - `parse_status_sync_results()` reads status/deposit/date/country through
   `_first_present()` fallback chains.
 
-Each one **logs loudly** when nothing matches rather than returning a silent
-empty. That matters most for the external id: an empty `external_id` excludes
-the lead from every future status sync
-(`tasks.sync_buyer_statuses` filters `.exclude(external_id='')`), so a
-deposit would never come back. The first real delivery is therefore
-self-diagnosing — grep the worker log for
-`no recognisable lead id` and add the real key.
+Each **logs loudly** when nothing matches rather than returning a silent
+empty, so the first successful pull is self-diagnosing.
+
+`EXTERNAL_ID_KEYS` and `RESPONSE_ID_SCOPES` are confirmed against a real
+delivery, but keep the scope list broad: the id was found ONLY at
+`addonData.data`, and a search of the top level and `data` alone came back
+empty. Do not narrow it on the assumption that a shallower scope is "the"
+location.
 
 A success with no recognisable id is still recorded as **delivered**, not
 failed: the lead *was* accepted, and calling it failed would cascade it to a
-competitor.
+competitor. But it is logged at ERROR, because an empty `external_id`
+excludes the lead from every future status sync
+(`tasks.sync_buyer_statuses` filters `.exclude(external_id='')`). Grep the
+worker log for `no recognisable lead id`.
 
-### Autologin URLs
-
-Their `data` object carries autologin links — their own help centre describes
-"masked" auto-login URLs plus an `autoLoginUrl` holding the real brand URL.
-An autologin URL is a **bearer credential** that logs the lead straight into
-the broker, and `LeadInjection.response_payload` is rendered to affiliates
-(`affiliate_ui/templates/affiliate_ui/leads.html`).
-
-`AUDIT_RESPONSE_ALLOWLIST` therefore allows `data` — which means *recurse
-into it*, not *publish it* — plus the id keys, `status`, `code` and
-`message`. Every other key inside `data` is redacted by default-deny, so the
-autologin URL stays redacted **without this code having to know which of
-their several names it arrives under**. That is precisely the property needed
-when the schema is undocumented; do not replace it with a blocklist.
-
-`message` is allowed deliberately: on a failure it is the only
+`message` is allowlisted deliberately: on a failure it is the only
 operator-readable explanation the box gives, and it carries their support
-`caseID`, which is what a human needs to open a ticket with them.
+`caseID`, which is what a human needs to open a ticket with them. It is not a
+credential.
 
 ---
 
