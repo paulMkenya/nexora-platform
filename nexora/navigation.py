@@ -44,6 +44,7 @@ def _admin_groups(*, is_platform_owner: bool) -> Tuple[NavGroup, ...]:
     return (
         NavGroup('Overview', (
             NavItem('Dashboard', 'admin_dashboard', icon='dashboard'),
+            NavItem('Analytics', 'admin_analytics', icon='analytics'),
         )),
         NavGroup('People', (
             NavItem('Affiliates', 'affiliate_admin:list', icon='affiliates', match_extra=(

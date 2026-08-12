@@ -29,7 +29,7 @@ from .forms import LeadBuyerForm, RoutingRuleForm
 from .models import (
     AffiliateOfferLink, BoxType, Lead, LeadBuyer, LeadInjection, LeadStatusEvent, RoutingRule,
 )
-from .routing import attach_computed_chains
+from .routing import attach_computed_chains, resolve_buyer_chain
 from .services import attach_latest_injections
 from .status_sync import StatusAuthorityError, apply_status_change, attach_affiliate_phase, go_live, revert_to_testing
 
@@ -344,6 +344,59 @@ def _routing_stats(brand, *, show_all_brands):
         'fallbacks': fallbacks,
         'by_buyer': charts.bar_chart([(r['buyer__name'], r['n']) for r in by_buyer]),
     }
+
+
+@staff_member_required
+def lead_detail(request, pk):
+    """One lead, its routing journey, and its status history.
+
+    The journey is two things side by side, and conflating them hides real
+    faults: the chain routing WOULD take for this lead right now
+    (``resolve_buyer_chain``, recomputed live from the active rules) and what
+    it actually DID (its LeadInjection rows, in order). A lead sitting in
+    `unrouted` with a non-empty planned chain means the rules changed after
+    the fact; an empty planned chain means nothing is configured to take it.
+
+    Deliberately does not render ``LeadInjection.request_payload`` or
+    ``response_payload``. Responses are filtered default-deny by
+    ``sanitize_response_for_audit`` at write time, but rows written before
+    that landed can still hold a buyer credential (Hypernet's redirectUrl is
+    an autologin bearer URL), and a lead also carries an encrypted broker
+    password and redirect. The derived outcome fields below answer the
+    operator's question without putting any of that on screen.
+    """
+    leads, brand, show_all_brands = _scoped_leads(request)
+    lead = get_object_or_404(leads, pk=pk)
+
+    injections = list(
+        lead.injections.select_related('buyer').order_by('created_at', 'id')
+    )
+    for injection in injections:
+        if injection.delivered_at:
+            delta = injection.delivered_at - injection.created_at
+            injection.latency_ms = int(delta.total_seconds() * 1000)
+        else:
+            injection.latency_ms = None
+
+    attempted_buyer_ids = {i.buyer_id for i in injections}
+    planned = resolve_buyer_chain(lead)
+
+    return render(request, 'leadgen/console/lead_detail.html', {
+        'shell_role': 'admin',
+        'page_title': f'Lead #{lead.pk}',
+        'lead': lead,
+        'brand': brand,
+        'show_all_brands': show_all_brands,
+        'injections': injections,
+        'planned_chain': [
+            {'buyer': buyer, 'attempted': buyer.pk in attempted_buyer_ids}
+            for buyer in planned
+        ],
+        'status_events': lead.status_events.select_related('actor').order_by('-lead_seq')[:20],
+        'delivered_to': next(
+            (i for i in injections if i.status == LeadInjection.STATUS_DELIVERED), None
+        ),
+    })
 
 
 def _buyer_form_context(*, page_title, form, instance, test_result=None):

@@ -7,6 +7,7 @@ app_name = 'leadgen_console'
 urlpatterns = [
     path('leads/', admin_views.leads_console, name='leads'),
     path('leads/route-now/', admin_views.route_now, name='route_now'),
+    path('leads/<int:pk>/', admin_views.lead_detail, name='lead_detail'),
     path('leads/<int:pk>/status/', admin_views.lead_status_flip, name='lead_status_flip'),
     path('buyers/', admin_views.buyers_list, name='buyers'),
     path('buyers/add/', admin_views.buyer_form, name='buyer_add'),

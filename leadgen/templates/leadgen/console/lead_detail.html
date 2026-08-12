@@ -1,0 +1,227 @@
+{% extends '_shell/base_shell.html' %}
+
+{% comment %}
+  One lead's routing journey. Note what is NOT here: request_payload and
+  response_payload are never rendered — see leadgen.admin_views.lead_detail
+  for why. The derived outcome fields below carry the same answer safely.
+{% endcomment %}
+
+{% block title %}Lead #{{ lead.pk }} — {{ brand.name|default:"Nexora" }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.tailwindcss.com"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+  <nav class="text-sm text-gray-500 mb-2">
+    <a href="{% url 'leadgen_console:leads' %}" class="text-indigo-600 hover:underline">Leads</a>
+    <span class="mx-1">/</span>
+    <span>Lead #{{ lead.pk }}</span>
+  </nav>
+
+  <div class="mb-6 flex items-start justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-800">
+        {% if lead.first_name or lead.last_name %}
+          {{ lead.first_name }} {{ lead.last_name }}
+        {% else %}
+          Lead #{{ lead.pk }}
+        {% endif %}
+      </h1>
+      <p class="text-gray-500 text-sm mt-1">
+        {{ lead.email }} &middot; {{ lead.phone }}
+      </p>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="nx-panel__tag{% if lead.status == 'injected' or lead.status == 'deposit' %} nx-panel__tag--live{% elif lead.status == 'failed' or lead.status == 'rejected' %} nx-panel__tag--warn{% endif %}">
+        {{ lead.get_status_display }}
+      </span>
+      {% if lead.canonical_status %}
+        <span class="nx-panel__tag">Buyer: {{ lead.canonical_status }}</span>
+      {% endif %}
+      {% if lead.canonical_status_needs_review %}
+        <span class="nx-panel__tag nx-panel__tag--warn">Needs review</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="nx-grid nx-grid--main">
+
+    {# ── Lead information ── #}
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Lead Information</h2>
+          <p class="nx-panel__sub">As captured at intake.</p>
+        </div>
+      </div>
+
+      <div class="nx-grid nx-grid--2">
+        <div>
+          <div class="nx-stat__label">Source</div>
+          <div>{{ lead.get_intake_channel_display }}</div>
+        </div>
+        <div>
+          <div class="nx-stat__label">Offer</div>
+          <div>{{ lead.offer|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="nx-stat__label">Affiliate</div>
+          <div>{{ lead.affiliate|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="nx-stat__label">Vertical</div>
+          <div>{{ lead.vertical|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="nx-stat__label">IP Address</div>
+          <div>{{ lead.ip|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="nx-stat__label">Source ID</div>
+          <div>{{ lead.source_id|default:"—" }}</div>
+        </div>
+        <div>
+          <div class="nx-stat__label">Captured</div>
+          <div>{{ lead.created_at|date:"M d, Y · H:i" }} UTC</div>
+        </div>
+        <div>
+          <div class="nx-stat__label">Brand</div>
+          <div>{{ lead.brand|default:"—" }}</div>
+        </div>
+      </div>
+
+      {% if lead.deposit %}
+        <div class="nx-feed__item" style="margin-top:var(--space-3)">
+          <span class="nx-feed__icon nx-feed__icon--pos">&#9679;</span>
+          <div class="nx-feed__body">
+            <div class="nx-feed__title">Deposit recorded</div>
+            <div class="nx-feed__meta">The buyer reported this lead converted to a deposit.</div>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+    {# ── Routing journey ── #}
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Routing Journey</h2>
+          <p class="nx-panel__sub">Buyers attempted, in order.</p>
+        </div>
+        {% if delivered_to %}
+          <span class="nx-panel__tag nx-panel__tag--live">Delivered</span>
+        {% endif %}
+      </div>
+
+      {% if injections %}
+        <div class="nx-feed">
+          {% for injection in injections %}
+            <div class="nx-feed__item">
+              <span class="nx-feed__icon{% if injection.status == 'delivered' %} nx-feed__icon--pos{% elif injection.status == 'failed' %} nx-feed__icon--warn{% endif %}">
+                {{ forloop.counter }}
+              </span>
+              <div class="nx-feed__body">
+                <div class="nx-feed__title">{{ injection.buyer.name }}</div>
+                <div class="nx-feed__meta">
+                  {{ injection.get_status_display }}
+                  {% if injection.attempts %} &middot; {{ injection.attempts }} attempt{{ injection.attempts|pluralize }}{% endif %}
+                  {% if injection.latency_ms is not None %} &middot; {{ injection.latency_ms }} ms{% endif %}
+                  {% if injection.external_id %}<br>External ID: {{ injection.external_id }}{% endif %}
+                  {% if injection.failure_reason %}
+                    <br><span style="color:var(--neg)">{{ injection.failure_reason }}</span>
+                  {% endif %}
+                  {% if injection.next_retry_at %}
+                    <br>Retries {{ injection.next_retry_at|timeuntil }} from now
+                  {% endif %}
+                </div>
+              </div>
+              <span class="nx-feed__time">{{ injection.created_at|date:"H:i:s" }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="nx-empty">This lead has not been sent to any buyer.</p>
+      {% endif %}
+
+      {# What routing would do with this lead right now, recomputed live. #}
+      <div style="margin-top:var(--space-4)">
+        <div class="nx-stat__label" style="margin-bottom:var(--space-2)">Current routing chain</div>
+        {% if planned_chain %}
+          <div class="nx-legend">
+            {% for step in planned_chain %}
+              <span class="nx-legend__item">
+                {{ forloop.counter }}. {{ step.buyer.name }}
+                {% if step.attempted %}<span class="nx-legend__value">tried</span>{% endif %}
+              </span>
+            {% endfor %}
+          </div>
+          {% if not injections %}
+            <p class="nx-panel__sub" style="margin-top:var(--space-2)">
+              A chain resolves but nothing has been attempted — this lead is waiting on
+              auto-inject or a manual push.
+            </p>
+          {% endif %}
+        {% else %}
+          <p class="nx-panel__sub">
+            No active rule matches this lead, so there is nowhere to send it.
+            <a href="{% url 'leadgen_console:routing_rules' %}">Review routing rules</a>.
+          </p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  {# ── Status history ── #}
+  <section class="nx-panel" style="margin-top:var(--space-4)">
+    <div class="nx-panel__head">
+      <div>
+        <h2 class="nx-panel__title">Status History</h2>
+        <p class="nx-panel__sub">Every recorded change to this lead's buyer-side status.</p>
+      </div>
+    </div>
+
+    {% if status_events %}
+      <div style="overflow-x:auto">
+        <table class="nx-viz-table" style="margin-top:0">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">From</th>
+              <th scope="col">To</th>
+              <th scope="col">Source</th>
+              <th scope="col">Actor</th>
+              <th scope="col">Applied</th>
+              <th scope="col">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for event in status_events %}
+              <tr>
+                <td>{{ event.lead_seq }}</td>
+                <td>{{ event.from_status|default:"—" }}</td>
+                <td>{{ event.to_status }}</td>
+                <td>{{ event.get_source_display }}</td>
+                <td>{{ event.actor|default:"system" }}</td>
+                <td>
+                  {% if event.applied %}
+                    yes
+                  {% else %}
+                    <span style="color:var(--warn)" title="{{ event.override_reason }}">no</span>
+                  {% endif %}
+                </td>
+                <td>{{ event.created_at|date:"M d H:i" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="nx-empty">No status changes recorded.</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}
