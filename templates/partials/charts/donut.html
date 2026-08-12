@@ -1,0 +1,58 @@
+{% comment %}
+  Ring chart. Pass `chart` = nexora.charts.donut(...) output.
+
+  Optional:
+    center_value / center_label - text in the hole
+    caption                     - <figcaption>, describes what the ring shows
+    table_caption               - heading for the always-present data table
+
+  The <svg> is aria-hidden and the same numbers are repeated in a real table
+  below it: identity never rests on color alone, and the figures survive when
+  the colors don't (colorblind readers, forced-colors mode, print).
+{% endcomment %}
+<figure class="nx-figure">
+  {% if chart.empty %}
+    <svg class="nx-donut" viewBox="0 0 {{ chart.size }} {{ chart.size }}" width="{{ chart.size }}" height="{{ chart.size }}" aria-hidden="true">
+      <circle class="nx-donut__track" cx="{{ chart.center }}" cy="{{ chart.center }}" r="{{ chart.radius }}" stroke-width="{{ chart.thickness }}"></circle>
+    </svg>
+    <p class="nx-empty">No data yet.</p>
+  {% else %}
+    <svg class="nx-donut" viewBox="0 0 {{ chart.size }} {{ chart.size }}" width="{{ chart.size }}" height="{{ chart.size }}" aria-hidden="true">
+      <circle class="nx-donut__track" cx="{{ chart.center }}" cy="{{ chart.center }}" r="{{ chart.radius }}" stroke-width="{{ chart.thickness }}"></circle>
+      {% for seg in chart.segments %}
+        <circle class="nx-donut__seg"
+                cx="{{ chart.center }}" cy="{{ chart.center }}" r="{{ chart.radius }}"
+                stroke="{{ seg.color }}"
+                stroke-width="{{ chart.thickness }}"
+                stroke-dasharray="{{ seg.dash }}"
+                stroke-dashoffset="{{ seg.offset }}"></circle>
+      {% endfor %}
+      {% if center_value %}
+        <g class="nx-donut__center">
+          <text class="nx-donut__center-value" x="{{ chart.center }}" y="{{ chart.center }}">{{ center_value }}</text>
+          {% if center_label %}<text class="nx-donut__center-label" x="{{ chart.center }}" y="{{ chart.center|add:20 }}">{{ center_label }}</text>{% endif %}
+        </g>
+      {% endif %}
+    </svg>
+
+    <div class="nx-legend">
+      {% for seg in chart.segments %}
+        <span class="nx-legend__item">
+          <span class="nx-legend__dot" style="background: {{ seg.color }}"></span>
+          {{ seg.label }} <span class="nx-legend__value">{{ seg.pct }}%</span>
+        </span>
+      {% endfor %}
+    </div>
+
+    <table class="nx-viz-table">
+      <caption class="nx-sr-only">{{ table_caption|default:"Chart data" }}</caption>
+      <thead><tr><th scope="col">Segment</th><th scope="col">Value</th><th scope="col">Share</th></tr></thead>
+      <tbody>
+        {% for seg in chart.segments %}
+          <tr><td>{{ seg.label }}</td><td>{{ seg.value|floatformat:"-2" }}</td><td>{{ seg.pct }}%</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  {% if caption %}<figcaption class="nx-panel__sub">{{ caption }}</figcaption>{% endif %}
+</figure>

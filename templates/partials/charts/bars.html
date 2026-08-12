@@ -1,0 +1,33 @@
+{% comment %}
+  Vertical bar chart. Pass `chart` = nexora.charts.bar_chart(...).
+  Optional: caption, table_caption, value_label (header for the value column).
+
+  Bars sit on the baseline with rounded tops and a 2px surface gap between
+  neighbours. Category names are drawn under each bar, so the bars are
+  directly labelled and the color is decoration rather than the key.
+{% endcomment %}
+<figure class="nx-figure">
+  {% if chart.empty %}
+    <p class="nx-empty">No data yet.</p>
+  {% else %}
+    <svg class="nx-chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" aria-hidden="true" focusable="false">
+      <line class="nx-chart__grid" x1="0" y1="{{ chart.baseline }}" x2="{{ chart.width }}" y2="{{ chart.baseline }}"></line>
+      {% for bar in chart.bars %}
+        <rect x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"
+              rx="4" fill="{{ bar.color }}"></rect>
+        <text class="nx-chart__axis nx-chart__axis--x" x="{{ bar.label_x }}" y="{{ chart.label_y }}">{{ bar.label }}</text>
+      {% endfor %}
+    </svg>
+
+    <table class="nx-viz-table">
+      <caption class="nx-sr-only">{{ table_caption|default:"Chart data" }}</caption>
+      <thead><tr><th scope="col">Category</th><th scope="col">{{ value_label|default:"Value" }}</th></tr></thead>
+      <tbody>
+        {% for bar in chart.bars %}
+          <tr><td>{{ bar.label }}</td><td>{{ bar.value|floatformat:"-2" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  {% if caption %}<figcaption class="nx-panel__sub">{{ caption }}</figcaption>{% endif %}
+</figure>

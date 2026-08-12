@@ -11,6 +11,7 @@ from brands.email import send_test_email
 from brands.models import Brand
 from brands.permissions import brand_admin_required, platform_owner_required
 from brands.scoping import is_platform_owner, operator_brand
+from nexora import charts
 
 
 _BRAND_FORM_FIELDS = (
@@ -122,6 +123,8 @@ def dashboard(request):
     recent_leads = list(lead_qs.select_related('offer', 'affiliate').order_by('-created_at')[:25])
     attach_latest_injections(recent_leads)
 
+    totals = _network_totals(brand, show_all_brands=show_all_brands)
+
     ctx = {
         'active': 'dashboard',
         'shell_role': 'admin',
@@ -134,8 +137,119 @@ def dashboard(request):
         'lead_buyers': buyer_qs.order_by('name'),
         'lead_affiliates': lead_affiliates,
         'selected_affiliate_id': selected_affiliate_id,
+        'totals': totals,
+        'fraud_donut': _fraud_score_donut(brand, show_all_brands=show_all_brands),
+        'lead_feed': _lead_feed(brand, show_all_brands=show_all_brands),
     }
     return render(request, 'admin_shared/dashboard.html', ctx)
+
+
+def _network_totals(brand, *, show_all_brands):
+    """Network-wide clicks / conversions / approved earnings, brand-scoped.
+
+    Same scoping rule as the rest of the dashboard: an ordinary operator sees
+    only ``request.brand``; a platform owner sees every brand.
+    """
+    from django.db.models import Sum
+    from tracker.models import Click, Conversion, APPROVED_STATUS
+
+    clicks = Click.objects.all()
+    conversions = Conversion.objects.all()
+    if not show_all_brands:
+        clicks = clicks.filter(brand=brand)
+        conversions = conversions.filter(brand=brand)
+
+    earnings = conversions.filter(status=APPROVED_STATUS).aggregate(t=Sum('payout'))['t'] or 0
+    return {
+        'clicks': clicks.count(),
+        'conversions': conversions.count(),
+        'earnings': earnings,
+    }
+
+
+def _fraud_score_donut(brand, *, show_all_brands):
+    """Safe / review / blocked split of the last 7 days of conversions.
+
+    The band edges are not invented for this panel — they are the same
+    ``FRAUD_AUTO_REJECT_AT`` threshold ``fraud.tasks`` scores against, read from
+    settings, so the ring can never disagree with what the fraud console did.
+    A conversion at or above the threshold was auto-rejected (blocked); any
+    non-zero score below it was flagged for a human (review); zero is clean.
+    """
+    from django.conf import settings as dj_settings
+    from django.db.models import Count, Q
+    from tracker.models import Conversion
+
+    cutoff = getattr(dj_settings, 'FRAUD_AUTO_REJECT_AT', 70)
+    since = timezone.now() - datetime.timedelta(days=7)
+
+    qs = Conversion.objects.filter(created_at__gte=since)
+    if not show_all_brands:
+        qs = qs.filter(brand=brand)
+
+    counts = qs.aggregate(
+        safe=Count('id', filter=Q(fraud_score__lte=0)),
+        review=Count('id', filter=Q(fraud_score__gt=0, fraud_score__lt=cutoff)),
+        blocked=Count('id', filter=Q(fraud_score__gte=cutoff)),
+    )
+
+    return charts.donut([
+        ('Safe', counts['safe'], 'pos'),
+        ('Review', counts['review'], 'warn'),
+        ('Blocked', counts['blocked'], 'neg'),
+    ])
+
+
+def _lead_feed(brand, *, show_all_brands, limit=6):
+    """Recent routing activity, newest first.
+
+    Three cheap capped queries merged in Python rather than a UNION across
+    unrelated tables — each source is already indexed on ``created_at`` and we
+    only ever need the newest handful.
+    """
+    from tracker.models import Conversion, APPROVED_STATUS
+    from leadgen.models import Lead
+
+    leads = Lead.objects.all()
+    conversions = Conversion.objects.all()
+    if not show_all_brands:
+        leads = leads.filter(brand=brand)
+        conversions = conversions.filter(brand=brand)
+
+    events = []
+
+    for lead in leads.select_related('offer').order_by('-created_at')[:limit]:
+        events.append({
+            'at': lead.created_at,
+            'tone': 'info',
+            'icon': 'leads',
+            'title': 'New lead received',
+            'detail': f'Offer: {lead.offer.name}' if lead.offer_id else 'Unrouted',
+        })
+
+    for conv in conversions.filter(status=APPROVED_STATUS).select_related(
+            'affiliate').order_by('-created_at')[:limit]:
+        who = conv.affiliate.username if conv.affiliate_id else 'unattributed'
+        events.append({
+            'at': conv.created_at,
+            'tone': 'pos',
+            'icon': 'conversions',
+            'title': 'Conversion approved',
+            'detail': f'Affiliate: {who} · ${conv.payout}',
+        })
+
+    for conv in conversions.filter(fraud_score__gt=0).order_by('-created_at')[:limit]:
+        reason = (conv.fraud_reasons or ['flagged by fraud rules'])[0]
+        events.append({
+            'at': conv.created_at,
+            'tone': 'warn',
+            'icon': 'fraud',
+            'title': 'Risk flag detected',
+            'detail': str(reason),
+        })
+
+    events.sort(key=lambda e: e['at'], reverse=True)
+    return events[:limit]
 
 
 @staff_member_required

@@ -1,0 +1,53 @@
+{% comment %}
+  Multi-series trend. Pass `chart` = nexora.charts.area_chart(...).
+  Optional: caption, table_caption, x_title.
+
+  ONE shared y-axis for every series — deliberately no second axis. Two
+  measures on different scales belong in two charts, not one with two scales
+  (see nexora/charts.py:area_chart). A legend renders whenever there is more
+  than one series, and the end of each line is dotted and directly labelled
+  with its latest value so identity survives without color.
+{% endcomment %}
+<figure class="nx-figure">
+  {% if chart.empty %}
+    <p class="nx-empty">No data yet.</p>
+  {% else %}
+    {% if chart.series|length > 1 %}
+      <div class="nx-legend">
+        {% for s in chart.series %}
+          <span class="nx-legend__item">
+            <span class="nx-legend__dot" style="background: {{ s.color }}"></span>
+            {{ s.label }} <span class="nx-legend__value">{{ s.last_value|floatformat:"-2" }}</span>
+          </span>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <svg class="nx-chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" aria-hidden="true" focusable="false">
+      {% for line in chart.gridlines %}
+        <line class="nx-chart__grid" x1="0" y1="{{ line.y }}" x2="{{ chart.width }}" y2="{{ line.y }}"></line>
+      {% endfor %}
+      {% for s in chart.series %}
+        <path class="nx-chart__area" d="{{ s.area }}" fill="{{ s.color }}"></path>
+      {% endfor %}
+      {% for s in chart.series %}
+        <polyline class="nx-chart__line" points="{{ s.points }}" stroke="{{ s.color }}"></polyline>
+        <circle class="nx-chart__dot" cx="{{ s.last_x }}" cy="{{ s.last_y }}" r="4" fill="{{ s.color }}"></circle>
+      {% endfor %}
+      {% for tick in chart.x_labels %}
+        <text class="nx-chart__axis nx-chart__axis--x" x="{{ tick.x }}" y="{{ chart.label_y }}">{{ tick.label }}</text>
+      {% endfor %}
+    </svg>
+
+    <table class="nx-viz-table">
+      <caption class="nx-sr-only">{{ table_caption|default:"Chart data" }}</caption>
+      <thead><tr><th scope="col">Series</th><th scope="col">Latest</th></tr></thead>
+      <tbody>
+        {% for s in chart.series %}
+          <tr><td>{{ s.label }}</td><td>{{ s.last_value|floatformat:"-2" }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  {% if caption %}<figcaption class="nx-panel__sub">{{ caption }}</figcaption>{% endif %}
+</figure>

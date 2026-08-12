@@ -35,7 +35,66 @@
     </div>
   {% endif %}
 
-  {# ── At-a-glance stats ── #}
+  {# ── Network totals ── #}
+  <div class="nx-grid nx-grid--3 mb-4">
+    <div class="nx-stat">
+      <div class="nx-stat__label">Total Clicks</div>
+      <div class="nx-stat__value">{{ totals.clicks }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Total Conversions</div>
+      <div class="nx-stat__value">{{ totals.conversions }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Total Earnings</div>
+      <div class="nx-stat__value nx-stat__value--money">${{ totals.earnings|floatformat:2 }}</div>
+    </div>
+  </div>
+
+  {# ── Live feed + fraud mix ── #}
+  <div class="nx-grid nx-grid--main mb-10">
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Live Lead Feed</h2>
+          <p class="nx-panel__sub">Recent incoming leads and routing events.</p>
+        </div>
+        <span class="nx-panel__tag nx-panel__tag--live">Live</span>
+      </div>
+
+      {% if lead_feed %}
+        <div class="nx-feed">
+          {% for event in lead_feed %}
+            <div class="nx-feed__item">
+              <span class="nx-feed__icon nx-feed__icon--{{ event.tone }}">
+                {% include 'partials/icon.html' with name=event.icon cls='nx-nav__icon' %}
+              </span>
+              <div class="nx-feed__body">
+                <div class="nx-feed__title">{{ event.title }}</div>
+                <div class="nx-feed__meta">{{ event.detail }}</div>
+              </div>
+              <span class="nx-feed__time">{{ event.at|timesince }} ago</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="nx-empty">No lead activity yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Fraud Score Overview</h2>
+          <p class="nx-panel__sub">Conversions by risk band, last 7 days.</p>
+        </div>
+      </div>
+      {% include 'partials/charts/donut.html' with chart=fraud_donut center_value=fraud_donut.total|floatformat:0 center_label="Scored" table_caption="Conversions by fraud risk band, last 7 days" %}
+    </section>
+  </div>
+
+  {# ── Needs attention ── #}
+  <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Needs Attention</h2>
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
     <a href="/admin/affiliates/?status=PENDING"
        class="block bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition">

@@ -1,0 +1,269 @@
+/* ============================================================================
+   Nexora chart + panel components.
+
+   Pairs with nexora/charts.py (geometry) and templates/partials/charts/*.html
+   (markup). Everything here is token-driven; the only literals in this file
+   are the categorical --viz-N slot values themselves, which ARE the palette
+   definition and have nowhere else to live.
+
+   CATEGORICAL PALETTE — validated, do not eyeball a replacement.
+   Fixed slot order: blue, orange, teal, violet, magenta, green. Assigned by
+   position and never cycled. Both steppings passed all six checks (lightness
+   band, chroma floor, CVD separation, normal-vision separation, contrast vs
+   surface) against the surface each is actually drawn on:
+
+     light slots -> validated against #F4F6F8 (.nx-content--light-canvas, the
+                    operator canvas, which is light in BOTH themes)
+     dark slots  -> validated against #121C2E (--surface, dark theme)
+
+   Status data (safe/review/blocked etc.) does NOT use these slots — it uses
+   the reserved --pos/--warn/--neg tokens from tokens.css and always ships an
+   adjacent text label, never color alone.
+   ============================================================================ */
+
+:root,
+[data-theme="dark"] {
+  --viz-1: #2E8FF0;   /* blue    */
+  --viz-2: #D95926;   /* orange  */
+  --viz-3: #12AC80;   /* teal    */
+  --viz-4: #9085E9;   /* violet  */
+  --viz-5: #D55181;   /* magenta */
+  --viz-6: #008300;   /* green   */
+  --viz-grid: rgba(255, 255, 255, .08);
+  --viz-track: rgba(255, 255, 255, .10);
+}
+
+[data-theme="light"] {
+  --viz-1: #1E73CC;
+  --viz-2: #D95926;
+  --viz-3: #0E9E76;
+  --viz-4: #4A3AA7;
+  --viz-5: #D9628F;
+  --viz-6: #008300;
+  --viz-grid: rgba(15, 30, 55, .10);
+  --viz-track: rgba(15, 30, 55, .10);
+}
+
+/* The operator canvas is light regardless of the active theme, so a chart
+   drawn on it must use the light steps even when data-theme="dark". */
+.nx-content--light-canvas {
+  --viz-1: #1E73CC;
+  --viz-2: #D95926;
+  --viz-3: #0E9E76;
+  --viz-4: #4A3AA7;
+  --viz-5: #D9628F;
+  --viz-6: #008300;
+  --viz-grid: rgba(15, 30, 55, .10);
+  --viz-track: rgba(15, 30, 55, .10);
+}
+
+/* ---- Panels ---------------------------------------------------------------- */
+.nx-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+}
+.nx-content--light-canvas .nx-panel {
+  background: #fff;
+  border-color: rgba(15, 30, 55, .10);
+  color: #1F2937;
+}
+
+.nx-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.nx-panel__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.nx-panel__sub {
+  margin: 4px 0 0;
+  font-size: .8125rem;
+  color: var(--text-dim);
+}
+.nx-content--light-canvas .nx-panel__sub { color: #5A6B82; }
+
+.nx-panel__tag {
+  flex: none;
+  font-size: .6875rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.nx-panel__tag--live { background: var(--pos-bg); color: var(--pos); }
+.nx-panel__tag--warn { background: var(--warn-bg); color: var(--warn); }
+
+.nx-grid { display: grid; gap: var(--space-3); }
+@media (min-width: 720px)  { .nx-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 720px)  { .nx-grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1080px) { .nx-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 720px)  { .nx-grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1080px) { .nx-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* Content column wider than the rail beside it. */
+@media (min-width: 1080px) { .nx-grid--main { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); } }
+
+/* ---- Stat tiles ------------------------------------------------------------ */
+.nx-stat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-3) var(--space-4);
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.nx-content--light-canvas .nx-stat {
+  background: #fff;
+  border-color: rgba(15, 30, 55, .10);
+  color: #1F2937;
+}
+a.nx-stat:hover { box-shadow: var(--shadow-card-hover); }
+
+.nx-stat__label {
+  font-size: .6875rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.nx-content--light-canvas .nx-stat__label { color: #5A6B82; }
+
+.nx-stat__row { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-2); }
+.nx-stat__value { font-size: 2rem; font-weight: 700; line-height: 1.15; margin-top: 6px; }
+.nx-stat__value--money { color: var(--pos); }
+.nx-stat__value--warn  { color: var(--warn); }
+.nx-stat__value--neg   { color: var(--neg); }
+
+.nx-stat__delta {
+  font-size: .75rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.nx-stat__delta--up   { background: var(--pos-bg); color: var(--pos); }
+.nx-stat__delta--down { background: var(--neg-bg); color: var(--neg); }
+
+.nx-spark { display: block; margin-top: var(--space-2); width: 100%; height: auto; overflow: visible; }
+.nx-spark__line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nx-spark__area { stroke: none; opacity: .14; }
+
+/* ---- Donut ----------------------------------------------------------------- */
+.nx-donut { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+.nx-donut__track { fill: none; stroke: var(--viz-track); }
+.nx-donut__seg {
+  fill: none;
+  stroke-linecap: butt;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+.nx-donut__center { text-anchor: middle; dominant-baseline: middle; }
+.nx-donut__center-value { font-size: 1.5rem; font-weight: 700; fill: var(--text); }
+.nx-donut__center-label {
+  font-size: .625rem; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; fill: var(--text-dim);
+}
+.nx-content--light-canvas .nx-donut__center-value { fill: #1F2937; }
+.nx-content--light-canvas .nx-donut__center-label { fill: #5A6B82; }
+
+/* ---- Legend ---------------------------------------------------------------- */
+/* Identity is never color-alone: every swatch is paired with its label here. */
+.nx-legend { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.nx-legend__item {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: .8125rem; color: var(--text-dim);
+  background: var(--surface-2);
+  border-radius: var(--radius-pill);
+  padding: 5px 12px 5px 8px;
+}
+.nx-content--light-canvas .nx-legend__item { background: #F4F6F8; color: #5A6B82; }
+.nx-legend__dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.nx-legend__value { font-weight: 650; color: var(--text); }
+.nx-content--light-canvas .nx-legend__value { color: #1F2937; }
+
+/* ---- Bar / area ------------------------------------------------------------ */
+.nx-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.nx-chart__grid { stroke: var(--viz-grid); stroke-width: 1; }
+.nx-chart__axis {
+  font-size: .6875rem; fill: var(--text-dim);
+}
+.nx-content--light-canvas .nx-chart__axis { fill: #5A6B82; }
+.nx-chart__axis--x { text-anchor: middle; }
+.nx-chart__axis--y { text-anchor: end; dominant-baseline: middle; }
+.nx-chart__line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nx-chart__area { stroke: none; opacity: .16; }
+.nx-chart__dot { stroke: var(--surface); stroke-width: 2; }
+.nx-content--light-canvas .nx-chart__dot { stroke: #fff; }
+
+/* ---- Meter ----------------------------------------------------------------- */
+.nx-meter { margin-top: var(--space-2); }
+.nx-meter__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-2); font-size: .875rem;
+}
+.nx-meter__label { color: var(--text-dim); }
+.nx-content--light-canvas .nx-meter__label { color: #5A6B82; }
+.nx-meter__value { font-weight: 650; }
+.nx-meter__track {
+  margin-top: 7px; height: 8px; border-radius: var(--radius-pill);
+  background: var(--viz-track); overflow: hidden;
+}
+.nx-meter__fill { height: 100%; border-radius: var(--radius-pill); }
+
+/* ---- Feed (activity ticker) ------------------------------------------------ */
+.nx-feed { display: flex; flex-direction: column; gap: var(--space-2); }
+.nx-feed__item {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.nx-content--light-canvas .nx-feed__item { border-color: rgba(15, 30, 55, .10); }
+.nx-feed__icon {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-2);
+}
+.nx-feed__icon--pos  { background: var(--pos-bg);  color: var(--pos); }
+.nx-feed__icon--warn { background: var(--warn-bg); color: var(--warn); }
+.nx-feed__icon--info { background: rgba(46,143,240,.14); color: var(--brand-blue); }
+.nx-feed__body { min-width: 0; flex: 1; }
+.nx-feed__title { font-weight: 600; font-size: .875rem; }
+.nx-feed__meta { font-size: .8125rem; color: var(--text-dim); margin-top: 2px; }
+.nx-content--light-canvas .nx-feed__meta { color: #5A6B82; }
+.nx-feed__time { flex: none; font-size: .75rem; color: var(--text-faint); white-space: nowrap; }
+
+/* ---- Empty state ----------------------------------------------------------- */
+.nx-empty {
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: .875rem;
+}
+.nx-content--light-canvas .nx-empty { color: #5A6B82; }
+
+/* ---- Data table view (the relief a contrast WARN obligates) ---------------- */
+.nx-viz-table { width: 100%; border-collapse: collapse; font-size: .8125rem; margin-top: var(--space-3); }
+.nx-viz-table th, .nx-viz-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.nx-content--light-canvas .nx-viz-table th,
+.nx-content--light-canvas .nx-viz-table td { border-bottom-color: rgba(15, 30, 55, .10); }
+.nx-viz-table th { color: var(--text-dim); font-weight: 600; }
+.nx-viz-table td:last-child, .nx-viz-table th:last-child { text-align: right; }
+
+/* Screen readers get the numbers even when the SVG is decorative. */
+.nx-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
