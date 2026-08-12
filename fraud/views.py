@@ -3,12 +3,14 @@ import logging
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count, Avg
+from django.db.models.functions import TruncDate
 from django.shortcuts import render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from brands.scoping import scope_brand, sees_all_brands
 from fraud.models import FraudWhitelist
+from nexora import charts
 from tracker.models import Click, Conversion, REJECTED_STATUS
 
 logger = logging.getLogger(__name__)
@@ -96,8 +98,38 @@ def dashboard(request):
         'show_all_brands': show_all_brands,
         'shell_role': 'admin',
         'page_title': 'Fraud Review',
+        'flag_rate': charts.meter(total_flagged_clicks, total_clicks_24h, tone='warn'),
+        'reason_mix': charts.donut([(tag, count) for tag, count in top_reasons[:6]]),
+        'trend': _flagged_trend(clicks),
     }
     return render(request, 'fraud/dashboard.html', ctx)
+
+
+def _flagged_trend(clicks, *, days=7):
+    """Flagged clicks per day for the last week.
+
+    One grouped query over ``TruncDate`` rather than a loop of per-day counts.
+    Days with nothing flagged are filled back in as zero — leaving them out
+    would silently compress the x-axis and make an intermittent problem look
+    continuous.
+    """
+    since = timezone.now() - datetime.timedelta(days=days - 1)
+    start = since.date()
+
+    rows = (
+        clicks.filter(created_at__date__gte=start, fraud_score__gt=0)
+        .annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(n=Count('id'))
+    )
+    counted = {row['day']: row['n'] for row in rows}
+
+    series = []
+    for offset in range(days):
+        day = start + datetime.timedelta(days=offset)
+        series.append((day.strftime('%a'), counted.get(day, 0)))
+
+    return charts.bar_chart(series)
 
 
 @staff_member_required

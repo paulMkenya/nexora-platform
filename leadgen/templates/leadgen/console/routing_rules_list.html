@@ -36,14 +36,81 @@
     </div>
   {% endif %}
 
+  {# ── Rule set at a glance (counts describe the whole set, not the filter) ── #}
+  <div class="nx-grid nx-grid--3 mb-4">
+    <div class="nx-stat">
+      <div class="nx-stat__label">Rules</div>
+      <div class="nx-stat__value">{{ total_rules }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Active</div>
+      <div class="nx-stat__value">{{ active_rules }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Paused</div>
+      <div class="nx-stat__value{% if paused_rules %} nx-stat__value--warn{% endif %}">{{ paused_rules }}</div>
+    </div>
+  </div>
+
+  {# ── Filters ── #}
+  <form method="get" class="nx-panel mb-4" style="padding:var(--space-3)">
+    <div class="flex flex-wrap items-end gap-3">
+      <label class="text-sm">
+        <span class="block text-gray-500 mb-1">Vertical</span>
+        <select name="vertical" class="rounded-md border-gray-300 text-sm py-1.5 pr-8">
+          <option value="">All</option>
+          {% for v in verticals %}
+            <option value="{{ v }}" {% if selected.vertical == v %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="block text-gray-500 mb-1">Buyer</span>
+        <select name="buyer" class="rounded-md border-gray-300 text-sm py-1.5 pr-8">
+          <option value="">All</option>
+          {% for b in buyers_for_filter %}
+            <option value="{{ b.pk }}" {% if selected.buyer == b.pk|stringformat:'s' %}selected{% endif %}>{{ b.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="block text-gray-500 mb-1">Status</span>
+        <select name="status" class="rounded-md border-gray-300 text-sm py-1.5 pr-8">
+          <option value="">All</option>
+          <option value="active" {% if selected.status == 'active' %}selected{% endif %}>Active</option>
+          <option value="paused" {% if selected.status == 'paused' %}selected{% endif %}>Paused</option>
+        </select>
+      </label>
+      <label class="text-sm flex-1" style="min-width:200px">
+        <span class="block text-gray-500 mb-1">Search</span>
+        <input type="search" name="q" value="{{ selected.q }}" placeholder="Rule or buyer name"
+               class="w-full rounded-md border-gray-300 text-sm py-1.5">
+      </label>
+      <button type="submit" class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition">
+        Apply
+      </button>
+      {% if is_filtered %}
+        <a href="?" class="text-sm text-indigo-600 hover:underline">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+
   {% if not rules %}
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-      <p class="text-gray-600 font-medium">No routing rules yet.</p>
-      <p class="text-gray-500 text-sm mt-1 max-w-md mx-auto">
-        Without a rule, the Leads console shows "no matching rule" for every
-        lead and "Route now" has nothing to do. Add one — even a wildcard
-        rule pointing at a single buyer is a valid starting point.
-      </p>
+      {% if is_filtered %}
+        <p class="text-gray-600 font-medium">No rules match these filters.</p>
+        <p class="text-gray-500 text-sm mt-1">
+          {{ total_rules }} rule{{ total_rules|pluralize }} exist{{ total_rules|pluralize:"s," }} in total —
+          <a href="?" class="text-indigo-600 hover:underline">clear the filters</a> to see them.
+        </p>
+      {% else %}
+        <p class="text-gray-600 font-medium">No routing rules yet.</p>
+        <p class="text-gray-500 text-sm mt-1 max-w-md mx-auto">
+          Without a rule, the Leads console shows "no matching rule" for every
+          lead and "Route now" has nothing to do. Add one — even a wildcard
+          rule pointing at a single buyer is a valid starting point.
+        </p>
+      {% endif %}
     </div>
   {% else %}
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
@@ -90,6 +157,54 @@
       </table>
     </div>
   {% endif %}
+
+  {# ── What routing actually did ── #}
+  <div class="nx-grid nx-grid--main" style="margin-top:var(--space-5)">
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Delivered by buyer</h2>
+          <p class="nx-panel__sub">Successful injections in the last 24 hours.</p>
+        </div>
+        <span class="nx-panel__tag">24h</span>
+      </div>
+      {% include 'partials/charts/bars.html' with chart=stats.by_buyer value_label="Delivered" table_caption="Leads delivered per buyer, last 24 hours" %}
+    </section>
+
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Routing health</h2>
+          <p class="nx-panel__sub">Every figure covers the last 24 hours.</p>
+        </div>
+      </div>
+
+      <div class="nx-grid nx-grid--2" style="margin-bottom:var(--space-3)">
+        <div class="nx-stat">
+          <div class="nx-stat__label">Distributed</div>
+          <div class="nx-stat__value">{{ stats.distributed }}</div>
+        </div>
+        <div class="nx-stat">
+          <div class="nx-stat__label">Fallbacks</div>
+          <div class="nx-stat__value{% if stats.fallbacks %} nx-stat__value--warn{% endif %}">{{ stats.fallbacks }}</div>
+        </div>
+      </div>
+
+      {% include 'partials/charts/meter.html' with meter=stats.matched label="Leads matched to a buyer" value_text=stats.matched_text %}
+
+      <div class="nx-meter">
+        <div class="nx-meter__head">
+          <span class="nx-meter__label">Avg. delivery latency</span>
+          <span class="nx-meter__value">
+            {% if stats.latency_ms is not None %}{{ stats.latency_ms }} ms{% else %}&mdash;{% endif %}
+          </span>
+        </div>
+      </div>
+      {% if stats.latency_ms is None %}
+        <p class="nx-panel__sub" style="margin-top:4px">No delivered injections in the window to measure.</p>
+      {% endif %}
+    </section>
+  </div>
 
 </div>
 {% endblock %}

@@ -16,11 +16,27 @@
   {% endif %}
 
   {% if is_platform_owner %}
-  <h1 class="h3 mb-4">Roles &amp; Admins</h1>
+  <h1 class="h3 mb-1">Roles &amp; Admins</h1>
+  <p class="text-muted">Internal users and permissions across every brand.</p>
   {% else %}
   <h1 class="h3 mb-1">Roles &amp; Admins</h1>
   <p class="text-muted">Admins and affiliate managers for <strong>{{ brand.name }}</strong>.</p>
   {% endif %}
+
+  <div class="nx-grid nx-grid--3 mb-4">
+    <div class="nx-stat">
+      <div class="nx-stat__label">Brand Admins</div>
+      <div class="nx-stat__value">{{ roster.brand_admins }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Affiliate Managers</div>
+      <div class="nx-stat__value">{{ roster.managers }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">{% if is_platform_owner %}Brands{% else %}Brand{% endif %}</div>
+      <div class="nx-stat__value">{{ roster.brands }}</div>
+    </div>
+  </div>
 
   {# The brand chooser exists only for the platform owner. A brand admin's
      appointments are bound to its own brand by appoint_brand_admin, which
@@ -113,6 +129,50 @@
       </tbody>
     </table>
   </div>
+
+  {# ── Privileged-action trail ── #}
+  <section class="nx-panel">
+    <div class="nx-panel__head">
+      <div>
+        <h2 class="nx-panel__title">Impersonation Activity</h2>
+        <p class="nx-panel__sub">
+          Impersonation is the one privileged action the platform records. This is not a
+          general admin audit log &mdash; role changes and settings edits are not tracked.
+        </p>
+      </div>
+      <a class="nx-panel__tag" href="{% url 'impersonation:log' %}">Full log</a>
+    </div>
+
+    {% if recent_impersonations %}
+      <div class="nx-feed">
+        {% for entry in recent_impersonations %}
+          <div class="nx-feed__item">
+            <span class="nx-feed__icon{% if not entry.ended_at %} nx-feed__icon--warn{% endif %}">
+              {% include 'partials/icon.html' with name='impersonation' cls='nx-nav__icon' %}
+            </span>
+            <div class="nx-feed__body">
+              <div class="nx-feed__title">
+                {{ entry.impersonator.username|default:"(deleted user)" }}
+                &rarr;
+                {{ entry.target.username|default:"(deleted user)" }}
+              </div>
+              <div class="nx-feed__meta">
+                {% if entry.brand %}{{ entry.brand.name }} &middot; {% endif %}
+                {% if entry.ended_at %}
+                  Ended {{ entry.ended_at|date:"Y-m-d H:i" }}
+                {% else %}
+                  <strong>Session still open</strong>
+                {% endif %}
+              </div>
+            </div>
+            <span class="nx-feed__time">{{ entry.started_at|timesince }} ago</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="nx-empty">No impersonation sessions recorded.</p>
+    {% endif %}
+  </section>
 
 </div>
 {% endblock %}

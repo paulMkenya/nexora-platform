@@ -64,6 +64,13 @@ def _notify_approved(request, advertiser):
 def advertiser_list(request):
     qs = _scoped_advertisers(request)
 
+    # Counted before the status filter narrows the table.
+    roster = {
+        'total': qs.count(),
+        'approved': qs.filter(advertiser_status=Advertiser.AdvertiserStatus.APPROVED).count(),
+        'pending': qs.filter(advertiser_status=Advertiser.AdvertiserStatus.PENDING).count(),
+    }
+
     status_filter = request.GET.get('status', '').strip()
     if status_filter:
         qs = qs.filter(advertiser_status=status_filter)
@@ -76,6 +83,7 @@ def advertiser_list(request):
         'status_filter': status_filter,
         'status_choices': Advertiser.AdvertiserStatus.choices,
         'sees_all_brands': sees_all_brands(request.user),
+        'roster': roster,
         'APPROVED': Advertiser.AdvertiserStatus.APPROVED,
         'PENDING': Advertiser.AdvertiserStatus.PENDING,
         'REJECTED': Advertiser.AdvertiserStatus.REJECTED,

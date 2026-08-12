@@ -33,6 +33,21 @@
     </div>
   {% endif %}
 
+  <div class="nx-grid nx-grid--3 mb-4">
+    <div class="nx-stat">
+      <div class="nx-stat__label">Buyers</div>
+      <div class="nx-stat__value">{{ buyers|length }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Active</div>
+      <div class="nx-stat__value">{{ active_buyers }}</div>
+    </div>
+    <div class="nx-stat">
+      <div class="nx-stat__label">Auto-inject on</div>
+      <div class="nx-stat__value">{{ auto_inject_buyers }}</div>
+    </div>
+  </div>
+
   {% if not buyers %}
     <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
       <p class="text-gray-600 font-medium">No buyers configured yet.</p>
@@ -49,6 +64,8 @@
             <th class="py-2 pr-3">Active</th>
             <th class="py-2 pr-3">Auto-inject</th>
             <th class="py-2 pr-3">Batch</th>
+            <th class="py-2 pr-3" title="Token-bucket throughput limit — burst size, then refill rate">Rate limit</th>
+            <th class="py-2 pr-3" title="Accepts leads that overflowed from another buyer">Overflow</th>
             <th class="py-2 pr-3 pr-4"></th>
           </tr>
         </thead>
@@ -69,6 +86,15 @@
                 </span>
               </td>
               <td class="py-2 pr-3 text-gray-500">{{ buyer.batch_max_size }}</td>
+              <td class="py-2 pr-3 text-gray-500 text-xs whitespace-nowrap">
+                {{ buyer.rate_limit_burst }} burst ·
+                {{ buyer.rate_limit_refill_tokens }}/{{ buyer.rate_limit_refill_seconds }}s
+              </td>
+              <td class="py-2 pr-3">
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {% if buyer.accepts_overflow %}bg-indigo-100 text-indigo-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+                  {{ buyer.accepts_overflow|yesno:"yes,no" }}
+                </span>
+              </td>
               <td class="py-2 pr-3 pr-4 text-right">
                 <a href="{% url 'leadgen_console:buyer_edit' buyer.pk %}" class="text-indigo-600 hover:underline">Edit</a>
               </td>
@@ -78,6 +104,49 @@
       </table>
     </div>
   {% endif %}
+
+  {# ── Buyer health ── #}
+  <div class="nx-grid nx-grid--main" style="margin-top:var(--space-5)">
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Delivery outcomes</h2>
+          <p class="nx-panel__sub">Every injection attempted in the last 24 hours, by result.</p>
+        </div>
+        <span class="nx-panel__tag">24h</span>
+      </div>
+      {% include 'partials/charts/donut.html' with chart=health.outcomes center_value=health.total center_label="Attempts" table_caption="Injection attempts by outcome, last 24 hours" %}
+    </section>
+
+    <section class="nx-panel">
+      <div class="nx-panel__head">
+        <div>
+          <h2 class="nx-panel__title">Buyer health</h2>
+          <p class="nx-panel__sub">Delivery quality and response speed.</p>
+        </div>
+      </div>
+
+      {% include 'partials/charts/meter.html' with meter=health.accept_rate label="Accept rate" value_text=health.accept_rate.pct|stringformat:"s"|add:"%" %}
+
+      <div class="nx-grid nx-grid--2" style="margin-top:var(--space-3)">
+        <div class="nx-stat">
+          <div class="nx-stat__label">Avg. response</div>
+          <div class="nx-stat__value" style="font-size:1.5rem">
+            {% if health.latency_ms is not None %}{{ health.latency_ms }}<span style="font-size:.875rem"> ms</span>{% else %}&mdash;{% endif %}
+          </div>
+        </div>
+        <div class="nx-stat">
+          <div class="nx-stat__label">Awaiting retry</div>
+          <div class="nx-stat__value{% if health.retrying %} nx-stat__value--warn{% endif %}" style="font-size:1.5rem">{{ health.retrying }}</div>
+        </div>
+      </div>
+
+      <p class="nx-panel__sub" style="margin-top:var(--space-3)">
+        Throughput is governed per buyer by its token-bucket rate limit and batch size —
+        there are no daily or hourly caps to report against.
+      </p>
+    </section>
+  </div>
 
 </div>
 {% endblock %}
