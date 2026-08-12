@@ -1383,7 +1383,7 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
     # deposit would never come back. Hence the loud log in
     # _extract_external_id() rather than a silent ''.
     #
-    # CONFIRMED against the live Traffix box on 2026-08-12: a real accepted
+    # CONFIRMED against the live Traffix World box on 2026-08-12: a real accepted
     # lead carries all three of customerId / uniqueid / id, holding the SAME
     # value, nested at ``addonData.data`` — see RESPONSE_ID_SCOPES.
     EXTERNAL_ID_KEYS = ('orderid', 'orderId', 'customerid', 'customerId',

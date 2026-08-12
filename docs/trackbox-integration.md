@@ -7,7 +7,7 @@ Box #3, after op-brandy and Hypernet. Connector:
 Vendor docs (request shapes only):
 <https://intercom.help/tigloo/en/articles/9349579-trackbox-api-documentation>
 
-First instance: **Traffix** — `https://platform.traffixworld.com`, traffic
+First instance: **Traffix World** — `https://platform.traffixworld.com`, traffic
 from the affiliate **exxtraffic**.
 
 ---
@@ -111,16 +111,16 @@ arrives, not merely as a nice-to-have. Delivering untrackable leads is worse
 than delivering none.
 
 A single test lead (`Nexora Testlead / nexora.testlead@example.com`,
-`+254700000000`) was created on Traffix during this verification. Their side
+`+254700000000`) was created on Traffix World during this verification. Their side
 should be asked to remove it.
 
 ### ⚠️ Open blocker: no `x-api-key`
 
-The credentials supplied for Traffix are username `DanTVSnew`, a password,
+The credentials supplied for Traffix World are username `DanTVSnew`, a password,
 `ai=2958839`, `ci=1`, `gi=843`. **No valid `x-api-key` was supplied.**
 
 Pushing leads works without it (see above). **Status sync does not**, so the
-integration cannot be run in production until Traffix supplies the key —
+integration cannot be run in production until Traffix World supplies the key —
 otherwise we deliver leads whose deposits never come back.
 
 What to ask for, precisely: *the `x-api-key` value issued for the API user
@@ -155,7 +155,7 @@ Static per-buyer constants (from `LeadBuyer.extra_payload_fields`, seeded by
 the management command) — these are properties of the **buyer**, not of any
 lead, so nothing maps them:
 
-| Key | Traffix value | Meaning |
+| Key | Traffix World value | Meaning |
 |---|---|---|
 | `ai` | `2958839` | affiliate id ("ask your trackbox partner") |
 | `ci` | `1` | campaign id |
