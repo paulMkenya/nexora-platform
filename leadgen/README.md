@@ -560,3 +560,76 @@ replacement.
 `build_payload()` emits a redaction marker; the real value is substituted in
 `inject_lead()` only, so the credential cannot reach the audit trail by any
 path.
+
+## ADR: the TrackBox box (buyer #3)
+
+Full notes: **`docs/trackbox-integration.md`**. The two decisions worth
+surfacing here, because both generalise beyond this one box:
+
+### 9. A box that signals failure inside an HTTP 200
+
+TrackBox answers `200 OK` to everything, including a flat rejection of our
+credentials, and puts the real outcome in the body
+(`{"status": false, "code": 401, "message": …}`). Verified by probing the
+live instance — it is not in their docs.
+
+The whole error taxonomy in `connectors.LeadBuyerError` keys on the HTTP
+status line, so on such a box the base connector reads a 401 as a **success**
+and records it against the **lead** as a rejection: one real lead burned per
+attempt, to report a configuration error. `TrackBoxConnector` re-derives the
+classification from the body.
+
+The mapping is deliberately not "body code → same treatment as that HTTP
+code". An auth failure becomes a **retryable** `LeadBuyerError`, never
+`LeadBuyerRejectedError`, because it is a property of our configuration
+rather than of the lead and is fixable — the same reasoning that makes
+`LeadBuyerCapacityError` a sibling of rejection rather than a subclass. A
+verdict about the lead itself is left unraised so `parse_injection_result()`
+can attach the buyer's own message to the `LeadInjection` row.
+
+**If you onboard another box like this**, the read path needs its own guard:
+an error body during a status pull must raise, not read as "no rows", or an
+outage reports as "nothing changed" and the sync logs as healthy.
+
+### 10. Reading a box whose response schema is undocumented
+
+TrackBox publishes request shapes only. Rather than guess one key name per
+field, the connector expresses each as a **candidate set**
+(`EXTERNAL_ID_KEYS`, `ROW_ID_KEYS`, `_first_present()` chains) and **logs
+loudly** when nothing matches, so the first real delivery is
+self-diagnosing instead of silently wrong.
+
+Two rules that fell out of it, both worth reusing:
+
+* **Fail towards the recoverable side.** A success whose id we cannot find is
+  still recorded `delivered` (the lead *was* accepted; calling it failed
+  would cascade it to a competitor) — but loudly, because an empty
+  `external_id` excludes it from every future status sync. An unreadable
+  status row reports `deposit=False`, because the opposite error bills an
+  affiliate for a conversion that never happened.
+* **Default-deny audit filtering does the security work for you.** Their
+  `data` object carries autologin URLs under names we do not know.
+  Allowlisting `data` means *recurse into it*, not *publish it*, so the id
+  keys survive and every unknown sibling is redacted — no need to predict
+  the credential's key name. Never replace this with a blocklist.
+
+### 11. Two boxes, one shape: the connector mixins
+
+Onboarding TrackBox turned two pieces of `HypernetConnector` into shared
+mixins, because the second box needed them identically:
+
+* `BrokerPasswordMixin` — ADR §8 above.
+* `DateWindowStatusSyncMixin` — status sync for a box whose read endpoint has
+  **no id filter**, only a date range over the *registration* date. Both
+  boxes have this, and the trap is the same on both: windowing on "what
+  changed recently" silently misses almost every deposit, because a lead that
+  registered in March and deposits today appears only in a March window. The
+  mixin windows on our own injection timestamp instead, padded and coalesced.
+  A subclass supplies only its own pagination and row-id key.
+
+`LeadBuyerConnector.extra_auth_headers()` was added at the same time (a no-op
+by default) for boxes needing more than the single credential
+`BoxType.auth_type` models — TrackBox sends three headers. Multi-secret
+storage is `LeadBuyer.extra_credentials_encrypted`, Fernet-encrypted like
+`api_key_encrypted`; never `extra_payload_fields`, which is plaintext and
+rendered in the console.

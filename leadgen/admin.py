@@ -3,6 +3,7 @@ from django.contrib import admin, messages
 from django.contrib.admin import helpers
 from django.template.response import TemplateResponse
 
+from .forms import BuyerSecretsFormMixin
 from .models import (
     AffiliateOfferLink, AffiliatePostbackConfig, BoxType, Lead, LeadBuyer, LeadInjection,
     LeadStatusEvent, PostbackDelivery, RoutingRule,
@@ -22,26 +23,16 @@ class BoxTypeAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
 
 
-class LeadBuyerAdminForm(forms.ModelForm):
-    """The API key is write-only (encrypted at rest, see LeadBuyer.set_api_key)
-    — never rendered back, same UX as Brand's SMTP password field."""
-    api_key = forms.CharField(
-        required=False, widget=forms.PasswordInput(render_value=False),
-        help_text='Leave blank to keep the currently stored key unchanged.',
-    )
+class LeadBuyerAdminForm(BuyerSecretsFormMixin, forms.ModelForm):
+    """Both encrypted secrets are write-only (see LeadBuyer.set_api_key /
+    set_extra_credentials) — never rendered back, same UX as Brand's SMTP
+    password field. The behaviour lives in BuyerSecretsFormMixin, shared
+    with the console's own LeadBuyerForm; only Meta differs between the
+    two, because this form still shows the legacy fields readonly."""
 
     class Meta:
         model = LeadBuyer
-        exclude = ['api_key_encrypted']
-
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        raw = self.cleaned_data.get('api_key')
-        if raw:
-            instance.set_api_key(raw)
-        if commit:
-            instance.save()
-        return instance
+        exclude = BuyerSecretsFormMixin.EXCLUDE
 
 
 @admin.register(LeadBuyer)
