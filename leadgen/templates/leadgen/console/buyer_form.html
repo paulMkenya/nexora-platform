@@ -141,10 +141,21 @@
   }
 
   function buildFieldOptions(selected) {
-    return MAPPABLE_FIELDS.map(function (f) {
-      return '<option value="' + f + '"' + (f === selected ? ' selected' : '') + '>' + f + '</option>';
+    // A saved mapping may name a source this list doesn't contain — an
+    // affiliate `extra` key such as attribution.risk_band, which is
+    // open-ended by design and so can never be enumerated server-side.
+    // Without this, the select would fall back to its first option and the
+    // next save would silently REWRITE that row to a different source. Keep
+    // the unknown value as its own option instead.
+    var fields = MAPPABLE_FIELDS.slice();
+    if (selected && fields.indexOf(selected) === -1) fields.push(selected);
+    return fields.map(function (f) {
+      return '<option value="' + escapeAttr(f) + '"' + (f === selected ? ' selected' : '') + '>' + escapeText(f) + '</option>';
     }).join('');
   }
+
+  function escapeAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+  function escapeText(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   function addRow(ourField, theirField) {
     var row = document.createElement('div');

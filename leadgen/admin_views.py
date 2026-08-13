@@ -24,7 +24,14 @@ from brands.scoping import scope_brand, sees_all_brands
 from nexora import charts
 
 from . import canonical_status
-from .connectors import MAPPABLE_LEAD_FIELDS, LeadBuyerError, get_connector
+from .connectors import (
+    ATTRIBUTION_SOURCE_PREFIX,
+    MAPPABLE_LEAD_FIELDS,
+    OPT_IN_LEAD_FIELDS,
+    LeadBuyerError,
+    get_connector,
+)
+from .serializers import ATTRIBUTION_FIELDS, SUB_FIELDS
 from .forms import LeadBuyerForm, RoutingRuleForm
 from .models import (
     AffiliateOfferLink, BoxType, Lead, LeadBuyer, LeadInjection, LeadStatusEvent, RoutingRule,
@@ -399,6 +406,30 @@ def lead_detail(request, pk):
     })
 
 
+def mappable_field_sources():
+    """Every source name the field-mapping editor offers, in one list.
+
+    Three groups, deliberately in this order — always-sent core first, then
+    the opt-in sources that only reach a buyer because a mapping names them
+    (connectors.OPT_IN_LEAD_FIELDS):
+
+      firstname, lastname, ...      the MAPPABLE_LEAD_FIELDS core
+      language                      Lead.language
+      attribution.funnel, ...       the canonical Lead.attribution keys
+
+    Only the CANONICAL attribution keys are listed. An affiliate's `extra`
+    keys are open-ended by design, so no fixed list can enumerate them — the
+    editor keeps any key already present in a saved mapping (see
+    buildFieldOptions in buyer_form.html), which is how a brand points
+    'attribution.risk_band' at MPC_6 and has it survive the next edit.
+    """
+    return (
+        list(MAPPABLE_LEAD_FIELDS.keys())
+        + list(OPT_IN_LEAD_FIELDS.keys())
+        + [ATTRIBUTION_SOURCE_PREFIX + key for key in ATTRIBUTION_FIELDS + SUB_FIELDS]
+    )
+
+
 def _buyer_form_context(*, page_title, form, instance, test_result=None):
     """Shared context for buyer_form/buyer_test_connection — both render
     leadgen/console/buyer_form.html and both need the same BoxType-defaults
@@ -413,7 +444,7 @@ def _buyer_form_context(*, page_title, form, instance, test_result=None):
         'box_type_defaults_json': json.dumps({
             str(bt.pk): bt.default_field_mapping for bt in BoxType.objects.all()
         }),
-        'mappable_lead_fields_json': json.dumps(list(MAPPABLE_LEAD_FIELDS.keys())),
+        'mappable_lead_fields_json': json.dumps(mappable_field_sources()),
         'test_result': test_result,
     }
 

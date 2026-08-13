@@ -57,6 +57,31 @@ MAPPABLE_LEAD_FIELDS = {
     'source_id': 'source_id',
 }
 
+# --- opt-in payload sources ---------------------------------------------------
+#
+# MAPPABLE_LEAD_FIELDS above is sent to EVERY buyer: an entry missing from a
+# buyer's field_mapping still goes out under our own name (see _map_field).
+# That is exactly why Lead.language and Lead.attribution are NOT in it —
+# adding them there would start putting new keys in op-brandy's and
+# Hypernet's live signup bodies, uninvited, on the next deploy.
+#
+# The sources below are the opposite rule: emitted ONLY when a buyer's
+# effective field_mapping names one explicitly, and under the name that
+# mapping gives. A buyer whose mapping mentions none of them sends byte-for-
+# byte what it sent before this existed.
+#
+# Two source forms are understood as mapping KEYS:
+#   'language'              -> Lead.language
+#   'attribution.<key>'     -> Lead.attribution['<key>']
+#
+# So TrackBox's BoxType maps 'attribution.funnel' -> 'so' and
+# 'attribution.sub1' -> 'MPC_1', while op-brandy maps neither and is
+# unaffected. See docs/lead-attribution.md.
+OPT_IN_LEAD_FIELDS = {
+    'language': 'language',
+}
+ATTRIBUTION_SOURCE_PREFIX = 'attribution.'
+
 
 class LeadBuyerError(Exception):
     """A buyer API call failed. The base class means RETRYABLE.
@@ -324,7 +349,35 @@ class LeadBuyerConnector:
             if value in (None, ''):
                 continue
             payload[self._map_field(our_name)] = value
+        payload.update(self.build_extra_payload(lead))
         return payload
+
+    def build_extra_payload(self, lead) -> dict:
+        """The opt-in half of the payload: Lead.language and Lead.attribution
+        entries, keyed by whatever the buyer's field_mapping calls them.
+
+        Returns {} — changing nothing about the request — for every buyer
+        whose mapping names none of these sources, which is what makes this
+        safe to add underneath boxes that are already live. See
+        OPT_IN_LEAD_FIELDS.
+
+        A mapped-but-absent source is simply omitted, never sent blank: for
+        several boxes in this vertical an empty string is a real value that
+        overwrites a default, while an absent key leaves the default alone.
+        """
+        attribution = getattr(lead, 'attribution', None) or {}
+        extra = {}
+        for source, their_name in self.buyer.get_effective_field_mapping().items():
+            if source in OPT_IN_LEAD_FIELDS:
+                value = getattr(lead, OPT_IN_LEAD_FIELDS[source], '')
+            elif source.startswith(ATTRIBUTION_SOURCE_PREFIX):
+                value = attribution.get(source[len(ATTRIBUTION_SOURCE_PREFIX):], '')
+            else:
+                continue
+            if value in (None, ''):
+                continue
+            extra[their_name] = str(value)
+        return extra
 
     # --- transport -------------------------------------------------------------
 

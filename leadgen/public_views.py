@@ -15,13 +15,26 @@ from django.shortcuts import get_object_or_404, render
 from offer.models import Offer
 
 from .models import Lead
-from .serializers import LeadSubmitSerializer
+from .serializers import LeadSubmitSerializer, build_attribution
 from .tasks import geolocate_lead, maybe_auto_inject
 
 logger = logging.getLogger(__name__)
 
 RATE_LIMIT_MAX = 5            # submissions ...
 RATE_LIMIT_WINDOW = 60 * 60   # ... per this many seconds (1 hour), per IP
+
+# The utm_* convention every ad platform already emits -> Nexora's own
+# attribution names. A hosted funnel is reached by a real ad click, so these
+# arrive on the landing URL's query string; the form template round-trips
+# them into hidden inputs, and POST wins over GET because the GET here is the
+# submit request, which no longer carries the original landing query string.
+UTM_SOURCES = {
+    'funnel': 'utm_source',
+    'campaign': 'utm_campaign',
+    'medium': 'utm_medium',
+    'term': 'utm_term',
+    'ad': 'utm_content',
+}
 
 
 def _client_ip(request):
@@ -42,10 +55,28 @@ def _rate_limited(request):
     return count > RATE_LIMIT_MAX
 
 
+def _tracking_inputs(request):
+    """The attribution values to round-trip through the form as hidden inputs.
+
+    The ad click lands on GET /capture/<offer>?utm_source=... but the values
+    have to survive to the POST, and a hidden input is the only carrier that
+    does not depend on the form's action preserving the query string. POST
+    wins over GET so a re-render after a validation error keeps what the
+    first submission carried.
+
+    Truncated to the serializer's own max_length: these come off a public URL
+    and land in a hidden input echoed back into HTML (auto-escaped by the
+    template), so the only unbounded thing left to bound is length.
+    """
+    names = list(UTM_SOURCES.values()) + ['lang']
+    values = {name: (request.POST.get(name) or request.GET.get(name) or '')[:120] for name in names}
+    return {name: value for name, value in values.items() if value}
+
+
 def capture_lead(request, offer_id):
     """GET renders the form; POST validates + creates the Lead."""
     offer = get_object_or_404(Offer, pk=offer_id)
-    ctx = {'offer': offer, 'brand': offer.brand}
+    ctx = {'offer': offer, 'brand': offer.brand, 'tracking': _tracking_inputs(request)}
 
     if request.method != 'POST':
         return render(request, 'leadgen/capture_form.html', ctx)
@@ -62,14 +93,18 @@ def capture_lead(request, offer_id):
         ctx['rate_limited'] = True
         return render(request, 'leadgen/capture_form.html', ctx, status=429)
 
-    serializer = LeadSubmitSerializer(data={
+    submitted = {
         'first_name': request.POST.get('first_name', ''),
         'last_name': request.POST.get('last_name', ''),
         'email': request.POST.get('email', ''),
         'phone': request.POST.get('phone', ''),
         'vertical': request.POST.get('vertical', ''),
         'source_id': request.POST.get('source_id', ''),
-    })
+        'language': request.POST.get('lang', ''),
+    }
+    for name, utm in UTM_SOURCES.items():
+        submitted[name] = request.POST.get(utm, '') or request.GET.get(utm, '')
+    serializer = LeadSubmitSerializer(data=submitted)
     if not serializer.is_valid():
         ctx['errors'] = serializer.errors
         ctx['post'] = request.POST
@@ -87,6 +122,8 @@ def capture_lead(request, offer_id):
         phone=data['phone'],
         vertical=data['vertical'],
         source_id=data['source_id'],
+        language=data['language'],
+        attribution=build_attribution(data),
         ip=_client_ip(request),
         raw_payload=data,
     )

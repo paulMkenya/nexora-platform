@@ -55,6 +55,13 @@
                 <input type="text" id="hp_check" name="hp_check" tabindex="-1" autocomplete="off">
             </div>
 
+            {# Attribution carried over from the landing URL's query string —
+               see public_views._tracking_inputs. Hidden, not removed: the
+               buyer's own reporting is keyed on these. #}
+            {% for name, value in tracking.items %}
+                <input type="hidden" name="{{ name }}" value="{{ value }}">
+            {% endfor %}
+
             <label for="first_name">First name</label>
             <input type="text" id="first_name" name="first_name" value="{{ post.first_name|default:'' }}">
 

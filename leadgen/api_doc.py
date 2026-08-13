@@ -25,7 +25,21 @@ had already begun to diverge.
 import json
 
 from . import canonical_status
-from .serializers import AffiliateLeadSubmitSerializer
+from .serializers import ATTRIBUTION_FIELDS, SUB_FIELDS, AffiliateLeadSubmitSerializer
+
+# Example VALUES for the attribution fields in the curl samples below. The
+# field NAMES are never listed here — they come from the serializer's own
+# ATTRIBUTION_FIELDS/SUB_FIELDS, so a field renamed or dropped there changes
+# the example instead of leaving the doc advertising something the API would
+# now ignore. A name with no entry here simply doesn't appear in the sample.
+EXAMPLE_ATTRIBUTION = {
+    'funnel': 'crypto-quiz-v2',
+    'campaign': 'summer-crypto',
+    'medium': 'paid-social',
+    'term': 'bitcoin-broker',
+    'ad': 'video-ad-3',
+    'sub1': 'your-own-value',
+}
 
 # Written explanation shared by every format. Plain strings, no markup, so
 # HTML/PDF/text can each present them in their own idiom.
@@ -86,6 +100,25 @@ NARRATIVE = {
     'rate_limits': [
         'Limits are per API key and shown with your keys above. Exceeding one returns 429 — back '
         'off and retry rather than tightening your loop.',
+    ],
+    'attribution': [
+        'Beyond the contact details, a lead carries where it came from: funnel, campaign, medium, '
+        'term and ad, plus your own sub1..sub5 slots and the consumer\'s language. All are '
+        'optional, and all are listed in the field table above.',
+        'Send them. Buyers surface exactly these values in their own reporting and optimise on '
+        'them — a buyer that cannot tell your funnels apart cannot tell which of them is working, '
+        'and that judgement is what decides whether they keep buying your traffic. One constant '
+        'value across all your traffic is the same as sending nothing.',
+        'funnel/campaign/medium/term/ad are the named, validated fields — prefer them over sub '
+        'slots wherever one fits, because only the named fields are reportable. sub1..sub5 are '
+        'opaque passthrough: Nexora stores and returns them untouched and never interprets them.',
+        'For a buyer field none of these names covers, send extra as an object of your own '
+        'key/value pairs. Agree the key names with your account manager first: whether any of '
+        'them reaches a buyer depends on that buyer being configured for the key, and an '
+        'unrecognised key is stored and echoed back but goes no further.',
+        'Any top-level field this API does not know is ignored rather than rejected, and its name '
+        'is listed back to you as ignored_fields on the submit response. If you see a field there, '
+        'it never left your own system — check it against the table above.',
     ],
 }
 
@@ -244,9 +277,21 @@ def _examples(base_url, offer_rows):
         'first_name': 'Jane', 'last_name': 'Doe',
         'email': 'jane@example.com', 'phone': '+15551234567',
         'offer_id': offer_id, 'source_id': 'your-own-tracking-id',
+        'country': 'GB', 'language': 'EN',
     }
-    batch_body = {'leads': [single_body, dict(single_body, email='john@example.com',
-                                              first_name='John', source_id='your-second-id')]}
+    # The attribution block is shown filled in rather than omitted as
+    # "optional": a buyer's reporting is keyed on it, and an affiliate copying
+    # this curl is exactly the affiliate who would otherwise never send it.
+    # Names from the serializer, values from EXAMPLE_ATTRIBUTION.
+    for name in ATTRIBUTION_FIELDS + SUB_FIELDS:
+        if name in EXAMPLE_ATTRIBUTION:
+            single_body[name] = EXAMPLE_ATTRIBUTION[name]
+
+    # Trimmed in the batch sample — the point there is the envelope, and two
+    # fully-populated bodies bury it.
+    batch_item = {k: v for k, v in single_body.items() if k not in EXAMPLE_ATTRIBUTION}
+    batch_body = {'leads': [batch_item, dict(batch_item, email='john@example.com',
+                                             first_name='John', source_id='your-second-id')]}
 
     def _curl(path, body):
         return (
