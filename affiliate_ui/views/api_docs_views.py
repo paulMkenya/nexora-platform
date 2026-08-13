@@ -87,7 +87,10 @@ def _text_fields_and_offers(doc):
         req = 'required' if f['required'] else 'optional'
         lines.append(f'  {f["name"]} ({req}, {f["type"]}){": " + f["help_text"] if f["help_text"] else ""}')
 
-    lines += ['', 'YOUR OFFERS']
+    lines += ['', 'ATTRIBUTION — WHERE THE LEAD CAME FROM', '']
+    lines += _wrap(doc['narrative']['attribution'])
+
+    lines += ['YOUR OFFERS']
     if doc['offers']:
         for o in doc['offers']:
             started = '' if o['started'] else ' (not started yet)'

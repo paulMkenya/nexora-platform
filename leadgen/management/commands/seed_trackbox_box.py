@@ -46,12 +46,37 @@ BOX_SLUG = 'trackbox'
 # constant below rather than overwritten per lead. A brand that genuinely
 # wants the lead's own vertical in a TrackBox field should map it to one of
 # the MPC_1..MPC_12 free parameters via LeadBuyer.field_mapping.
+#
+# The `language`/`attribution.*` keys are the OPT-IN sources
+# (connectors.OPT_IN_LEAD_FIELDS): they are emitted only because this mapping
+# names them, and only for leads that actually carry a value. A lead with no
+# attribution produces exactly the body this box sent before they existed,
+# with `so` and `lg` still supplied by the buyer's static
+# extra_payload_fields — a per-lead value simply wins over that static
+# default, which is the precedence TrackBoxConnector.build_payload already
+# implements.
+#
+# Only MPC_1..MPC_5 are mapped, matching the sub1..sub5 an affiliate can
+# submit. MPC_6..MPC_12 are left free for a brand to point at its own
+# `extra` keys (e.g. 'attribution.risk_band': 'MPC_6') via
+# LeadBuyer.field_mapping, which overrides this template per buyer.
 DEFAULT_FIELD_MAPPING = {
     'firstname': 'firstname',
     'lastname': 'lastname',
     'email': 'email',
     'phone': 'phone',
     'source_id': 'sub',
+    'language': 'lg',
+    'attribution.funnel': 'so',
+    'attribution.campaign': 'campaign',
+    'attribution.medium': 'medium',
+    'attribution.term': 'term',
+    'attribution.ad': 'ad',
+    'attribution.sub1': 'MPC_1',
+    'attribution.sub2': 'MPC_2',
+    'attribution.sub3': 'MPC_3',
+    'attribution.sub4': 'MPC_4',
+    'attribution.sub5': 'MPC_5',
 }
 
 # TrackBox's own status vocabulary -> Nexora's canonical_status
