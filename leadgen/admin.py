@@ -123,12 +123,17 @@ class LeadInjectionAdmin(admin.ModelAdmin):
 
 @admin.register(RoutingRule)
 class RoutingRuleAdmin(admin.ModelAdmin):
-    """Phase 1 of the lead-distribution build (see leadgen/routing.py):
-    create/edit rules here. is_active defaults to False on every new rule —
+    """The lead-distribution routing rules (see leadgen/routing.py):
+    create/edit them here. is_active defaults to False on every new rule —
     saving one here computes it into resolve_buyer_chain() immediately, but
     it stays inert until you flip is_active on, same posture as
-    LeadBuyer.auto_inject. Nothing on the delivery path acts on these rules
-    yet; that's a later phase."""
+    LeadBuyer.auto_inject.
+
+    Flipping is_active on DOES now change live delivery: the capture path
+    picks its buyer from these rules (leadgen.tasks.resolve_buyer_for_lead).
+    A brand's first active rule switches that brand off the legacy
+    alphabetically-first-buyer pick for good, so seed its wildcard parity
+    rule first — see that function's docstring."""
     list_display = ('__str__', 'brand', 'buyer', 'priority', 'is_active',
                      'offer', 'country_iso2', 'affiliate', 'vertical', 'source_channel', 'updated_at')
     list_filter = ('is_active', 'brand', 'buyer', 'source_channel')
