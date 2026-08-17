@@ -251,6 +251,10 @@ lead, so nothing maps them:
 | `so` | `exxtraffic` | funnel/source name shown in their reports |
 | `lg` | `EN` | language |
 
+`so` and `lg` are *defaults*, not fixed values — a lead that carries its own
+funnel or language overrides them per lead (see the opt-in table below).
+`ai`/`ci`/`gi` identify the buyer relationship and must never become per-lead.
+
 Mapped from the lead (`BoxType.default_field_mapping`):
 
 | Ours | Theirs |
@@ -260,6 +264,23 @@ Mapped from the lead (`BoxType.default_field_mapping`):
 | `email` | `email` |
 | `phone` | `phone` |
 | `source_id` | `sub` |
+
+Mapped from the lead's attribution — the **opt-in** sources, emitted only
+because this mapping names them and only when the lead carries a value. See
+`docs/lead-attribution.md`:
+
+| Ours | Theirs |
+|---|---|
+| `language` | `lg` |
+| `attribution.funnel` | `so` |
+| `attribution.campaign` | `campaign` |
+| `attribution.medium` | `medium` |
+| `attribution.term` | `term` |
+| `attribution.ad` | `ad` |
+| `attribution.sub1`…`sub5` | `MPC_1`…`MPC_5` |
+
+`MPC_6`…`MPC_12` are left free for a brand to point at its own affiliate
+`extra` keys via `LeadBuyer.field_mapping`.
 
 Plus, assembled by the connector because they are outside
 `MAPPABLE_LEAD_FIELDS`:
@@ -274,9 +295,9 @@ Plus, assembled by the connector because they are outside
 own example `4407012259886`.
 
 `vertical` is deliberately **not** mapped. Their nearest field is `so`, which
-identifies the traffic source for the whole box and is agreed per-buyer. A
-brand that wants the lead's vertical on TrackBox should map it to one of the
-`MPC_1`…`MPC_12` free parameters via `LeadBuyer.field_mapping`.
+now carries the lead's own funnel when it has one. A brand that wants the
+lead's vertical on TrackBox should map it to one of the free `MPC_6`…`MPC_12`
+parameters via `LeadBuyer.field_mapping`.
 
 ---
 

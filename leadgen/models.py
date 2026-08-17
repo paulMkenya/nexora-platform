@@ -522,6 +522,38 @@ class Lead(models.Model):
     user_agent = models.CharField(max_length=500, blank=True, default='')
     raw_payload = models.JSONField(default=dict, blank=True)
 
+    # The consumer's language, ISO 639-1 upper-cased ('EN', 'DE'). A real
+    # column rather than an `attribution` key because it is a property of the
+    # PERSON, not of the campaign that found them: buyers route call-centre
+    # capacity on it, and it is the one enrichment field almost every box in
+    # this vertical asks for by name (TrackBox `lg`, and the same idea under
+    # other names elsewhere). Blank means unknown — never guessed.
+    language = models.CharField(max_length=8, blank=True, default='')
+
+    # Marketing attribution + affiliate free parameters, as a flat
+    # string->string dict. The canonical keys the intake serializers validate
+    # are `funnel`, `campaign`, `medium`, `term`, `ad` and `sub1`..`sub5`;
+    # an affiliate may add its own bounded extras (serializers.EXTRA_MAX_KEYS)
+    # for a buyer field Nexora has no name of its own for.
+    #
+    # WHY A JSONField AND NOT COLUMNS. Every buyer box in this vertical
+    # publishes its own dialect of the same handful of ideas — TrackBox calls
+    # them so/ad/term/campaign/medium/MPC_1..MPC_12, the next box will call
+    # them something else — and the set is open-ended by nature. Named
+    # columns would mean a migration per box onboarded, for data no query
+    # ever filters on. Same reasoning, and the same shape, as
+    # LeadBuyer.extra_payload_fields one level up.
+    #
+    # NOT raw_payload: raw_payload is the verbatim submission (an audit
+    # record of what arrived), while this is the curated, validated subset
+    # that connectors are allowed to forward. Keeping them separate is what
+    # lets `attribution` be a stable contract while raw_payload stays free to
+    # hold whatever a channel happened to send.
+    #
+    # Nothing here reaches a buyer unless that buyer's field_mapping names it
+    # explicitly — see connectors.LeadBuyerConnector.build_extra_payload.
+    attribution = models.JSONField(default=dict, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

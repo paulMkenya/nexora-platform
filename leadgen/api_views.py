@@ -27,7 +27,12 @@ from public_api.throttling import APIKeyThrottle
 
 from . import canonical_status
 from .models import Lead
-from .serializers import AffiliateLeadSubmitSerializer, LeadDetailOutSerializer, LeadOutSerializer
+from .serializers import (
+    AffiliateLeadSubmitSerializer,
+    LeadDetailOutSerializer,
+    LeadOutSerializer,
+    build_attribution,
+)
 from .tasks import geolocate_lead, maybe_auto_inject
 
 MAX_BATCH_SIZE = 200
@@ -100,6 +105,8 @@ def _create_lead(request, data, *, offer):
         vertical=data['vertical'],
         source_id=data['source_id'],
         country_iso2=data.get('country', ''),
+        language=data.get('language', ''),
+        attribution=build_attribution(data),
         user_agent=data.get('user_agent', ''),
         # The affiliate's own submitted `ip` (their system may hold the real
         # consumer IP — spec §4.3) wins over the connecting request's own
@@ -116,6 +123,35 @@ def _create_lead(request, data, *, offer):
     geolocate_lead.delay(lead.pk)
     maybe_auto_inject(lead)
     return lead
+
+
+def _ignored_fields(serializer, raw):
+    """Top-level keys the caller sent that this contract has no field for.
+
+    DRF drops unknown keys silently, so before this existed an affiliate
+    could POST `MPC_3` or `lg`, get a 201 back, and have no way to discover
+    that the value never left their own server — the failure mode this whole
+    endpoint is least able to detect for them. Reporting the names back turns
+    a silent drop into something visible on the very first test call.
+
+    Advisory only: unknown keys are still ignored, never a 400. Rejecting
+    them would break any affiliate who already sends a field we don't read,
+    and would make every future field we add a breaking change for them.
+    """
+    if not isinstance(raw, dict):
+        return []
+    return sorted(set(raw) - set(serializer.fields))
+
+
+def _submit_response(serializer, raw, lead):
+    """The lead body, plus `ignored_fields` when — and only when — the caller
+    sent something we couldn't use. Absent on a clean submission, so the
+    common case is unchanged for existing integrations."""
+    body = dict(LeadOutSerializer(lead).data)
+    ignored = _ignored_fields(serializer, raw)
+    if ignored:
+        body['ignored_fields'] = ignored
+    return body
 
 
 def _submit_one(request, data):
@@ -156,7 +192,7 @@ class LeadSubmitView(APIView):
             return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(
-            LeadOutSerializer(lead).data,
+            _submit_response(serializer, request.data, lead),
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
@@ -189,7 +225,7 @@ class LeadBatchSubmitView(APIView):
             if error:
                 failed.append({'input': raw, 'errors': {'offer_id': [error]}})
                 continue
-            added.append(LeadOutSerializer(lead).data)
+            added.append(_submit_response(item_serializer, raw, lead))
 
         response_status = status.HTTP_201_CREATED if added else status.HTTP_400_BAD_REQUEST
         return Response({'addedLeads': added, 'failedToAddLeads': failed}, status=response_status)

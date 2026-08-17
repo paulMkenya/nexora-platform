@@ -62,6 +62,9 @@ copy buttons at runtime to [data-copy] blocks; the PDF simply never runs it.
   </tbody>
 </table>
 
+<h3>Attribution — where the lead came from</h3>
+{% for para in doc.narrative.attribution %}<p>{{ para }}</p>{% endfor %}
+
 <h3>Your offers</h3>
 {% if doc.offers %}
 <table>
