@@ -1,0 +1,105 @@
+"""Pins the Hypernet status vocabulary that the ChainPulse affiliate's LIVE
+postbacks are derived from.
+
+WHY THIS EXISTS — once an AffiliateOfferLink is LIVE, a buyer status string
+travels all the way to the affiliate's postback URL unattended
+(status_sync.apply_status_change -> dispatch_postbacks_for_event). Two silent
+failure modes follow, and neither shows up as an error:
+
+  1. A status we stop mapping stops reporting. `map_buyer_status` returns
+     needs_review and NO postback fires — correct (never guess), but from the
+     affiliate's side the lead simply goes quiet.
+  2. A status remapped to the wrong canonical value reports the WRONG thing.
+     `deposited` -> `ftd` is billable; getting that edge wrong is a money bug,
+     not a display bug.
+
+The values asserted here were probed off the LIVE desperados box on
+2026-08-17 (full window, every row they hold) — see
+docs/hypernet-status-endpoint.md. They are a record of what the box actually
+emits, so if Hypernet changes their vocabulary this test is where that shows
+up first, deliberately, instead of in an affiliate's missing revenue.
+"""
+import pytest
+
+from leadgen import canonical_status
+from leadgen.models import BoxType, LeadBuyer
+from leadgen.status_sync import map_buyer_status
+
+# Probed 2026-08-17 against the live box. registration.status is their
+# NORMALIZED field — the one leadgen.connectors.HypernetConnector.
+# parse_status_sync_results reads — not the free-text rawStatus beside it.
+OBSERVED_LIVE_VOCABULARY = {
+    'sent': canonical_status.PENDING,
+    'deposited': canonical_status.FTD,
+}
+
+
+@pytest.fixture
+def hypernet_box(db):
+    """Mirrors the live BoxType 'hypernet' (id 2) — same default_status_mapping
+    as production carries, so this tests the real contract rather than a
+    convenient one."""
+    return BoxType.objects.create(
+        name='Hypernet', slug='hypernet-vocab',
+        connector_class='leadgen.connectors.HypernetConnector',
+        auth_type=BoxType.AUTH_API_KEY_HEADER, auth_param_name='x-api-key',
+        single_endpoint_path='/api/external/integration/lead',
+        fetch_endpoint_path='/api/external/integration/lead',
+        default_status_mapping={'sent': 'pending', 'deposited': 'ftd'},
+    )
+
+
+@pytest.fixture
+def hypernet_buyer(db, brand, hypernet_box):
+    return LeadBuyer.objects.create(
+        brand=brand, box_type=hypernet_box, name='Hypernet - vocab', slug='hypernet-vocab',
+        is_active=True, auto_inject=False, base_url='https://desperados.hn-crm.test',
+    )
+
+
+@pytest.mark.django_db
+class TestLiveVocabularyIsFullyMapped:
+    @pytest.mark.parametrize('raw,expected', sorted(OBSERVED_LIVE_VOCABULARY.items()))
+    def test_every_observed_status_maps_to_its_canonical_value(self, hypernet_buyer, raw, expected):
+        canonical, needs_review = map_buyer_status(hypernet_buyer, raw)
+        assert needs_review is False, f'{raw!r} would go silent — no postback reaches the affiliate'
+        assert canonical == expected
+
+    def test_deposited_is_the_billable_status(self, hypernet_buyer):
+        """Guards the money edge specifically: `deposited` must land on FTD,
+        the status the affiliate is paid on. A drift to `pending` silently
+        under-reports revenue; a drift the other way bills for nothing."""
+        canonical, _ = map_buyer_status(hypernet_buyer, 'deposited')
+        assert canonical == canonical_status.FTD
+
+    def test_mapped_values_are_real_canonical_statuses(self, hypernet_buyer):
+        for raw in OBSERVED_LIVE_VOCABULARY:
+            canonical, _ = map_buyer_status(hypernet_buyer, raw)
+            assert canonical in canonical_status.VALUES
+
+
+@pytest.mark.django_db
+class TestUnknownStatusStaysSilentRatherThanGuessing:
+    def test_an_unseen_status_is_flagged_for_review_not_mapped(self, hypernet_buyer):
+        """If Hypernet adds a disposition (spec §3.2: never drop or guess), it
+        must surface as review — NOT be coerced onto a neighbouring canonical
+        value, which would report a status the buyer never asserted."""
+        canonical, needs_review = map_buyer_status(hypernet_buyer, 'callback_scheduled')
+        assert canonical is None
+        assert needs_review is True
+
+    def test_raw_status_free_text_is_not_a_mapping_key(self, hypernet_buyer):
+        """rawStatus values seen live ('No answer', 'NoAnswer', 'Test Lead')
+        are broker free text — two spellings of one disposition in a five-row
+        sample. They must never resolve through status_mapping; only
+        registration.status does."""
+        for raw_text in ('No answer', 'NoAnswer', 'Test Lead'):
+            canonical, needs_review = map_buyer_status(hypernet_buyer, raw_text)
+            assert canonical is None
+            assert needs_review is True
+
+    def test_blank_status_is_not_review_worthy(self, hypernet_buyer):
+        """"The buyer has not reported yet" is not a mapping failure."""
+        canonical, needs_review = map_buyer_status(hypernet_buyer, '')
+        assert canonical is None
+        assert needs_review is False
