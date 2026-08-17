@@ -4,13 +4,20 @@ to be exhaustively unit-tested as a pure function: no Celery, no network,
 no side effects, just "given this lead and these rules, what's the buyer
 chain" — the guide's own words for why this piece gets isolated.
 
-Phase 1 ships the engine + admin (see leadgen/admin.py) to create rules +
-this module's tests. Nothing on the delivery path (tasks.py, services.py)
-calls resolve_buyer_chain() yet — routing is computed, not wired to
-auto-send, until a later phase explicitly enables it. Every RoutingRule
-also defaults to is_active=False, so even a saved rule is inert until
-someone deliberately flips it on — the same kill-switch posture as
-LeadBuyer.auto_inject.
+Phase 1 shipped the engine + admin (see leadgen/admin.py) to create rules +
+this module's tests, with nothing on the delivery path calling into it —
+routing was computed, not wired to auto-send.
+
+As of 2026-08-17 it IS wired: tasks.resolve_buyer_for_lead takes the head of
+resolve_buyer_chain() as the buyer to auto-inject to, so rules now decide
+where a captured lead actually goes. Read that function's docstring before
+changing anything here — in particular, it consults rules only for a brand
+that HAS active rules, so this module returning [] for such a brand means
+"leave it unrouted", never "let the caller pick something else".
+
+Every RoutingRule still defaults to is_active=False, so even a saved rule is
+inert until someone deliberately flips it on — the same kill-switch posture
+as LeadBuyer.auto_inject, and now with real delivery consequences.
 """
 from .models import RoutingRule
 

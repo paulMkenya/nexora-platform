@@ -69,10 +69,58 @@ Observed row, complete and verbatim (lead 27, a QA lead — synthetic data):
 | Contract key | Source | Note |
 |---|---|---|
 | `external_id` | `row['id']` | **Not `leadId`.** Injection *responds* with `leadId`; the GET *rows* key the same value as `id`. Anyone implementing from the old docstring would have looked for `leadId` on a row and found nothing. |
-| `buyer_status` | `row['registration']['status']` | `"deposited"` observed. `rawStatus` is the broker's own free text (`"Test Lead"`) and is the better candidate for `default_status_mapping`, which is still `{}`. |
+| `buyer_status` | `row['registration']['status']` | Their NORMALIZED vocabulary — see the status-vocabulary section below. `rawStatus` beside it is the broker's own free text and is deliberately NOT what we map. |
 | `deposit` | `row['isDeposited']` | Real boolean. |
 | `country_iso2` | `row['geo']` | `"MX"` — already alpha-2, matches our convention. |
 | `updated_at` | **no clean source** | See below. |
+
+## The status vocabulary — what they actually emit
+
+**Source: full-window probe of the live desperados box on 2026-08-17** (read-only,
+`from=2026-07-01`/`to=2026-09-01`, every row they hold: 5). Taken before putting
+the ChainPulse affiliate link LIVE, because once live these strings decide what
+the affiliate is told and what we could be billed for.
+
+`registration.status` — the field we map — has exactly **two** observed values:
+
+| `registration.status` | n | `default_status_mapping` → canonical | Affiliate sees |
+|---|---|---|---|
+| `sent` | 3 | `pending` | Pending (with buyer) |
+| `deposited` | 2 | `ftd` | **FTD — billable** |
+
+Both are mapped, so no lead from this box currently lands in the
+`canonical_status_needs_review` queue. An unmapped value never guesses: it sets
+that flag, logs a warning, and fires NO affiliate postback (see
+`tasks._apply_status_sync_result`).
+
+### Why we do not map `rawStatus`, even though it carries more detail
+
+`rawStatus` observed in the same 5 rows: `None` (×2), `'No answer'`, `'NoAnswer'`,
+`'Test Lead'`. Two spellings of one disposition in a five-row sample is the whole
+argument — it is broker-configured free text, not a vocabulary, and keying
+`status_mapping` on it would break the moment a broker renames a disposition.
+
+**The cost is real and worth stating plainly:** their normalized field collapses
+every call outcome into `sent`, so an affiliate on this box can only ever be told
+`pending` or `ftd`. We cannot report "no answer", "callback" or "not interested"
+to them, because Hypernet does not expose those in a field we can trust — not
+because Nexora lacks the canonical statuses (`canonical_status.py` has all of
+them). Closing that gap needs Hypernet to expose a stable disposition
+enum; until then, do not invent one from `rawStatus`.
+
+### ⚠️ `deposited` does not imply the broker reached the customer
+
+Observed on **lead 66** (2026-08-17, a real ChainPulse lead): `status='deposited'`,
+`isDeposited=true`, `depositedAt` set — and `rawStatus='NoAnswer'`. The QA row
+`422bd856` is the same shape with `rawStatus='Test Lead'`.
+
+So `isDeposited` is an independent axis from the call disposition, and a row can
+be **billable and un-contacted at the same time**. We report `ftd` for these,
+because `isDeposited`/`depositedAt` is their definition of a deposit and it is the
+only deposit signal they give us. Anyone reconciling revenue against call
+outcomes should know the two axes disagree by design, and a `rawStatus` of
+`'Test Lead'` on a deposited row means their side considers it test money while
+our postback still says `ftd`.
 
 ### The `updated_at` gap
 

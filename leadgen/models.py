@@ -713,9 +713,16 @@ class RoutingRule(models.Model):
     `is_active` defaults to False, same kill-switch posture as
     LeadBuyer.auto_inject: a new rule is fully computed the moment you save
     it (visible via resolve_buyer_chain), but never actually influences
-    delivery until you flip it on. As of Phase 1 (see leadgen/README.md),
-    nothing calls resolve_buyer_chain from the delivery path yet either —
-    routing is computed, not wired to auto-send."""
+    delivery until you flip it on.
+
+    Flipping it on is now a live-delivery change: as of 2026-08-17 the
+    capture path resolves its buyer through these rules (see
+    leadgen.tasks.resolve_buyer_for_lead). Note the all-or-nothing rule
+    documented there — the FIRST active rule a brand gets takes that brand
+    off the legacy "alphabetically-first active buyer" pick entirely, so any
+    lead in that brand matching no rule becomes UNROUTED rather than falling
+    back. Seed the brand's wildcard parity rule (management command
+    seed_wildcard_routing_rules) before adding its first narrow rule."""
 
     brand = models.ForeignKey(
         'brands.Brand', on_delete=models.CASCADE, related_name='routing_rules',

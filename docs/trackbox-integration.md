@@ -130,7 +130,95 @@ placeholder printed in their public documentation — that value
 (`2643889w34df345676ssdas323tgc738`) was tried against the live box on
 2026-08-12 and rejected exactly like a random string.
 
-Once it arrives, see §7.
+**Still blocked as of 2026-08-17.** Re-probed the live box that day; the stored
+key is still the doc placeholder and the pull endpoint still answers
+`code 401`. Confirmed at the same time that this is what stops exxtraffic's
+leads (routed to this box — see the routing rules in `leadgen_routingrule`)
+from ever reporting a status: injection succeeds, the return path does not.
+
+### The error message on this box does not mean what it says
+
+Probed 2026-08-17, three requests differing only in credentials:
+
+| Sent | Response |
+|---|---|
+| correct user + pass, **no** `x-api-key` | `code 401` — "Cant Pull Data…" |
+| correct user + pass + placeholder key | `code 401` — "**User and password doesnt match**…" |
+| deliberately **wrong** user + pass + placeholder key | `code 401` — same message |
+
+The last two are the point: with an invalid key the box emits *"User and
+password doesnt match"* whether the username/password are right or wrong, so
+that message carries **no information about them at all**. `DanTVSnew` and its
+password are proven good by live deliveries on the push path. Do not go back to
+the vendor asking about the password on the strength of this message.
+
+### ⏸ PAUSED 2026-08-17 — `auto_inject=False` on `trackbox-traffixworld`
+
+Traffic to this box is deliberately held while the key is outstanding, on
+Paul's instruction. Rationale is the line already in §7: delivering
+untrackable leads is worse than delivering none — every lead pushed here
+today is one whose deposit can never come back, so it cannot be billed and
+cannot be defended.
+
+**`auto_inject=False`, NOT `is_active=False`.** The distinction is
+load-bearing and easy to get wrong:
+
+| | `auto_inject=False` (chosen) | `is_active=False` (rejected) |
+|---|---|---|
+| New lead | held at `status='new'` — "waiting" | resolves to an empty chain → `UNROUTED` |
+| The 6 leads already delivered | **still polled** for status | **sync stops** — `sync_buyer_statuses` filters on `is_active` |
+| Resume | flip the flag, flush the backlog | re-route each stranded lead |
+
+That middle row is the one that matters: deactivating the buyer would mean
+the leads already sitting at TrackBox never pick up their statuses even
+after the key arrives, which is the opposite of the goal.
+
+Intake is unaffected — `leadgen/api_views.py` discards `maybe_auto_inject`'s
+return, so exxtraffic's submissions are still accepted, deduped and stored.
+We keep receiving their traffic; we just do not hand it onward yet.
+
+**To resume, once `set_trackbox_api_key` reports VERIFIED:**
+
+```bash
+# 1. re-enable automatic injection
+docker exec nexora-web python manage.py shell -c \
+  "from leadgen.models import LeadBuyer; b=LeadBuyer.objects.get(slug='trackbox-traffixworld'); \
+   b.auto_inject=True; b.save(update_fields=['auto_inject','updated_at']); print(b.auto_inject)"
+
+# 2. flush whatever accumulated while paused
+docker exec nexora-web python manage.py inject_pending_leads --buyer trackbox-traffixworld
+```
+
+Step 2 is required: `maybe_auto_inject` only ever runs at intake, so nothing
+re-evaluates a lead that was held. `inject_pending_leads` calls
+`start_injection` directly and so is not itself gated by `auto_inject` —
+run it only after step 1 has been verified, or it will push into a box that
+still cannot report back.
+
+### Applying the key when it arrives
+
+`seed_trackbox_box --buyer` re-seeds the whole row and demands all three
+secrets, which means re-typing a working password next to a working injection
+path. Use the single-field command instead — it probes the live box with the
+candidate key and stores it **only if the box accepts it**, which matters here
+because a stored-but-wrong key is indistinguishable from the current outage
+until the next Beat tick:
+
+```bash
+# probe only, writes nothing
+TRACKBOX_API_KEY=... docker exec -e TRACKBOX_API_KEY nexora-web \
+    python manage.py set_trackbox_api_key --check
+
+# verify, then persist on success
+TRACKBOX_API_KEY=... docker exec -e TRACKBOX_API_KEY nexora-web \
+    python manage.py set_trackbox_api_key
+```
+
+It refuses the doc placeholder by name. After it stores, run one sync
+immediately rather than waiting 30 minutes for Beat — the command prints the
+exact invocation. Then continue with §7's remaining steps (row-id key,
+`DEFAULT_STATUS_MAPPING`) — those are still unverified, because no successful
+pull has ever been observed from this box.
 
 ---
 

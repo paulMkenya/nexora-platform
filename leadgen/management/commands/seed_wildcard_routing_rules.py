@@ -1,15 +1,21 @@
 """Seed one wildcard RoutingRule per ACTIVE LeadBuyer, so the routing chain
 reproduces today's implicit buyer selection exactly.
 
-WHY THIS EXISTS — the capture path currently selects a buyer with
-tasks.resolve_buyer_for_lead: LeadBuyer.objects.filter(brand, is_active)
-.first(), which under LeadBuyer.Meta.ordering picks the alphabetically-first
-buyer. The chain path (routing.resolve_buyer_chain) builds its ordered buyer
-list purely from RoutingRules. Prod today has ZERO active RoutingRules, so
-routing the capture path through the chain without seeding rules first would
-resolve every lead to an empty chain and mark it UNROUTED — a full delivery
-outage for every brand. These wildcard rules are the bridge: they make the
-current implicit selection explicit, so the switch is a no-op.
+WHY THIS EXISTS — the capture path USED to select a buyer with
+LeadBuyer.objects.filter(brand, is_active).first(), which under
+LeadBuyer.Meta.ordering picks the alphabetically-first buyer. The chain path
+(routing.resolve_buyer_chain) builds its ordered buyer list purely from
+RoutingRules, and tasks.resolve_buyer_for_lead now takes its buyer from that
+chain. A brand with active buyers but no active rule would resolve every lead
+to an empty chain and mark it UNROUTED — a full delivery outage for that
+brand. These wildcard rules are the bridge: they make the implicit selection
+explicit, so adopting rules is a no-op.
+
+STILL NEEDED AFTER UNIFICATION, for any brand that has not been onto rules
+yet: resolve_buyer_for_lead keeps the legacy pick for a brand with zero
+active rules, but the moment that brand gains its FIRST active rule it is
+governed entirely by rules. Seed the wildcard first, then add narrow rules
+on top — never the other way round.
 
 EQUIVALENCE BY CONSTRUCTION, NOT BY LUCK — rules are created in each brand's
 CURRENT selection order (LeadBuyer.Meta.ordering, i.e. by name) and all share
@@ -46,6 +52,19 @@ def _wildcard_kwargs():
     criterion explicitly blank/null, mirroring RoutingRule's own wildcard
     semantics (see routing._rule_matches)."""
     return dict(offer=None, country_iso2='', affiliate=None, vertical='', source_channel='')
+
+
+def _legacy_selection(brand_id):
+    """What the capture path picked BEFORE rules drove it: the alphabetically
+    first active buyer in the brand (LeadBuyer.Meta.ordering is ('name',)).
+
+    Inlined here rather than called through leadgen.tasks.resolve_buyer_for_lead
+    on purpose. That function now resolves through the chain itself, so asking
+    it "what would you pick?" and comparing the answer to the chain proves
+    nothing — the equivalence check would pass by tautology, exactly when it
+    most needs to fail. This keeps the old behavior pinned as an independent
+    reference point."""
+    return LeadBuyer.objects.filter(brand_id=brand_id, is_active=True).first()
 
 
 def _active_buyers_in_selection_order(brand_id=None):
@@ -110,8 +129,10 @@ class Command(BaseCommand):
                         priority=WILDCARD_PRIORITY,
                         # Active on creation, deliberately: an inactive rule
                         # would leave the chain empty and defeat the whole
-                        # point. These rules only take effect once capture is
-                        # switched onto the chain, which is a separate change.
+                        # point. Since capture now resolves through the chain,
+                        # this rule takes effect immediately — which is what
+                        # makes it a no-op, because it reproduces the pick the
+                        # brand already had.
                         is_active=True,
                         **_wildcard_kwargs(),
                     )
@@ -127,12 +148,21 @@ class Command(BaseCommand):
 
     def _verify(self, brand_id):
         """For every brand with active buyers, assert that what the CHAIN
-        would select equals what the capture path selects TODAY — and that
-        the full chain order matches the current selection order, so a brand
-        that later gains a second buyer stays predictable."""
+        would select equals what the LEGACY selection picked — and that the
+        full chain order matches that selection order, so a brand that later
+        gains a second buyer stays predictable.
+
+        SCOPE: this is a pre-unification parity check for WILDCARD rule sets
+        only. It probes with a criteria-free lead, so once a brand carries
+        narrow rules (per-affiliate, per-geo, per-offer) the probe correctly
+        matches only the wildcard and this will report NOT EQUIVALENT for
+        that brand. That is the check doing its job on the wrong question,
+        not a regression: deliberately routing one traffic source to a
+        different buyer IS a change in which buyer receives leads, which is
+        precisely what this refuses to let happen by accident. Run it before
+        adding narrow rules, not after."""
         from leadgen.models import Lead
         from leadgen.routing import resolve_buyer_chain
-        from leadgen.tasks import resolve_buyer_for_lead
 
         grouped = _active_buyers_in_selection_order(brand_id)
         if not grouped:
@@ -147,7 +177,7 @@ class Command(BaseCommand):
             probe = Lead(brand_id=bid, intake_channel=Lead.CHANNEL_LANDING_PAGE,
                          email='probe@example.invalid', phone='+10000000000')
 
-            today = resolve_buyer_for_lead(probe)
+            today = _legacy_selection(bid)
             chain = resolve_buyer_chain(probe)
             chain_first = chain[0] if chain else None
 
@@ -158,7 +188,7 @@ class Command(BaseCommand):
             ok_order = chain_order == expected_order
 
             self.stdout.write(f'\nbrand {bid}:')
-            self.stdout.write(f'  today  (.first() by name): {today.name if today else "—"}')
+            self.stdout.write(f'  legacy (.first() by name): {today.name if today else "—"}')
             self.stdout.write(f'  chain  (rule-ordered)    : {chain_first.name if chain_first else "—"}')
             self.stdout.write(f'  current order : {expected_order}')
             self.stdout.write(f'  chain order   : {chain_order}')

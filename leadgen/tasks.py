@@ -46,11 +46,46 @@ def resolve_buyer_for_lead(lead):
     no brand at all — resolves to None, which callers already treat as "leave
     it pending, no destination yet" rather than an error. That is the correct
     outcome: pending is recoverable, delivering to another brand's buyer is
-    not."""
-    from .models import LeadBuyer
+    not.
+
+    WHICH buyer, as of 2026-08-17: the head of the lead's resolved routing
+    chain (leadgen.routing.resolve_buyer_chain) — so a brand can send one
+    traffic source to one buyer and another source to another buyer, in
+    parallel, which is the whole point of RoutingRule's per-affiliate/offer/
+    geo criteria. Before this, routing rules were computed but never consulted
+    on the capture path, and every lead in a brand went to the same buyer:
+    `.filter(brand, is_active=True).first()` under LeadBuyer.Meta.ordering
+    ('name',), i.e. whichever active buyer happened to sort first by name.
+
+    THE FALLBACK IS DELIBERATELY ALL-OR-NOTHING PER BRAND. A brand with at
+    least one active rule is governed ENTIRELY by its rules: an empty chain
+    means "no destination configured for this lead", not "fall back to the
+    alphabetical pick". Falling back per-lead would be actively dangerous —
+    it silently re-introduces the name-ordering pick for exactly the leads a
+    rule set forgot to cover, which is how a brand's traffic ends up on a
+    buyer nobody chose (activating a buyer whose name sorts first would
+    quietly steal every unmatched lead from the buyer already serving them).
+    A brand with NO active rules keeps the legacy behavior untouched, so
+    brands that have not been migrated onto rules — and any brand created
+    later — deliver exactly as they always did rather than going dark.
+
+    leadgen/management/commands/seed_wildcard_routing_rules.py is the bridge
+    for that migration: it makes a brand's current implicit pick explicit as
+    a wildcard rule, so adopting rules is a no-op until you add a narrower
+    rule on top."""
+    from .models import LeadBuyer, RoutingRule
+    from .routing import resolve_buyer_chain
 
     if not lead.brand_id:
         return None
+
+    brand_has_rules = RoutingRule.objects.filter(
+        brand_id=lead.brand_id, is_active=True, buyer__is_active=True,
+    ).exists()
+    if brand_has_rules:
+        chain = resolve_buyer_chain(lead)
+        return chain[0] if chain else None
+
     return LeadBuyer.objects.filter(brand_id=lead.brand_id, is_active=True).first()
 
 
