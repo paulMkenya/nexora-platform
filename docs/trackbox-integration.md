@@ -152,6 +152,49 @@ that message carries **no information about them at all**. `DanTVSnew` and its
 password are proven good by live deliveries on the push path. Do not go back to
 the vendor asking about the password on the strength of this message.
 
+### ⏸ PAUSED 2026-08-17 — `auto_inject=False` on `trackbox-traffixworld`
+
+Traffic to this box is deliberately held while the key is outstanding, on
+Paul's instruction. Rationale is the line already in §7: delivering
+untrackable leads is worse than delivering none — every lead pushed here
+today is one whose deposit can never come back, so it cannot be billed and
+cannot be defended.
+
+**`auto_inject=False`, NOT `is_active=False`.** The distinction is
+load-bearing and easy to get wrong:
+
+| | `auto_inject=False` (chosen) | `is_active=False` (rejected) |
+|---|---|---|
+| New lead | held at `status='new'` — "waiting" | resolves to an empty chain → `UNROUTED` |
+| The 6 leads already delivered | **still polled** for status | **sync stops** — `sync_buyer_statuses` filters on `is_active` |
+| Resume | flip the flag, flush the backlog | re-route each stranded lead |
+
+That middle row is the one that matters: deactivating the buyer would mean
+the leads already sitting at TrackBox never pick up their statuses even
+after the key arrives, which is the opposite of the goal.
+
+Intake is unaffected — `leadgen/api_views.py` discards `maybe_auto_inject`'s
+return, so exxtraffic's submissions are still accepted, deduped and stored.
+We keep receiving their traffic; we just do not hand it onward yet.
+
+**To resume, once `set_trackbox_api_key` reports VERIFIED:**
+
+```bash
+# 1. re-enable automatic injection
+docker exec nexora-web python manage.py shell -c \
+  "from leadgen.models import LeadBuyer; b=LeadBuyer.objects.get(slug='trackbox-traffixworld'); \
+   b.auto_inject=True; b.save(update_fields=['auto_inject','updated_at']); print(b.auto_inject)"
+
+# 2. flush whatever accumulated while paused
+docker exec nexora-web python manage.py inject_pending_leads --buyer trackbox-traffixworld
+```
+
+Step 2 is required: `maybe_auto_inject` only ever runs at intake, so nothing
+re-evaluates a lead that was held. `inject_pending_leads` calls
+`start_injection` directly and so is not itself gated by `auto_inject` —
+run it only after step 1 has been verified, or it will push into a box that
+still cannot report back.
+
 ### Applying the key when it arrives
 
 `seed_trackbox_box --buyer` re-seeds the whole row and demands all three
