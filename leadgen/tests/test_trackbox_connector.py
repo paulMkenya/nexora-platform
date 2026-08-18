@@ -794,3 +794,120 @@ class TestAutologinUrlIsNeverAudited:
         audited = TrackBoxConnector(trackbox_buyer).sanitize_response_for_audit(LIVE_SUCCESS)
         assert audited['addonData']['data']['brokerUrl'] == REDACTED
         assert audited['addonData']['fallbackURL'] == REDACTED
+
+
+# --- the capacity refusals this box actually sends --------------------------
+#
+# Reconstructed from the LIVE injections recorded on 2026-08-18 (LeadInjection
+# #140-144, and #133 a week earlier). Every one of them was recorded as a
+# terminal `rejected` with a single attempt, because the classification below
+# never saw the text: it looked under `message`, and this box does not use it.
+# Six real leads, none of which any human at the buyer ever saw.
+
+# Injection #143 (lead 80). Note there is NO `message` key, and the reason
+# appears twice — once flat, once inside an `error` OBJECT. The nested shape
+# is a downstream platform's own response forwarded verbatim: Traffix World
+# fronts other boxes, so its capacity vocabulary is theirs, not TrackBox's.
+LIVE_NO_HUBS = {
+    'status': False,
+    'errorMessage': 'No hubs available for this lead.',
+    'data': '{"success":false,"redirectUrl":null,"leadId":null,'
+            '"error":"No hubs available for this lead."}',
+    'error': {
+        'status': 'failed',
+        'errorMessage': 'No hubs available for this lead.',
+        'data': '{"success":false,"redirectUrl":null,"leadId":null,'
+                '"error":"No hubs available for this lead."}',
+        'failLog': True,
+    },
+}
+
+# Injection #133 (lead 65). Here the sentence exists ONLY in `data` — which is
+# why classification has to read that key even though the affiliate-facing
+# failure reason must not. Note the word order: "exceeded their caps", not
+# "caps exceeded", which is what the original pattern required.
+LIVE_CAPS_EXCEEDED = {
+    'status': False,
+    'data': 'All campaigns in box exceeded their caps. box: DanTVSnew (843). country: br ',
+}
+
+
+class TestLiveCapacityRefusals:
+    """A capacity refusal is not a verdict on the lead — it must stay
+    recoverable (retry/cascade), never terminal. See LeadBuyerCapacityError."""
+
+    def test_no_hubs_available_is_a_capacity_refusal(self, trackbox_buyer):
+        connector = TrackBoxConnector(trackbox_buyer)
+        with patch('leadgen.connectors.requests.request', return_value=_response(LIVE_NO_HUBS)):
+            with pytest.raises(LeadBuyerCapacityError):
+                connector.inject_lead(Lead(email='a@b.test', phone='+14155552671'))
+
+    def test_caps_exceeded_is_a_capacity_refusal_even_though_it_is_only_in_data(
+            self, trackbox_buyer):
+        connector = TrackBoxConnector(trackbox_buyer)
+        with patch('leadgen.connectors.requests.request',
+                   return_value=_response(LIVE_CAPS_EXCEEDED)):
+            with pytest.raises(LeadBuyerCapacityError):
+                connector.inject_lead(Lead(email='a@b.test', phone='+14155552671'))
+
+    def test_the_reason_is_found_without_a_message_key(self, trackbox_buyer):
+        """The regression in one line: `message` is absent from every real
+        failure this box has ever sent us."""
+        assert 'message' not in LIVE_NO_HUBS
+        assert TrackBoxConnector._error_text(LIVE_NO_HUBS).startswith(
+            'No hubs available for this lead.')
+
+    def test_one_sentence_repeated_four_times_is_reported_once(self, trackbox_buyer):
+        """The live body says it flat, again inside `error`, and twice more
+        inside JSON blobs. The reason an operator reads must not."""
+        assert TrackBoxConnector._detail_text(LIVE_NO_HUBS) == 'No hubs available for this lead.'
+
+    def test_a_nested_error_object_is_descended_into_not_stringified(self, trackbox_buyer):
+        body = {'status': False, 'error': {'errorMessage': 'No hubs available for this lead.'}}
+        assert TrackBoxConnector._error_text(body) == 'No hubs available for this lead.'
+
+    def test_a_real_lead_verdict_is_still_terminal(self, trackbox_buyer):
+        """The pattern must fail CLOSED: widening it must not turn an actual
+        rejection into an endless retry."""
+        connector = TrackBoxConnector(trackbox_buyer)
+        body = {'status': False, 'errorMessage': 'Invalid phone number', 'code': 400}
+        with patch('leadgen.connectors.requests.request', return_value=_response(body)):
+            response = connector.inject_lead(Lead(email='a@b.test', phone='+14155552671'))
+        assert response == body
+
+
+class TestFailureReasonIsAffiliateSafe:
+    """LeadInjection.failure_reason is rendered to AFFILIATES
+    (affiliate_ui/templates/affiliate_ui/leads.html). The pre-fix code
+    stringified the entire response into it — including `addonData`, which is
+    our own request echoed back, password and all. Only truncation at 255
+    chars kept that out of the browser."""
+
+    def test_the_data_blob_never_reaches_the_failure_reason(self, trackbox_buyer):
+        body = {
+            'status': False,
+            'errorMessage': 'No hubs available for this lead.',
+            'data': '{"redirectUrl":"https://broker/auto?token=LEAKED"}',
+        }
+        _, status, reason = TrackBoxConnector(trackbox_buyer).parse_injection_result(body)
+        assert status == 'failed'
+        assert 'No hubs available for this lead.' in reason
+        assert 'LEAKED' not in reason
+        assert 'redirectUrl' not in reason
+
+    def test_the_echoed_request_never_reaches_the_failure_reason(self, trackbox_buyer):
+        body = {
+            'status': False,
+            'errorMessage': 'Invalid phone number',
+            'addonData': {'password': 'BROKERPASSWORD', 'email': 'a@b.test'},
+        }
+        _, _, reason = TrackBoxConnector(trackbox_buyer).parse_injection_result(body)
+        assert 'BROKERPASSWORD' not in reason
+        assert reason == 'Invalid phone number'
+
+    def test_a_reasonless_refusal_says_so_rather_than_dumping_the_body(self, trackbox_buyer):
+        _, status, reason = TrackBoxConnector(trackbox_buyer).parse_injection_result(
+            {'status': False, 'addonData': {'password': 'BROKERPASSWORD'}})
+        assert status == 'failed'
+        assert 'BROKERPASSWORD' not in reason
+        assert 'without a readable reason' in reason

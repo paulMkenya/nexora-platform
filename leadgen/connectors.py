@@ -1492,9 +1492,28 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
     # about whitespace and plurals, unanchored, and failing CLOSED (a
     # reword returns False and the lead takes today's path — a terminal
     # rejection — rather than retrying forever against a real misconfig).
+    #
+    # The last two alternatives are the phrasings the LIVE Traffix World box
+    # actually sends, neither of which the first three matched:
+    #
+    #   "No hubs available for this lead."
+    #   "All campaigns in box exceeded their caps. box: DanTVSnew (843)."
+    #
+    # The first is Hypernet's own wording (see
+    # HypernetConnector.CAPACITY_ERROR_PATTERN) arriving through TrackBox —
+    # this box fronts other platforms and forwards their refusal text
+    # verbatim, so its capacity vocabulary is NOT bounded by TrackBox's own
+    # documentation. Expect to add more; each miss costs real leads (six on
+    # 2026-08-18 alone, marked rejected with zero retries).
+    #
+    # The second is why "cap...exceeded" was not enough: their sentence puts
+    # the verb BEFORE the noun ("exceeded their caps"), and the original
+    # pattern only matched the other order.
     CAPACITY_ERROR_PATTERN = re.compile(
         r'(no\s+(available\s+)?(box|boxes|brand|brands|integration|integrations)'
         r'|cap(acity)?\s+(is\s+)?(full|reached|exceeded)'
+        r'|exceeded\s+\S+\s+cap(s)?'
+        r'|no\s+hubs?\s+available'
         r'|daily\s+limit)', re.IGNORECASE)
 
     # Their wording for "we already have this person".
@@ -1601,6 +1620,79 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
         """
         return isinstance(parsed, dict) and 'status' in parsed and not parsed['status']
 
+    # Where this box writes its human-readable failure text. It does NOT use
+    # `message` — the key the shared base and this class's first version both
+    # looked under — so every classification below silently saw an empty
+    # string and no capacity or auth refusal was ever recognised. That is the
+    # bug that marked six live leads `rejected` on 2026-08-18: a capacity
+    # refusal read as a verdict on the lead, terminal, no retry.
+    #
+    # `message` stays first anyway: it costs nothing, and their docs claim it.
+    #
+    # Split in two ON PURPOSE, and the split is a SECURITY boundary:
+    #
+    # * CLASSIFY_TEXT_KEYS is matched against, never stored. It includes
+    #   `data`, which on a failure holds the downstream box's raw JSON — the
+    #   only place the refusal reason appears for some upstreams.
+    # * DETAIL_TEXT_KEYS is what lands in LeadInjection.failure_reason, which
+    #   affiliate_ui/templates/affiliate_ui/leads.html renders TO AFFILIATES.
+    #   `data` is excluded there: it carries redirect/autologin URLs, and the
+    #   pre-fix code (which stringified the WHOLE response into
+    #   failure_reason) was one field-ordering away from publishing the
+    #   broker password we echo back inside `addonData`. Same class of leak
+    #   as the response_payload incident that AUDIT_RESPONSE_ALLOWLIST exists
+    #   for — do not "simplify" these back into one list.
+    DETAIL_TEXT_KEYS = ('message', 'errorMessage', 'error')
+    CLASSIFY_TEXT_KEYS = DETAIL_TEXT_KEYS + ('data',)
+
+    # A nested error object is one level of dict; deeper than that is a
+    # payload echo, not a reason.
+    ERROR_TEXT_MAX_DEPTH = 1
+
+    @classmethod
+    def _error_text(cls, parsed, keys=None, _depth: int = 0) -> str:
+        """The human-readable failure reason(s) in one ``status: false`` body.
+
+        Joined rather than first-wins because the box spreads one refusal
+        across several keys and no single one is reliably present: lead 80's
+        sat in `errorMessage` AND in a nested `error` dict, lead 65's only in
+        `data`. Matching a joined string is what makes the classification
+        independent of which key this particular upstream happened to use.
+
+        Values that are dicts are descended into (bounded by
+        ERROR_TEXT_MAX_DEPTH) — their `error` is an OBJECT carrying its own
+        errorMessage, so a str() of it would work by accident today and stop
+        working the moment they add a field.
+        """
+        keys = keys or cls.CLASSIFY_TEXT_KEYS
+        parts: list[str] = []
+        cls._collect_error_text(parsed, keys, 0, parts)
+        return ' | '.join(parts)
+
+    @classmethod
+    def _collect_error_text(cls, value, keys, depth: int, parts: list) -> None:
+        """_error_text's walk. Accumulates into one shared list so the
+        de-duplication is GLOBAL: this box repeats the same sentence at up to
+        four places in a single body (flat, nested, and inside two JSON
+        blobs), and a per-level dedupe would render it four times in the
+        operator-visible reason."""
+        if isinstance(value, str):
+            text = value.strip()
+            if text and text not in parts:
+                parts.append(text)
+            return
+        if not isinstance(value, dict) or depth > cls.ERROR_TEXT_MAX_DEPTH:
+            return
+        for key in keys:
+            child = value.get(key)
+            if isinstance(child, (str, dict)):
+                cls._collect_error_text(child, keys, depth + 1, parts)
+
+    @classmethod
+    def _detail_text(cls, parsed) -> str:
+        """The affiliate-safe half of _error_text — see DETAIL_TEXT_KEYS."""
+        return cls._error_text(parsed, keys=cls.DETAIL_TEXT_KEYS)
+
     def _raise_for_soft_error(self, parsed, path: str) -> None:
         """Translate a ``status: false`` body into the shared taxonomy.
 
@@ -1626,7 +1718,7 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
         if not self._is_soft_error(parsed):
             return
 
-        message = str(parsed.get('message') or '')
+        message = self._error_text(parsed)
         try:
             code = int(parsed.get('code') or 0)
         except (TypeError, ValueError):
@@ -1814,10 +1906,20 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
         if response.get('status'):
             return self._extract_external_id(response), 'delivered', ''
 
-        message = str(response.get('message') or response.get('error') or '')
+        # Two different strings, deliberately: `classify` is the widest view
+        # of what went wrong (it may include `data`), `detail` is the subset
+        # safe to render to an affiliate. See DETAIL_TEXT_KEYS.
+        classify = self._error_text(response)
+        # No fallback to `classify` when the safe keys are empty, tempting as
+        # it is: that would put `data` — redirect URLs and our own echoed
+        # payload — into an affiliate-rendered field, which is the whole
+        # reason the two key lists are separate. The sanitized
+        # response_payload is where an operator reads the rest.
+        detail = self._detail_text(response) or (
+            'TrackBox refused the lead without a readable reason — see the response payload.')
         code = response.get('code')
-        detail = f'[{code}] {message}' if code else (message or str(response))
-        status = 'duplicate' if self.DUPLICATE_PATTERN.search(message) else 'failed'
+        detail = f'[{code}] {detail}' if code else detail
+        status = 'duplicate' if self.DUPLICATE_PATTERN.search(classify) else 'failed'
         return '', status, detail[:255]
 
     # --- status sync ----------------------------------------------------------------
@@ -1878,7 +1980,7 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
             if self._is_soft_error(response):
                 raise LeadBuyerError(
                     f'TrackBox pull failed for window {start}..{end}: '
-                    f'{str(response.get("message") or response)[:200]}')
+                    f'{(self._error_text(response) or str(response))[:200]}')
 
             rows = (response or {}).get('data') or []
             collected.extend(rows)
