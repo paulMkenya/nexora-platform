@@ -95,3 +95,42 @@ class TestRedriveLeadsCommand:
         _failed(lead, buyer)
         with pytest.raises(CommandError):
             call_command('redrive_leads', ids=str(lead.pk), buyer='nope', stdout=StringIO())
+
+
+@pytest.mark.django_db
+class TestTheStaleVerdictIsCleared:
+    """A re-driven lead must stop claiming a verdict no buyer stands behind.
+
+    inject_lead_task writes Lead.status only when it reaches an outcome, so
+    without this the lead reads `rejected` for the entire retry window — up to
+    ~11h on CAPACITY_RETRY_BACKOFFS — while an injection is actively in
+    flight. That status is what the affiliate API returns.
+    """
+
+    def test_a_re_driven_lead_goes_back_to_new(self, buyer):
+        lead = _lead(buyer, status=Lead.STATUS_REJECTED)
+        _failed(lead, buyer)
+        with patch('leadgen.services.inject_lead_task'):
+            call_command('redrive_leads', ids=str(lead.pk), stdout=StringIO())
+        lead.refresh_from_db()
+        assert lead.status == Lead.STATUS_NEW
+
+    def test_a_dry_run_changes_nothing(self, buyer):
+        lead = _lead(buyer, status=Lead.STATUS_REJECTED)
+        _failed(lead, buyer)
+        with patch('leadgen.services.inject_lead_task'):
+            call_command('redrive_leads', ids=str(lead.pk), dry_run=True, stdout=StringIO())
+        lead.refresh_from_db()
+        assert lead.status == Lead.STATUS_REJECTED
+
+    def test_a_skipped_lead_keeps_its_status(self, buyer):
+        """A lead already delivered is skipped — and must NOT be walked back
+        to `new`, which would erase a real sale from every report built on
+        lead status."""
+        lead = _lead(buyer, status=Lead.STATUS_INJECTED)
+        LeadInjection.objects.create(
+            lead=lead, buyer=buyer, status=LeadInjection.STATUS_DELIVERED)
+        with patch('leadgen.services.inject_lead_task'):
+            call_command('redrive_leads', ids=str(lead.pk), stdout=StringIO())
+        lead.refresh_from_db()
+        assert lead.status == Lead.STATUS_INJECTED

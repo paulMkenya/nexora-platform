@@ -86,6 +86,20 @@ class Command(BaseCommand):
             if options['dry_run']:
                 self.stdout.write(f'  lead {lead.pk}: would re-drive to {buyer.name}.')
             else:
+                # Clear the stale verdict BEFORE re-injecting. Nothing else
+                # does: inject_lead_task only writes Lead.status when it
+                # reaches an OUTCOME, so a re-driven lead keeps saying
+                # `rejected` for the whole retry window — hours, now that a
+                # capacity refusal retries on CAPACITY_RETRY_BACKOFFS. The
+                # affiliate polling GET /api/leads would read a verdict that
+                # no buyer is standing behind any more, which is the exact
+                # misreport this whole incident was about.
+                #
+                # STATUS_NEW, not a new state: "nothing has judged this lead"
+                # is precisely what new means. It cannot be double-enqueued
+                # by inject_pending_leads either — that excludes leads with a
+                # PENDING injection, and start_injection has just made one.
+                Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_NEW)
                 start_injection(lead, buyer, synchronous=False)
                 self.stdout.write(f'  lead {lead.pk}: queued for {buyer.name}.')
             enqueued += 1
