@@ -27,6 +27,8 @@ from django.db import models
 from django.utils import timezone
 
 from nexora.crypto import decrypt_secret, encrypt_secret
+
+from .connector_registry import connector_choices
 from user_profile.geo import country_choices
 
 from . import canonical_status
@@ -78,7 +80,11 @@ class BoxType(models.Model):
     # (a different auth scheme entirely, XML, SOAP, a different success/
     # duplicate/failure envelope) needs its own connector_class pointing at
     # a real Python subclass — see leadgen/README.md.
-    connector_class = models.CharField(max_length=200, default='leadgen.connectors.LeadBuyerConnector')
+    connector_class = models.CharField(
+        max_length=200, default='leadgen.connectors.LeadBuyerConnector',
+        choices=connector_choices,
+        help_text='Which integration this template speaks. Chosen from the vetted registry.',
+    )
 
     # --- endpoint shape (same for every buyer on this platform) ---
     auth_type = models.CharField(max_length=20, choices=AUTH_CHOICES, default=AUTH_API_KEY_QUERY)
@@ -107,14 +113,81 @@ class BoxType(models.Model):
     # Inbound API spec §3.2 — the return path's status normalization.
     default_status_mapping = models.JSONField(default=dict, blank=True)
 
+    # WHO OWNS THIS TEMPLATE.
+    #
+    # NULL = a PLATFORM template: written by the platform owner, offered to
+    # every brand. Set = a template one brand built for itself, visible only to
+    # that brand.
+    #
+    # The null-means-shared reading is the OPPOSITE of the rule for offers, and
+    # deliberately so — it is the inbound/outbound principle the routing code
+    # already documents. An Offer is INBOUND (a brand's own inventory), so a
+    # null-brand offer reaching everyone is a leak. A BoxType is an OUTBOUND
+    # integration RECIPE — "this is how one speaks to Hypernet" — which is a
+    # property of the platform, not of anyone's commercial relationship. It
+    # holds no credentials and no counterparty: those live on LeadBuyer, which
+    # is strictly brand-owned and stays that way. Sharing the recipe leaks
+    # nothing; re-deriving it per brand would just mean four copies to fix when
+    # a vendor changes their API.
+    brand = models.ForeignKey(
+        'brands.Brand', on_delete=models.CASCADE, related_name='box_types',
+        null=True, blank=True,
+        help_text='Leave empty for a platform template available to every brand.',
+    )
+
+    # What an operator must supply when creating a buyer on this template.
+    #
+    # THE POINT OF THE WHOLE FEATURE. Before this, a Hypernet box needed
+    # affc/bxc/vtc/funnel and nothing in the software said so: the console
+    # showed a raw JSON textarea and the knowledge lived in a hard-coded dict
+    # inside a management command, some connector class attributes, and a
+    # person's memory. Onboarding box #4 therefore needed an engineer.
+    #
+    # A list of {"name", "label", "help", "required", "secret"} objects. The
+    # buyer form renders itself from this, so a template describes its own
+    # onboarding and adding a box on a KNOWN platform stops being a code change.
+    # Validated by clean(); see leadgen.box_variables for the schema helpers.
+    variable_schema = models.JSONField(
+        default=list, blank=True,
+        help_text='The fields an operator fills in when creating a buyer on this template.',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ('name',)
 
+    def clean(self):
+        """Two guards, both load-bearing now that brand admins may write here.
+
+        1. connector_class must be REGISTERED. The field is fed to
+           import_string, so free text would let whoever edits a template pick
+           which code runs on the delivery path. The registry lives in Python
+           (leadgen/connector_registry.py) precisely so it cannot be widened
+           from the database or a form.
+        2. variable_schema must be well-formed, because the buyer form renders
+           straight from it — a malformed entry would otherwise surface as a
+           broken page at the moment someone is trying to onboard a buyer.
+        """
+        from .box_variables import SchemaError, validate_variable_schema
+        from .connector_registry import is_registered
+
+        if self.connector_class and not is_registered(self.connector_class):
+            raise ValidationError({
+                'connector_class': (
+                    f'{self.connector_class!r} is not a registered connector. '
+                    f'Adding one is a deliberate engineering change — see '
+                    f'leadgen/connector_registry.py.'
+                ),
+            })
+        try:
+            validate_variable_schema(self.variable_schema)
+        except SchemaError as exc:
+            raise ValidationError({'variable_schema': str(exc)})
+
     def __str__(self):
-        return f'{self.name} (v{self.version})'
+        return f'{self.name} (v{self.version})' 
 
 
 class LeadBuyer(models.Model):
