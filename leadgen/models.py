@@ -29,6 +29,7 @@ from django.utils import timezone
 from nexora.crypto import decrypt_secret, encrypt_secret
 
 from .connector_registry import connector_choices
+from offer.verticals import vertical_choices
 from user_profile.geo import country_choices
 
 from . import canonical_status
@@ -845,7 +846,17 @@ class RoutingRule(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='routing_rules',
     )
-    vertical = models.CharField(max_length=120, blank=True, default='')
+    # A dropdown, exactly like country_iso2 above and for the same reason: a
+    # rule criterion is operator-authored, so it should offer the taxonomy
+    # rather than invite a typo that silently matches nothing.
+    #
+    # NOTE the asymmetry with Lead.vertical, which stays free text. Affiliates
+    # submit verticals of their own through the inbound API and several live
+    # integrations do; closing that vocabulary would reject real traffic. Same
+    # split this app already draws between canonical_status and buyer_status —
+    # see offer/verticals.py.
+    vertical = models.CharField(
+        max_length=120, blank=True, default='', choices=vertical_choices)
     source_channel = models.CharField(
         max_length=20, blank=True, default='',
         choices=[

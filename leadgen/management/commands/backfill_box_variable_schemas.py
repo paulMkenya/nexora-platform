@@ -34,10 +34,12 @@ SCHEMAS = {
         {'name': 'vtc', 'label': 'Vertical code (vtc)', 'required': True,
          'help': 'The vertical this box buys, e.g. VT-XXXXXXXXXX. Often shared '
                  'across several boxes from the same provider.'},
-        {'name': 'funnel', 'label': 'Funnel label', 'required': True,
+        {'name': 'funnel', 'label': 'Funnel / vertical', 'required': True,
+         'choices': 'verticals',
          'help': 'REQUIRED by this platform, and the label they optimise on in '
-                 'their own reporting. Agree it with the buyer, then pin it so a '
-                 "lead's own vertical cannot silently overwrite it."},
+                 'their own reporting. Picked from the vertical taxonomy so it '
+                 "matches what leads carry; pin it if a lead's own vertical "
+                 'must not be able to overwrite it.'},
         {'name': 'landingURL', 'label': 'Landing URL', 'required': True,
          'help': 'The page the consumer came through. Usually your offer lander, '
                  'e.g. https://your-domain/l/<offer_id>/'},
@@ -58,6 +60,9 @@ SCHEMAS = {
         {'name': 'so', 'label': 'Source label', 'required': False,
          'help': 'Shown in their reporting as the traffic source. A per-funnel '
                  'value is far more useful to them than one constant.'},
+        {'name': 'vertical', 'label': 'Default vertical', 'required': False,
+         'choices': 'verticals',
+         'help': 'Used when a lead carries no vertical of its own.'},
         {'name': 'MPC_1', 'label': 'Passthrough MPC_1', 'required': False,
          'help': 'Optional passthrough slot they echo back on reporting.'},
     ],

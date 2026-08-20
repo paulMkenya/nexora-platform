@@ -7,7 +7,7 @@ import json
 
 from django import forms
 
-from .box_variables import effective_schema, split_values
+from .box_variables import effective_schema, resolve_choices, split_values
 from .models import BoxType, LeadBuyer, RoutingRule
 
 
@@ -159,12 +159,28 @@ class LeadBuyerForm(BuyerSecretsFormMixin, forms.ModelForm):
         current = dict(getattr(self.instance, 'extra_payload_fields', None) or {})
         for var in self.variables:
             key = f'{self.VAR_PREFIX}{var["name"]}'
+            initial = '' if var['secret'] else current.get(var['name'], var['default'])
+            choices = resolve_choices(var.get('choices'))
+            if choices and not var['secret']:
+                # ChoiceField, not CharField-with-Select: the value must be
+                # validated against the vocabulary, not merely rendered from it.
+                # A stored value that has since left the taxonomy is preserved
+                # as an option so editing an old buyer cannot silently blank it.
+                options = list(choices)
+                if initial and initial not in [value for value, _ in options]:
+                    options = [(initial, f'{initial} (no longer in the list)')] + options
+                self.fields[key] = forms.ChoiceField(
+                    label=var['label'], help_text=var['help'], required=var['required'],
+                    choices=([] if var['required'] else [('', '—')]) + options,
+                    initial=initial,
+                )
+                continue
             self.fields[key] = forms.CharField(
                 label=var['label'],
                 help_text=var['help'],
                 required=var['required'],
                 widget=forms.PasswordInput(render_value=False) if var['secret'] else forms.TextInput(),
-                initial='' if var['secret'] else current.get(var['name'], var['default']),
+                initial=initial,
             )
             if var['secret'] and self.instance.pk:
                 self.fields[key].required = False
