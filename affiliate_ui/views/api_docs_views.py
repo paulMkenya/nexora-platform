@@ -201,11 +201,15 @@ def _text_errors(doc):
     for e in doc['errors']:
         lines.append(f'  {e["status"]} — {e["when"]}')
         lines.append(f'        {e["body"]}')
-    lines += [
-        '', 'FULL API REFERENCE (OpenAPI)',
-        f'  Interactive: {doc["openapi_swagger_url"]}',
-        f'  Raw schema: {doc["openapi_schema_url"]}',
-    ]
+    if not doc.get('public'):
+        # Withheld from the public doc — see the matching comment in
+        # _api_docs_content.html. That schema maps the whole platform
+        # (admin, network, advertiser wallet, webhooks), not this contract.
+        lines += [
+            '', 'FULL API REFERENCE (OpenAPI)',
+            f'  Interactive: {doc["openapi_swagger_url"]}',
+            f'  Raw schema: {doc["openapi_schema_url"]}',
+        ]
     return lines
 
 

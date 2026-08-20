@@ -49,9 +49,9 @@
       </div>
     </div>
 
-    {# Domains and "default brand" decide which tenant a request resolves to,
+    {% comment %} Domains and "default brand" decide which tenant a request resolves to,
        platform-wide — brand admins see them read-only. brand_edit ignores
-       these fields for a non-owner regardless of what gets POSTed. #}
+       these fields for a non-owner regardless of what gets POSTed. {% endcomment %}
     <div class="grid grid-cols-2 gap-4">
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Primary Domain *</label>

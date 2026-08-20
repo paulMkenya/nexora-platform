@@ -21,8 +21,8 @@
     data (name/email/phone) directly to that buyer and can't be undone.
   </p>
 
-  {# --- filters. GET, so a filtered view is a shareable/bookmarkable URL and
-       the back button behaves. Separate <form> from the inject POST below. --- #}
+  {% comment %} --- filters. GET, so a filtered view is a shareable/bookmarkable URL and
+       the back button behaves. Separate <form> from the inject POST below. --- {% endcomment %}
   <form method="get" class="card mb-3">
     <div class="card-body">
       <div class="row g-2 align-items-end">
@@ -77,12 +77,12 @@
 
   <form method="post" action="{% url 'affiliate_ui:inject_my_leads' %}">
     {% csrf_token %}
-    {# Carries the current filters through the POST so injecting does not
-       dump the affiliate back onto an unfiltered page 1. #}
+    {% comment %} Carries the current filters through the POST so injecting does not
+       dump the affiliate back onto an unfiltered page 1. {% endcomment %}
     <input type="hidden" name="filter_querystring" value="{{ filter_querystring }}">
-    {# Selection lives on THIS page only — a checkbox on page 2 is not
+    {% comment %} Selection lives on THIS page only — a checkbox on page 2 is not
        submitted with page 1's form. Stated plainly rather than letting an
-       affiliate assume "select all" spans the whole result set. #}
+       affiliate assume "select all" spans the whole result set. {% endcomment %}
 
     <div class="card mb-3">
       <div class="card-body d-flex align-items-center gap-3 flex-wrap">
@@ -196,9 +196,9 @@
             </tbody>
           </table>
         {% elif active_filters %}
-          {# Distinguish "no leads at all" from "no leads MATCHING" — otherwise
+          {% comment %} Distinguish "no leads at all" from "no leads MATCHING" — otherwise
              a filter with no hits reads as "you have never submitted a lead",
-             which is alarming and wrong. #}
+             which is alarming and wrong. {% endcomment %}
           <p class="text-muted mb-0">
             No leads match these filters.
             <a href="{% url 'affiliate_ui:my_leads' %}">Clear filters</a> to see all
