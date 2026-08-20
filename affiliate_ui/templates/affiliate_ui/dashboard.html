@@ -123,4 +123,80 @@
   </section>
 
 </div>
+
+{% comment %}
+Integration panel. Sits outside nx-grid--main as a full-width block so it does
+not disturb the two-column layout above.
+
+The public link is the point of this panel: an affiliate's own developers (or
+the traffic source behind them) need the contract, and sending them a PDF means
+sending something that goes stale the next time the API changes. `public_docs_url`
+is absolute and built on the affiliate's OWN brand host, because this string
+exists to be copied out of the page.
+{% endcomment %}
+<section class="nx-panel" style="margin-top:var(--space-4)">
+  <div class="nx-panel__head">
+    <div>
+      <h2 class="nx-panel__title">Integration</h2>
+      <p class="nx-panel__sub">Send leads to us over the API.</p>
+    </div>
+  </div>
+
+  <div class="nx-feed__item">
+    <span class="nx-feed__icon nx-feed__icon--info">
+      {% include 'partials/icon.html' with name='api_docs' cls='nx-nav__icon' %}
+    </span>
+    <div class="nx-feed__body">
+      <div class="nx-feed__title">Your API documentation</div>
+      <div class="nx-feed__meta">
+        Your offer IDs, your current testing/live phase, and your keys.
+        <a href="{% url 'affiliate_ui:api_docs' %}">Open API &amp; Docs</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="nx-feed__item">
+    <span class="nx-feed__icon nx-feed__icon--info">
+      {% include 'partials/icon.html' with name='affiliate_link' cls='nx-nav__icon' %}
+    </span>
+    <div class="nx-feed__body">
+      <div class="nx-feed__title">Shareable link — no login needed</div>
+      <div class="nx-feed__meta">
+        The same contract without your account details, safe to forward to your developers.
+      </div>
+      <div style="display:flex;gap:var(--space-2);align-items:center;margin-top:var(--space-2);flex-wrap:wrap">
+        <input type="text" readonly value="{{ public_docs_url }}" id="publicDocsUrl"
+               aria-label="Public documentation link"
+               class="form-control form-control-sm" style="flex:1 1 260px;min-width:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px"
+               onfocus="this.select()">
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="copyPublicDocsUrl">Copy</button>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ public_docs_url }}" target="_blank" rel="noopener">Open</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+// Progressive enhancement only: the input is readonly-and-selectable, so the
+// link is copyable by hand if this never runs.
+(function () {
+  var btn = document.getElementById('copyPublicDocsUrl');
+  var field = document.getElementById('publicDocsUrl');
+  if (!btn || !field) { return; }
+  btn.addEventListener('click', function () {
+    var done = function () {
+      var was = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = was; }, 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(field.value).then(done);
+    } else {
+      field.select();
+      document.execCommand('copy');
+      done();
+    }
+  });
+})();
+</script>
 {% endblock %}

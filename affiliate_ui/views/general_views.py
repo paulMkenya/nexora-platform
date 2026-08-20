@@ -5,10 +5,12 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Q, Sum, Prefetch
 from django.shortcuts import redirect, render, get_object_or_404
 from django.contrib.auth.views import LoginView
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from affiliate_ui.gates import require_approved_affiliate
 from brands.links import affiliate_click_link
+from leadgen.api_doc import doc_base_url
 from nexora import charts
 from offer.models import Advertiser, Offer, Category, Payout, TrafficSource, ACTIVE_STATUS, revenue_models
 from user_profile.geo import country_choices
@@ -50,6 +52,14 @@ def dashboard(request):
             conversions=conversions,
             total_earnings=total_earnings,
         ),
+        # An ABSOLUTE url, because the entire point of this one is that it gets
+        # copied out of the page into an email or a ticket. Built on the
+        # affiliate's own brand host (doc_base_url), not the request host: an
+        # affiliate reaching the portal on another brand's domain must not be
+        # handed that brand's hostname to send to their traffic source.
+        'public_docs_url': doc_base_url(
+            request, getattr(getattr(request.user, 'profile', None), 'brand', None),
+        ) + reverse('affiliate_ui:public_api_docs'),
     }
     return render(request, 'affiliate_ui/dashboard.html', context)
 

@@ -356,7 +356,23 @@ def _examples(base_url, offer_rows, *, offer_id_placeholder=None):
     }
 
 
-OFFER_ID_PLACEHOLDER = '<YOUR_OFFER_ID>'
+def doc_base_url(request, brand):
+    """`scheme://host` for a doc belonging to `brand`.
+
+    The brand's OWN domain wins over the request's, falling back to the request
+    only when the brand has no domain configured. That asymmetry is the whole
+    point: BrandMiddleware resolves request.brand from the Host header and falls
+    back to the default brand, so a doc built from the request could hand one
+    tenant's affiliate another tenant's hostname — and this string is baked into
+    every curl sample in a document people forward. Same rule as
+    admin_views/registration_views; kept here so there is one copy to change.
+    """
+    host = (brand.primary_domain if brand else None) or request.get_host()
+    scheme = 'https' if request.is_secure() else 'http'
+    return f'{scheme}://{host}'.rstrip('/')
+
+
+OFFER_ID_PLACEHOLDER = '<YOUR_OFFER_ID>' 
 
 
 def _brand_conditional_required_fields(brand):
@@ -419,9 +435,7 @@ def build_public_doc_context(request, brand):
     It is what an integrator needs and it discloses nothing: it is already
     enforced against anyone holding a key.
     """
-    host = (brand.primary_domain if brand else None) or request.get_host()
-    scheme = 'https' if request.is_secure() else 'http'
-    base_url = f'{scheme}://{host}'.rstrip('/')
+    base_url = doc_base_url(request, brand)
 
     return {
         'public': True,
@@ -462,9 +476,7 @@ def build_doc_context(request, affiliate_user):
     from .models import AffiliatePostbackConfig
 
     brand = _affiliate_brand(affiliate_user)
-    host = (brand.primary_domain if brand else None) or request.get_host()
-    scheme = 'https' if request.is_secure() else 'http'
-    base_url = f'{scheme}://{host}'.rstrip('/')
+    base_url = doc_base_url(request, brand)
 
     offers = _offer_rows(affiliate_user)
     keys = APIKey.objects.filter(user=affiliate_user, is_active=True).order_by('-created_at')
