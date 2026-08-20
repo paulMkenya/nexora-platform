@@ -264,4 +264,5 @@ def test_navigation_includes_distribution_group():
     assert 'Distribution' in group_labels
     distribution = next(g for g in groups if g.label == 'Distribution')
     item_labels = [item.label for item in distribution.items]
-    assert item_labels == ['Leads', 'Buyers', 'Routing Rules', 'Affiliate Integrations']
+    assert item_labels == ['Leads', 'Templates', 'Buyers', 'Routing Rules',
+                           'Affiliate Integrations']

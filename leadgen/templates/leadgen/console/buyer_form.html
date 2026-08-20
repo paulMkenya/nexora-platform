@@ -43,7 +43,9 @@
 
   <form method="post" class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-5">
     {% csrf_token %}
-    {% for field in form.visible_fields %}
+    {% comment %} form.model_fields excludes the template variables — they render in their
+       own section under box_type below, and would otherwise appear twice. {% endcomment %}
+    {% for field in form.model_fields %}
       <div>
         <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
           {{ field.label }}{% if field.field.required %} <span class="text-red-500">*</span>{% endif %}
@@ -61,6 +63,38 @@
             <div class="font-medium text-gray-700 mb-1">Platform (BoxType) default field mapping</div>
             <div id="box-type-defaults-list">Select a box type above to see its defaults.</div>
           </div>
+
+          {% comment %} The template's own variables, rendered as real fields. Shown right
+             after box_type because they belong to it: change the template and
+             these change with it. Only present when the chosen template
+             declares a schema — otherwise the raw JSON editor below stays the
+             fallback, so an undeclared template is still fully usable. {% endcomment %}
+          {% if form.variables %}
+            <div class="mt-4 rounded-md border border-indigo-200 bg-indigo-50/50 p-4">
+              <div class="font-medium text-gray-800 text-sm">
+                {{ form.box_type.name }} settings
+              </div>
+              <p class="text-xs text-gray-600 mt-0.5 mb-3">
+                What this platform needs from you. Stored on the buyer, sent with every lead.
+              </p>
+              <div class="space-y-4">
+                {% for vfield in form.variable_fields %}
+                  <div>
+                    <label for="{{ vfield.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                      {{ vfield.label }}{% if vfield.field.required %} <span class="text-red-600">*</span>{% endif %}
+                    </label>
+                    {{ vfield }}
+                    {% if vfield.help_text %}
+                      <p class="text-xs text-gray-500 mt-1">{{ vfield.help_text }}</p>
+                    {% endif %}
+                    {% if vfield.errors %}
+                      <p class="text-xs text-red-600 mt-1">{{ vfield.errors|striptags }}</p>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
         {% endif %}
 
         {% if field.name == 'field_mapping' %}

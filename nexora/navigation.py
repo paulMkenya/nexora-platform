@@ -64,6 +64,12 @@ def _admin_groups(*, is_platform_owner: bool) -> Tuple[NavGroup, ...]:
         )),
         NavGroup('Distribution', (
             NavItem('Leads', 'leadgen_console:leads', icon='inbox'),
+            # Templates sits directly above Buyers because that is the order the
+            # work happens in: pick the integration, then create the buyer on it.
+            NavItem('Templates', 'leadgen_console:box_types', icon='brands', match_extra=(
+                'leadgen_console:box_type_add', 'leadgen_console:box_type_edit',
+                'leadgen_console:box_type_detail',
+            )),
             NavItem('Buyers', 'leadgen_console:buyers', icon='store', match_extra=(
                 'leadgen_console:buyer_add', 'leadgen_console:buyer_edit',
             )),

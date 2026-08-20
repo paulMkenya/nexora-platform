@@ -9,6 +9,11 @@ urlpatterns = [
     path('leads/route-now/', admin_views.route_now, name='route_now'),
     path('leads/<int:pk>/', admin_views.lead_detail, name='lead_detail'),
     path('leads/<int:pk>/status/', admin_views.lead_status_flip, name='lead_status_flip'),
+    # Integration templates — the catalogue a buyer is created from.
+    path('templates/', admin_views.box_types_list, name='box_types'),
+    path('templates/new/', admin_views.box_type_form, name='box_type_add'),
+    path('templates/<int:pk>/', admin_views.box_type_detail, name='box_type_detail'),
+    path('templates/<int:pk>/edit/', admin_views.box_type_form, name='box_type_edit'),
     path('buyers/', admin_views.buyers_list, name='buyers'),
     path('buyers/add/', admin_views.buyer_form, name='buyer_add'),
     path('buyers/<int:pk>/edit/', admin_views.buyer_form, name='buyer_edit'),

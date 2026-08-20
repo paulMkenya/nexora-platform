@@ -1,0 +1,106 @@
+{% extends '_shell/base_shell.html' %}
+
+{% block title %}{{ box_type.name }} — Template{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.tailwindcss.com"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8">
+
+  <a href="{% url 'leadgen_console:box_types' %}" class="text-sm text-indigo-600 hover:underline">&larr; All templates</a>
+
+  <div class="mt-3 mb-6 flex items-start justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold text-gray-800">{{ box_type.name }}</h1>
+      <p class="text-sm text-gray-500 mt-1 font-mono">{{ box_type.slug }} · v{{ box_type.version }}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'leadgen_console:buyer_add' %}?box_type={{ box_type.pk }}"
+         class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 transition">
+        Use this template
+      </a>
+      {% if editable %}
+        <a href="{% url 'leadgen_console:box_type_edit' box_type.pk %}"
+           class="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition">Edit</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if box_type.description %}
+    <p class="text-gray-600 mb-6">{{ box_type.description }}</p>
+  {% endif %}
+
+  {% if is_platform and not editable %}
+    <div class="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+      This is a platform template, shared across every brand. Only the platform owner can change it —
+      your own settings live on the buyer you create from it.
+    </div>
+  {% endif %}
+
+  <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">What you'll need</h2>
+  {% if variables %}
+    <div class="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100 mb-8">
+      {% for v in variables %}
+      <div class="p-4">
+        <div class="flex items-baseline gap-2 flex-wrap">
+          <span class="font-medium text-gray-800">{{ v.label }}</span>
+          <code class="text-xs text-gray-500">{{ v.name }}</code>
+          {% if v.required %}
+            <span class="text-xs font-medium text-rose-700">required</span>
+          {% else %}
+            <span class="text-xs text-gray-400">optional</span>
+          {% endif %}
+          {% if v.secret %}
+            <span class="text-xs font-medium text-amber-700">stored encrypted</span>
+          {% endif %}
+        </div>
+        {% if v.help %}<p class="text-sm text-gray-600 mt-1">{{ v.help }}</p>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 mb-8">
+      This template hasn't declared its variables yet, so creating a buyer from it still needs the raw
+      JSON editor. {% if editable %}Edit the template to describe them once, and everyone who uses it
+      afterwards gets a proper form.{% endif %}
+    </div>
+  {% endif %}
+
+  <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Technical</h2>
+  <dl class="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100 text-sm mb-8">
+    <div class="p-4 sm:flex sm:gap-4">
+      <dt class="w-48 shrink-0 text-gray-500">Integration</dt>
+      <dd class="text-gray-800">{{ connector_label|default:box_type.connector_class }}</dd>
+    </div>
+    <div class="p-4 sm:flex sm:gap-4">
+      <dt class="w-48 shrink-0 text-gray-500">Auth</dt>
+      <dd class="text-gray-800">{{ box_type.get_auth_type_display }} · <code class="text-xs">{{ box_type.auth_param_name }}</code></dd>
+    </div>
+    <div class="p-4 sm:flex sm:gap-4">
+      <dt class="w-48 shrink-0 text-gray-500">Submit endpoint</dt>
+      <dd class="text-gray-800 font-mono text-xs break-all">{{ box_type.single_endpoint_path }}</dd>
+    </div>
+    <div class="p-4 sm:flex sm:gap-4">
+      <dt class="w-48 shrink-0 text-gray-500">Status endpoint</dt>
+      <dd class="text-gray-800 font-mono text-xs break-all">{{ box_type.fetch_endpoint_path|default:"—" }}</dd>
+    </div>
+  </dl>
+
+  <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Buyers using it</h2>
+  {% if buyers %}
+    <ul class="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100 text-sm">
+      {% for b in buyers %}
+      <li class="p-3 flex items-center justify-between gap-3">
+        <a href="{% url 'leadgen_console:buyer_edit' b.pk %}" class="text-indigo-600 hover:underline">{{ b.name }}</a>
+        <span class="text-xs text-gray-500">{{ b.brand.name }}{% if not b.is_active %} · inactive{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-sm text-gray-500">None yet.</p>
+  {% endif %}
+
+</div>
+{% endblock %}
