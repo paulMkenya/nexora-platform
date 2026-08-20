@@ -105,10 +105,12 @@ NARRATIVE = {
         'Beyond the contact details, a lead carries where it came from: funnel, campaign, medium, '
         'term and ad, plus your own sub1..sub5 slots and the consumer\'s language. All are '
         'optional, and all are listed in the field table above.',
-        'Send them. Buyers surface exactly these values in their own reporting and optimise on '
-        'them — a buyer that cannot tell your funnels apart cannot tell which of them is working, '
-        'and that judgement is what decides whether they keep buying your traffic. One constant '
-        'value across all your traffic is the same as sending nothing.',
+        'Send them. Where an offer\'s integration forwards a field, the buyer surfaces that value in '
+        'their own reporting and optimises on it — a buyer that cannot tell your funnels apart '
+        'cannot tell which of them is working, and that judgement is what decides whether they '
+        'keep buying your traffic. One constant value across all your traffic is the same as '
+        'sending nothing. Which fields a given offer forwards varies by integration; everything '
+        'you send is stored and reportable here regardless.',
         'funnel/campaign/medium/term/ad are the named, validated fields — prefer them over sub '
         'slots wherever one fits, because only the named fields are reportable. sub1..sub5 are '
         'opaque passthrough: Nexora stores and returns them untouched and never interprets them.',
@@ -219,6 +221,7 @@ def _offer_rows(affiliate_user):
         .values_list('offer_id', 'phase')
     )
     labels = dict(AffiliateOfferLink.PHASE_CHOICES)
+    brand = _affiliate_brand(affiliate_user)
     rows = []
     for offer in offers_for_affiliate(affiliate_user).order_by('title'):
         phase = phases.get(offer.pk, AffiliateOfferLink.PHASE_TESTING)
@@ -229,8 +232,35 @@ def _offer_rows(affiliate_user):
             'phase_label': labels[phase],
             'is_live': phase == AffiliateOfferLink.PHASE_LIVE,
             'started': offer.pk in phases,
+            'required_fields': _offer_required_fields(affiliate_user, offer, brand),
         })
     return rows
+
+
+def _offer_required_fields(affiliate_user, offer, brand):
+    """Inbound-API fields this offer needs ON TOP of the always-required ones,
+    because the buyer it routes to refuses a lead without them — Hypernet
+    boxes reject `geo`-less leads outright, and our own `country` is optional.
+
+    DERIVED, never hand-maintained: it asks leadgen.requirements the same
+    question intake asks, so the doc cannot promise an offer will accept
+    something the endpoint then rejects. The probe lead is deliberately EMPTY
+    apart from its routing keys — that models the worst-case submission, which
+    is precisely the one this column exists to warn about.
+
+    Costs one routing query per offer. Fine at the handful of offers a brand
+    has; revisit with a per-brand rule prefetch if that ever stops being true.
+    """
+    from .models import Lead
+    from .requirements import missing_buyer_requirements
+
+    probe = Lead(
+        brand=brand,
+        intake_channel=Lead.CHANNEL_AFFILIATE_API,
+        affiliate=affiliate_user,
+        offer=offer,
+    )
+    return missing_buyer_requirements(probe)
 
 
 def _error_rows():
@@ -244,6 +274,10 @@ def _error_rows():
          'body': '{"email": ["This field is required."]}'},
         {'status': 400, 'when': 'offer_id is not an offer you are approved to send to.',
          'body': '{"detail": "offer_id does not resolve to an offer you can send to."}'},
+        {'status': 400, 'when': 'A field this offer\'s buyer requires is missing — see the '
+                                'Required column under "Offers you can send to".',
+         'body': '{"country": ["This field is required for offer 12 — the buyer it routes to '
+                 'rejects leads without it."]}'},
         {'status': 400, 'when': 'A batch call with no "leads" list, or an empty one.',
          'body': '{"detail": "\\"leads\\" must be a non-empty list."}'},
         {'status': 400, 'when': f'A batch of more than {MAX_BATCH_SIZE} leads.',

@@ -95,6 +95,10 @@ def _text_fields_and_offers(doc):
         for o in doc['offers']:
             started = '' if o['started'] else ' (not started yet)'
             lines.append(f'  offer_id={o["id"]}: {o["title"]} — {o["phase_label"]}{started}')
+            if o['required_fields']:
+                # On top of the fields already marked required in the table
+                # above — this offer's buyer rejects a lead without them.
+                lines.append(f'      also required: {", ".join(o["required_fields"])}')
     else:
         lines.append('  No offers assigned yet — contact your manager. Until an offer is assigned')
         lines.append('  to you, submissions will be rejected with "offer_id does not resolve to an')

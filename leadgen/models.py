@@ -232,6 +232,32 @@ class LeadBuyer(models.Model):
     # than another migration.
     extra_payload_fields = models.JSONField(default=dict, blank=True)
 
+    # Keys in extra_payload_fields that a MAPPED LEAD VALUE must NOT override.
+    #
+    # Normal precedence is deliberate and stays the default: statics first,
+    # mapped lead values second (see HypernetConnector.build_payload), so a
+    # box-level default can never mask what we actually know about a specific
+    # lead. But the same precedence lets an AFFILIATE-supplied field silently
+    # rewrite a value that is a property of the INTEGRATION rather than of the
+    # lead. Live example (2026-08-20): the Hypernet BoxType maps
+    # `vertical -> funnel`, so a lead submitted with vertical="crypto"
+    # replaced the Badboys box's `funnel` -- its agreed reporting label, which
+    # the buyer optimises on -- with an arbitrary string, silently and with no
+    # rejection to notice it by, because Hypernet's `funnel` is free text.
+    #
+    # Naming a key here inverts the precedence for that ONE key: the static
+    # wins and the mapped value is dropped. Only keys that actually have a
+    # static value are pinned (a pin on a key with no static would delete the
+    # field from the payload entirely, which for a required field is a 400) --
+    # see LeadBuyerConnector.apply_pinned_fields.
+    #
+    # Opt-in and empty by default, so every buyer already live keeps sending
+    # byte-for-byte the payload it sends today.
+    pinned_payload_fields = models.JSONField(
+        default=list, blank=True,
+        help_text='Keys in extra_payload_fields that a mapped lead value must not override.',
+    )
+
     # May this buyer receive leads that a HIGHER-priority buyer in the same
     # brand already cleanly rejected? False (the default) means it only ever
     # receives leads for which it is the highest-priority match.

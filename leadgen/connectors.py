@@ -299,6 +299,20 @@ class LeadBuyerConnector:
     # should be able to tick a checkbox that makes a method exist.
     supports_status_sync = True
 
+    # Lead attributes THIS BOX refuses an injection without. Enforced at
+    # INTAKE (see leadgen.requirements.missing_buyer_requirements), so an
+    # affiliate submitting a lead that its destination will certainly reject
+    # gets an actionable 400 from us on the spot, instead of a 201 followed
+    # by a silent rejection at the buyer they never see.
+    #
+    # A class attribute, like supports_status_sync above and for the same
+    # reason: which fields a box requires is a property of that box's API, not
+    # an operator-editable row. Empty on the base class — the generic
+    # connector claims nothing, so every existing buyer keeps today's exact
+    # (unvalidated) intake behaviour and only a connector that has actually
+    # been probed opts in.
+    REQUIRED_LEAD_FIELDS = ()
+
     # Default-deny allowlist for what may be recorded on
     # LeadInjection.response_payload — see sanitize_response_for_audit().
     # These are op-brandy's own envelope + result keys. Everything else a
@@ -378,6 +392,31 @@ class LeadBuyerConnector:
                 continue
             extra[their_name] = str(value)
         return extra
+
+    def unpinned_items(self, statics: dict, mapped: dict):
+        """Yield the (key, value) pairs of `mapped` (lead-derived, already
+        under the buyer's own field names) that are allowed to be written on
+        top of `statics`, honouring LeadBuyer.pinned_payload_fields.
+
+        Shared by every connector that layers mapped lead values on top of
+        static per-box constants (Hypernet, TrackBox), so the precedence rule
+        and its one safety condition live in exactly one place.
+
+        The safety condition: a key is only pinned if `statics` actually
+        supplies it. Pinning a key with no static behind it would DELETE the
+        field from the payload rather than fix it — and for a required field
+        (Hypernet's `funnel`, `geo`) that is a 400 on every lead. So a pin
+        naming a key this buyer has no constant for is ignored, not obeyed.
+
+        Yields (key, value) for the caller to place, because Hypernet writes
+        through _set_path() (dotted names mean nesting) while TrackBox writes
+        flat — the merge rule is shared, the placement is not.
+        """
+        pinned = {str(k) for k in (getattr(self.buyer, 'pinned_payload_fields', None) or [])}
+        for key, value in mapped.items():
+            if key in pinned and key in statics:
+                continue
+            yield key, value
 
     # --- transport -------------------------------------------------------------
 
@@ -1023,6 +1062,25 @@ class HypernetConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
     # — see fetch_lead_statuses() and docs/hypernet-status-endpoint.md.
     supports_status_sync = True
 
+    # Their Lead.create marks `geo` REQUIRED, and it is a PRESENCE check that
+    # runs before any value validation — probed live against
+    # badboys-traffic.space 2026-08-20: dropping `geo` returns
+    # `400 Validation error. ("geo" is required)` even when another field is
+    # also invalid. build_payload() omits `geo` when Lead.country_iso2 is
+    # blank, and nothing backfills it for the affiliate API channel in
+    # practice (geolocate_lead is a no-op without settings.IPSTACK_TOKEN), so
+    # a lead submitted without `country` is a guaranteed rejection at the box.
+    # Declaring it here makes intake reject it FIRST, with a message naming
+    # the field, rather than 201-ing a lead that cannot be delivered.
+    REQUIRED_LEAD_FIELDS = ('country_iso2',)
+
+    # Their doc: `lang` and `landingLang` are "language code ... (lower-case)".
+    # Our own inbound contract documents `language` as ISO 639-1 and its
+    # examples are upper-case ("EN"), so the mapped value has to be folded
+    # before it goes out — otherwise mapping Lead.language onto `lang` would
+    # start sending "PL" to a box that asked for "pl".
+    LOWERCASE_KEYS = frozenset({'lang', 'landingLang'})
+
     # Their GET caps `take` at 500 — 501 returns 400. Their `count` is the
     # TOTAL matching rows, not the page size, so paging runs until `count` is
     # consumed rather than until a page comes back short.
@@ -1147,11 +1205,16 @@ class HypernetConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
         fallback ``geo``) can never overwrite what we actually know about
         this specific lead.
         """
+        statics = self._static_fields()
         payload = {}
-        for key, value in self._static_fields().items():
+        for key, value in statics.items():
             _set_path(payload, key, value)
 
-        for key, value in super().build_payload(lead).items():
+        # unpinned_items() drops a mapped value whose key this buyer has
+        # pinned to its static — see LeadBuyer.pinned_payload_fields.
+        for key, value in self.unpinned_items(statics, super().build_payload(lead)):
+            if key in self.LOWERCASE_KEYS and isinstance(value, str):
+                value = value.lower()
             if key in self.PHONE_KEYS:
                 value, ambiguous = _normalize_msisdn(value)
                 if ambiguous:
@@ -1758,13 +1821,16 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
         sent, and a redaction marker shows exactly that. See
         BrokerPasswordMixin.
 
-        Precedence matches HypernetConnector: a mapped LEAD value always
+        Precedence matches HypernetConnector: a mapped LEAD value normally
         wins over a static constant of the same name, so a box-level default
-        can never overwrite what we actually know about this specific lead.
+        can never overwrite what we actually know about this specific lead —
+        unless the buyer has pinned that key (LeadBuyer.pinned_payload_fields,
+        applied through the shared unpinned_items()).
         """
-        payload = dict(getattr(self.buyer, 'extra_payload_fields', None) or {})
+        statics = dict(getattr(self.buyer, 'extra_payload_fields', None) or {})
+        payload = dict(statics)
 
-        for key, value in super().build_payload(lead).items():
+        for key, value in self.unpinned_items(statics, super().build_payload(lead)):
             if key in self.PHONE_KEYS:
                 value, ambiguous = _normalize_msisdn(value)
                 if ambiguous:

@@ -27,6 +27,7 @@ from public_api.throttling import APIKeyThrottle
 
 from . import canonical_status
 from .models import Lead
+from .requirements import missing_buyer_requirements
 from .serializers import (
     AffiliateLeadSubmitSerializer,
     LeadDetailOutSerializer,
@@ -154,18 +155,74 @@ def _submit_response(serializer, raw, lead):
     return body
 
 
+def _candidate_lead(request, data, *, offer):
+    """An UNSAVED Lead carrying exactly the attributes routing matches on
+    (brand, offer, affiliate, country, vertical, intake channel), so a
+    submission can be resolved to its destination and checked against that
+    buyer's requirements BEFORE any row is written.
+
+    Deliberately not _create_lead()'s twin: it exists to be thrown away, and
+    building only the routing keys keeps it obvious that nothing here is the
+    lead that eventually gets saved.
+    """
+    return Lead(
+        brand=getattr(request, 'brand', None),
+        intake_channel=Lead.CHANNEL_AFFILIATE_API,
+        affiliate=request.user,
+        offer=offer,
+        country_iso2=data.get('country', ''),
+        vertical=data['vertical'],
+    )
+
+
+def _buyer_requirement_errors(request, data, *, offer):
+    """DRF-shaped field errors for anything this lead's DESTINATION requires
+    and this submission didn't supply, or None when it is fine to accept.
+
+    See leadgen.requirements: our inbound contract is not the buyer's, and
+    the affiliate can only see ours. Rejecting here — naming the field, on
+    the call that submitted it — is the difference between an integrator
+    fixing one line and a lead vanishing after a 201.
+    """
+    missing = missing_buyer_requirements(_candidate_lead(request, data, offer=offer))
+    if not missing:
+        return None
+    return {
+        name: [
+            f'This field is required for offer {offer.pk} — the buyer it routes to '
+            f'rejects leads without it.'
+        ]
+        for name in missing
+    }
+
+
 def _submit_one(request, data):
-    """(lead, created) for one already-validated submission — created=False
-    means this was a dedupe hit (the ORIGINAL lead, per spec §4.5, not a new
-    row), created=True means a fresh Lead was made. Returns (None, None,
-    error_detail) if offer_id doesn't resolve."""
+    """(lead, created, errors) for one already-validated submission.
+
+    created=False means this was a dedupe hit (the ORIGINAL lead, per spec
+    §4.5, not a new row); created=True means a fresh Lead was made.
+
+    `errors` is None on success, otherwise a dict already in the shape both
+    views return it in: {'detail': str} for a whole-request failure (the body
+    the generated doc quotes for offer_id), {field: [msg]} for a per-field
+    one, matching DRF's own validation errors so an integrator parses one
+    shape rather than two.
+    """
     offer = _resolve_offer(request, data['offer_id'])
     if offer is None:
-        return None, None, 'offer_id does not resolve to an offer you can send to.'
+        return None, None, {'detail': 'offer_id does not resolve to an offer you can send to.'}
 
     duplicate = _find_duplicate_lead(request.user, data)
     if duplicate is not None:
+        # A dedupe hit returns the ORIGINAL lead and injects nothing, so the
+        # destination's requirements are not this submission's problem — it
+        # never reaches a buyer. Checking here would turn a harmless retry
+        # into a 400.
         return duplicate, False, None
+
+    errors = _buyer_requirement_errors(request, data, offer=offer)
+    if errors:
+        return None, None, errors
 
     return _create_lead(request, data, offer=offer), True, None
 
@@ -187,9 +244,9 @@ class LeadSubmitView(APIView):
         serializer = AffiliateLeadSubmitSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        lead, created, error = _submit_one(request, serializer.validated_data)
-        if error:
-            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+        lead, created, errors = _submit_one(request, serializer.validated_data)
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(
             _submit_response(serializer, request.data, lead),
@@ -221,9 +278,9 @@ class LeadBatchSubmitView(APIView):
                 failed.append({'input': raw, 'errors': item_serializer.errors})
                 continue
 
-            lead, _created, error = _submit_one(request, item_serializer.validated_data)
-            if error:
-                failed.append({'input': raw, 'errors': {'offer_id': [error]}})
+            lead, _created, errors = _submit_one(request, item_serializer.validated_data)
+            if errors:
+                failed.append({'input': raw, 'errors': errors})
                 continue
             added.append(_submit_response(item_serializer, raw, lead))
 
