@@ -76,6 +76,35 @@ def _resolve_offer(request, offer_id):
     return offers_for_affiliate(request.user).filter(pk=offer_id).first()
 
 
+# WHY A LEAD'S BRAND COMES FROM ITS OFFER, NOT FROM request.brand
+# ================================================================
+# BrandMiddleware resolves request.brand from the HOST HEADER and falls back to
+# the default brand when no domain matches. The inbound API is authenticated by
+# API key and is not host-gated, so request.brand is attacker- and accident-
+# controlled: any host that is not exactly a tenant's own domain — another
+# tenant's domain, an IP, a bare apex, a proxy rewrite, a typo — resolves to the
+# DEFAULT brand.
+#
+# Stamping that onto the Lead put a tenant's lead inside another tenant:
+# Lead.brand is what leadgen.routing.resolve_buyer_chain filters rules on, so the
+# lead was routed by the WRONG tenant's rules, to the WRONG tenant's buyer. The
+# layer-3 guard in services.start_injection does not catch it — it compares
+# lead.brand_id to buyer.brand_id, and by that point both agree on the wrong
+# brand. It is designed to stop a RULE reaching across brands, not a lead that
+# was mis-stamped before routing ever ran.
+#
+# Happened in production: lead 28 (2026-08-06) came from a ChainPulse affiliate,
+# for a ChainPulse offer, and landed in brand 6. It was never delivered only
+# because that brand's single buyer has auto_inject off — luck, not design.
+#
+# offer.brand is the right source and is safe by construction: _resolve_offer
+# admits only offers from offers_for_affiliate(request.user), which filters on
+# the AFFILIATE's own brand and excludes null-brand offers entirely (Paul's
+# brand-only ruling, 2026-08-04). So offer.brand is always the affiliate's brand
+# and is never None. This also makes both intake channels agree — the hosted
+# landing page has always used offer.brand (public_views.capture_lead).
+
+
 def _find_duplicate_lead(user, data):
     """The existing Lead this submission is a retry of, or None if it looks
     genuinely new. See DEDUPE_WINDOW_HOURS."""
@@ -95,7 +124,8 @@ def _find_duplicate_lead(user, data):
 
 def _create_lead(request, data, *, offer):
     lead = Lead.objects.create(
-        brand=getattr(request, 'brand', None),
+        # THE OFFER'S brand, never request.brand — see _lead_brand_note below.
+        brand=offer.brand,
         intake_channel=Lead.CHANNEL_AFFILIATE_API,
         affiliate=request.user,
         offer=offer,
@@ -166,7 +196,9 @@ def _candidate_lead(request, data, *, offer):
     lead that eventually gets saved.
     """
     return Lead(
-        brand=getattr(request, 'brand', None),
+        # Must match _create_lead's own choice exactly, or the gate would check
+        # the requirements of a buyer this lead is never going to reach.
+        brand=offer.brand,
         intake_channel=Lead.CHANNEL_AFFILIATE_API,
         affiliate=request.user,
         offer=offer,
