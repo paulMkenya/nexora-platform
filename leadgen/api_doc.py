@@ -295,9 +295,14 @@ def _error_rows():
     ]
 
 
-def _examples(base_url, offer_rows):
+def _examples(base_url, offer_rows, *, offer_id_placeholder=None):
     """Copy-paste curl for single and batch submit, using a real approved
     offer_id where the affiliate has one.
+
+    `offer_id_placeholder` is for the PUBLIC doc, which has no affiliate and
+    therefore no offer list: it substitutes a literal like <YOUR_OFFER_ID> so
+    the sample stays copy-pasteable-with-one-edit rather than quietly shipping
+    an invented numeric id that would 400 on first use.
 
     The key stays a placeholder on purpose. This doc is downloadable as a PDF
     and text file the affiliate forwards to a traffic source, so embedding a
@@ -305,7 +310,7 @@ def _examples(base_url, offer_rows):
     the same reason the API takes the key in a header and never the query
     string. Secrets are shown once, in the UI, at creation.
     """
-    offer_id = offer_rows[0]['id'] if offer_rows else 123
+    offer_id = offer_id_placeholder or (offer_rows[0]['id'] if offer_rows else 123)
     key_placeholder = 'YOUR_API_KEY_HERE'
     single_body = {
         'first_name': 'Jane', 'last_name': 'Doe',
@@ -328,11 +333,16 @@ def _examples(base_url, offer_rows):
                                              first_name='John', source_id='your-second-id')]}
 
     def _curl(path, body):
+        rendered = json.dumps(body, indent=2)
+        if offer_id_placeholder:
+            # json.dumps quotes it; the slot should read as a number, not a
+            # string, or a copy-paste leaves offer_id as "<YOUR_OFFER_ID>".
+            rendered = rendered.replace(f'"{offer_id_placeholder}"', offer_id_placeholder)
         return (
             f'curl -X POST {base_url}{path} \\\n'
             f'  -H "Authorization: ApiKey {key_placeholder}" \\\n'
             f'  -H "Content-Type: application/json" \\\n'
-            f"  -d '{json.dumps(body, indent=2)}'"
+            f"  -d '{rendered}'"
         )
 
     return {
@@ -343,6 +353,96 @@ def _examples(base_url, offer_rows):
             f'curl "{base_url}/api/leads?updated_since=2026-01-01T00:00:00Z" \\\n'
             f'  -H "Authorization: ApiKey {key_placeholder}"'
         ),
+    }
+
+
+OFFER_ID_PLACEHOLDER = '<YOUR_OFFER_ID>'
+
+
+def _brand_conditional_required_fields(brand):
+    """Inbound-API fields SOME of this brand's offers require beyond the always-
+    required ones — the union across every buyer the brand can actually route to.
+
+    The per-offer answer (see _offer_required_fields) needs an affiliate and an
+    offer, and the public doc has neither. A union still tells an integrator the
+    one thing that matters before they write any code — "this network will
+    reject a lead with no country" — without naming a single offer.
+
+    Deliberately NOT tenant-revealing: it returns field names like `country`,
+    never buyers, offers or rules.
+    """
+    from .connectors import get_connector
+    from .models import RoutingRule
+    from .requirements import API_FIELD_NAMES
+
+    if brand is None:
+        return []
+    buyers = {
+        rule.buyer
+        for rule in RoutingRule.objects
+        .filter(brand=brand, is_active=True, buyer__is_active=True, buyer__brand=brand)
+        .select_related('buyer__box_type')
+    }
+    names = set()
+    for buyer in buyers:
+        for attr in getattr(get_connector(buyer), 'REQUIRED_LEAD_FIELDS', ()):
+            names.add(API_FIELD_NAMES.get(attr, attr))
+    return sorted(names)
+
+
+def build_public_doc_context(request, brand):
+    """The doc with every tenant-specific part removed — for a page served with
+    NO LOGIN, so it can be handed to a prospect, embedded in a proposal, or
+    forwarded to a traffic source's own developers.
+
+    Same dict shape as build_doc_context, from the same derived sources, so all
+    three renderers and the shared template partial work unchanged. Exactly four
+    things are emptied, and each is emptied because publishing it would be a
+    real disclosure, not because it is merely irrelevant:
+
+      * `offers`   — the brand's offer inventory. Competitors scrape this, and
+                     keeping one tenant's offers away from another is the whole
+                     point of the brand-only scoping ruling (2026-08-04);
+                     publishing the list to the open internet is the same
+                     disclosure with a wider audience.
+      * `keys`     — API key client_ids. Not secrets, but identifiers of real
+                     credentials, and there is no reason for them to be public.
+      * `postback_configs` — the AFFILIATE's own endpoint URLs. Someone else's
+                     infrastructure; ours to protect, not to publish.
+      * `affiliate_name` — there is no affiliate here.
+
+    The template partial already guards `keys` and `postback_configs` on
+    truthiness, so emptying them removes those sections with no markup changes.
+
+    Everything else — endpoints, all field rows, the status vocabulary, error
+    bodies, postback macros, rate-limit rules, the narrative — is the CONTRACT.
+    It is what an integrator needs and it discloses nothing: it is already
+    enforced against anyone holding a key.
+    """
+    host = (brand.primary_domain if brand else None) or request.get_host()
+    scheme = 'https' if request.is_secure() else 'http'
+    base_url = f'{scheme}://{host}'.rstrip('/')
+
+    return {
+        'public': True,
+        'brand_name': brand.name if brand else '',
+        'base_url': base_url,
+        'affiliate_name': '',
+        'auth_header': 'Authorization: ApiKey <your secret>',
+        'endpoints': _endpoint_rows(),
+        'pull_filters': _pull_filter_rows(),
+        'fields': _field_rows(),
+        'statuses': [{'value': value, 'label': label} for value, label in canonical_status.CHOICES],
+        'offers': [],
+        'conditional_required_fields': _brand_conditional_required_fields(brand),
+        'keys': [],
+        'postback_configs': [],
+        'postback_macros': ['lead_id', 'source_id', 'status', 'status_time', 'offer_id', 'payout'],
+        'errors': _error_rows(),
+        'examples': _examples(base_url, [], offer_id_placeholder=OFFER_ID_PLACEHOLDER),
+        'narrative': NARRATIVE,
+        'openapi_schema_url': f'{base_url}/api/schema/',
+        'openapi_swagger_url': f'{base_url}/api/schema/swagger-ui/',
     }
 
 
@@ -371,6 +471,9 @@ def build_doc_context(request, affiliate_user):
     postback_configs = AffiliatePostbackConfig.objects.filter(affiliate=affiliate_user, is_active=True)
 
     return {
+        'public': False,
+        'brand_name': brand.name if brand else '',
+        'conditional_required_fields': [],
         'base_url': base_url,
         'affiliate_name': affiliate_user.get_full_name() or affiliate_user.get_username(),
         'auth_header': 'Authorization: ApiKey <your secret>',

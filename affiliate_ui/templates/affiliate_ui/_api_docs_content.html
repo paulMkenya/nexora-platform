@@ -65,6 +65,18 @@ copy buttons at runtime to [data-copy] blocks; the PDF simply never runs it.
 <h3>Attribution — where the lead came from</h3>
 {% for para in doc.narrative.attribution %}<p>{{ para }}</p>{% endfor %}
 
+{% if doc.public %}
+<h3>Offers</h3>
+<p>Your account manager gives you the <code>offer_id</code>(s) you are approved to send to; they
+  are also listed on your partner dashboard once your account is open. Submitting an
+  <code>offer_id</code> you are not approved for returns <code>400</code>.</p>
+{% if doc.conditional_required_fields %}
+<p class="note"><strong>Note:</strong> some offers additionally require
+  {% for f in doc.conditional_required_fields %}<code>{{ f }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+  — on top of the fields marked required above, because the buyer they route to rejects a lead
+  without them. Submitting without one returns <code>400</code> naming the field.</p>
+{% endif %}
+{% else %}
 <h3>Your offers</h3>
 {% if doc.offers %}
 <table>
@@ -91,6 +103,7 @@ copy buttons at runtime to [data-copy] blocks; the PDF simply never runs it.
 {% else %}
 <p class="note">No offers assigned yet — contact your manager. Until an offer is assigned to you,
   submissions will be rejected with <code>offer_id does not resolve to an offer you can send to</code>.</p>
+{% endif %}
 {% endif %}
 
 <h3>Testing → Live workflow</h3>

@@ -7,6 +7,7 @@ from .views.leads_views import my_leads, inject_my_leads
 from .views.api_docs_views import (
     api_docs, api_docs_pdf, api_docs_text, api_keys,
     api_key_create, api_key_regenerate, api_key_revoke,
+    public_api_docs, public_api_docs_pdf, public_api_docs_text,
 )
 from .views.postbacks_views import postbacks, postback_create, postback_update, postback_toggle_active
 from .views.settings_views import company_settings, company_settings_update
@@ -47,6 +48,12 @@ urlpatterns = [
     path('leads/', my_leads, name='my_leads'),
     path('leads/inject/', inject_my_leads, name='inject_my_leads'),
     # API & Docs (Affiliate Inbound API spec Phase 5)
+    # Public, no login — must be declared BEFORE 'api-docs/keys/<pk>/...' style
+    # patterns is not an issue (distinct literal prefix), but keep it adjacent to
+    # its authenticated twin so the pair is obvious.
+    path('api-docs/public/', public_api_docs, name='public_api_docs'),
+    path('api-docs/public/pdf/', public_api_docs_pdf, name='public_api_docs_pdf'),
+    path('api-docs/public/text/', public_api_docs_text, name='public_api_docs_text'),
     path('api-docs/', api_docs, name='api_docs'),
     path('api-docs/pdf/', api_docs_pdf, name='api_docs_pdf'),
     path('api-docs/text/', api_docs_text, name='api_docs_text'),
