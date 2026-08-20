@@ -7,7 +7,8 @@ import json
 
 from django import forms
 
-from .models import LeadBuyer, RoutingRule
+from .box_variables import effective_schema, split_values
+from .models import BoxType, LeadBuyer, RoutingRule
 
 
 class BuyerSecretsFormMixin(forms.Form):
@@ -119,18 +120,106 @@ class LeadBuyerForm(BuyerSecretsFormMixin, forms.ModelForm):
             }),
         }
 
-    def __init__(self, *args, restrict_to_brand=None, **kwargs):
+    # Variable fields are namespaced so they can never collide with a real
+    # model field — `name` is a BoxType variable on several boxes and also a
+    # LeadBuyer column.
+    VAR_PREFIX = 'var__'
+
+    def __init__(self, *args, restrict_to_brand=None, box_type=None, **kwargs):
         """restrict_to_brand: for a non-platform-owner operator, locks
         `brand` to their own brand (no platform-wide/other-brand option) —
         a brand-scoped operator must not be able to create or repoint a
         platform-wide buyer, which would affect every brand's fallback
-        routing."""
+        routing.
+
+        box_type: the template whose variables this form should render as real
+        fields. Taken from the edited instance, or passed explicitly when
+        creating a buyer from the catalogue. A template that declares no
+        variables leaves the form exactly as it was — the raw JSON editor stays
+        the fallback, so absence of a declaration never means absence of the
+        capability.
+        """
         super().__init__(*args, **kwargs)
         if restrict_to_brand is not None:
             self.fields['brand'].queryset = self.fields['brand'].queryset.filter(pk=restrict_to_brand.pk)
             self.fields['brand'].initial = restrict_to_brand.pk
             self.fields['brand'].empty_label = None
             self.fields['brand'].required = True
+
+        self.box_type = box_type or getattr(self.instance, 'box_type', None)
+        self.variables = effective_schema(self.box_type)
+        if self.variables:
+            self._add_variable_fields()
+
+    def _add_variable_fields(self):
+        """One form field per declared variable, prefilled from what the buyer
+        already sends — except secrets, which are write-only for the same reason
+        the API key is: a rendered secret is a secret in the page source, in the
+        browser cache and in anything that scrapes either."""
+        current = dict(getattr(self.instance, 'extra_payload_fields', None) or {})
+        for var in self.variables:
+            key = f'{self.VAR_PREFIX}{var["name"]}'
+            self.fields[key] = forms.CharField(
+                label=var['label'],
+                help_text=var['help'],
+                required=var['required'],
+                widget=forms.PasswordInput(render_value=False) if var['secret'] else forms.TextInput(),
+                initial='' if var['secret'] else current.get(var['name'], var['default']),
+            )
+            if var['secret'] and self.instance.pk:
+                self.fields[key].required = False
+                self.fields[key].help_text = (
+                    (var['help'] + ' ') if var['help'] else ''
+                ) + 'Leave blank to keep the stored value.'
+
+    def model_fields(self):
+        """Visible fields EXCLUDING the template variables, which the console
+        renders in their own section attached to box_type. Without this the
+        variables appear twice — once here and once there — because they are
+        ordinary form fields as far as Django is concerned."""
+        return [f for f in self.visible_fields() if not f.name.startswith(self.VAR_PREFIX)]
+
+    def variable_fields(self):
+        """The bound variable fields, in the template author's declared order —
+        the template renders these as their own section rather than letting them
+        fall in with the model fields."""
+        return [self[f'{self.VAR_PREFIX}{v["name"]}'] for v in self.variables]
+
+    def save(self, commit=True):
+        """Fold the submitted variables into the buyer.
+
+        MERGE, never replace: a box may legitimately carry keys the template
+        does not declare (added by hand before the template gained a schema, or
+        a one-off a vendor asked for), and silently dropping them on the next
+        save would break a live integration with no error to read.
+
+        Secrets go to the Fernet store, never to extra_payload_fields — that
+        column is plaintext and is rendered back to operators. See
+        leadgen.box_variables.split_values.
+        """
+        buyer = super().save(commit=False)
+        if self.variables:
+            submitted = {
+                v['name']: self.cleaned_data.get(f'{self.VAR_PREFIX}{v["name"]}', '')
+                for v in self.variables
+            }
+            payload, secrets = split_values(self.box_type, submitted)
+            merged = dict(buyer.extra_payload_fields or {})
+            merged.update(payload)
+            buyer.extra_payload_fields = merged
+            if secrets:
+                existing = {}
+                if buyer.pk:
+                    try:
+                        existing = buyer.get_extra_credentials() or {}
+                    except Exception:
+                        existing = {}
+                existing.update(secrets)
+                buyer.set_extra_credentials(existing)
+        if commit:
+            buyer.save()
+            self.save_m2m()
+        return buyer
 
 
 class RoutingRuleForm(forms.ModelForm):
@@ -151,3 +240,55 @@ class RoutingRuleForm(forms.ModelForm):
         if restrict_to_brand is not None:
             self.fields['brand'].queryset = self.fields['brand'].queryset.filter(pk=restrict_to_brand.pk)
             self.fields['brand'].initial = restrict_to_brand.pk
+
+
+class BoxTypeForm(forms.ModelForm):
+    """Create/edit an integration template.
+
+    Brand admins may create templates (Paul's decision, 2026-08-20), which is
+    why `connector_class` is a SELECT here and not a text input: the value is
+    fed to import_string, so free text would let whoever edits a template choose
+    which code runs on the delivery path. The choices come from
+    leadgen.connector_registry, and BoxType.clean() re-checks membership — the
+    form narrowing the widget is convenience, the model check is the guard.
+    """
+
+    class Meta:
+        model = BoxType
+        fields = [
+            'name', 'slug', 'brand', 'version', 'description', 'connector_class',
+            'auth_type', 'auth_param_name',
+            'single_endpoint_path', 'batch_endpoint_path', 'fetch_endpoint_path',
+            'deposits_endpoint_path', 'batch_max_size',
+            'rate_limit_burst', 'rate_limit_refill_tokens', 'rate_limit_refill_seconds',
+            'default_field_mapping', 'default_status_mapping', 'variable_schema',
+        ]
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 3}),
+            'default_field_mapping': forms.Textarea(attrs={
+                'rows': 5, 'placeholder': '{"phone": "MobileNumber"} — leave {} if none.'}),
+            'default_status_mapping': forms.Textarea(attrs={
+                'rows': 4, 'placeholder': '{"Deposit": "ftd"} — leave {} if none.'}),
+            'variable_schema': forms.Textarea(attrs={
+                'rows': 10,
+                'placeholder': '[{"name": "affc", "label": "Affiliate code", "required": true, '
+                               '"help": "Ask the buyer for it."}]',
+            }),
+        }
+
+    def __init__(self, *args, restrict_to_brand=None, **kwargs):
+        """restrict_to_brand: a brand-scoped operator may only create a template
+        OWNED BY THEIR OWN BRAND. The platform-wide option (brand empty) is
+        removed for them entirely — a platform template is offered to every
+        tenant, so letting one tenant publish into that shared space would put
+        their integration recipe in front of everyone else's operators.
+        """
+        super().__init__(*args, **kwargs)
+        self.fields['connector_class'].widget = forms.Select(
+            choices=self.fields['connector_class'].choices)
+        if restrict_to_brand is not None:
+            self.fields['brand'].queryset = self.fields['brand'].queryset.filter(
+                pk=restrict_to_brand.pk)
+            self.fields['brand'].initial = restrict_to_brand.pk
+            self.fields['brand'].empty_label = None
+            self.fields['brand'].required = True

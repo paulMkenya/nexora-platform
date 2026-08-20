@@ -15,6 +15,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
+from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -32,7 +33,9 @@ from .connectors import (
     get_connector,
 )
 from .serializers import ATTRIBUTION_FIELDS, SUB_FIELDS
-from .forms import LeadBuyerForm, RoutingRuleForm
+from .box_variables import effective_schema
+from .connector_registry import describe
+from .forms import BoxTypeForm, LeadBuyerForm, RoutingRuleForm
 from .models import (
     AffiliateOfferLink, BoxType, Lead, LeadBuyer, LeadInjection, LeadStatusEvent, RoutingRule,
 )
@@ -460,14 +463,25 @@ def buyer_form(request, pk=None):
         qs, _, _ = _scoped_buyers(request)
         instance = get_object_or_404(qs, pk=pk)
 
+    # Creating from the catalogue: the template is chosen first, so the form can
+    # render ITS variables as real fields. On edit the instance already knows.
+    chosen_box_type = None
+    requested = request.POST.get('box_type') or request.GET.get('box_type')
+    if instance is None and requested:
+        templates, _, _ = _scoped_box_types(request)
+        chosen_box_type = templates.filter(pk=requested).first()
+
     if request.method == 'POST':
-        form = LeadBuyerForm(request.POST, instance=instance, restrict_to_brand=restrict_to_brand)
+        form = LeadBuyerForm(request.POST, instance=instance,
+                             restrict_to_brand=restrict_to_brand, box_type=chosen_box_type)
         if form.is_valid():
             saved = form.save()
             messages.success(request, f'Buyer "{saved.name}" saved.')
             return redirect('leadgen_console:buyers')
     else:
-        form = LeadBuyerForm(instance=instance, restrict_to_brand=restrict_to_brand)
+        initial = {'box_type': chosen_box_type.pk} if chosen_box_type else None
+        form = LeadBuyerForm(instance=instance, restrict_to_brand=restrict_to_brand,
+                             box_type=chosen_box_type, initial=initial)
 
     return render(request, 'leadgen/console/buyer_form.html', _buyer_form_context(
         page_title='Edit Buyer' if instance else 'Add Buyer', form=form, instance=instance))
@@ -590,6 +604,114 @@ def routing_rule_form(request, pk=None):
     return render(request, 'leadgen/console/routing_rule_form.html', {
         'shell_role': 'admin',
         'page_title': 'Edit Routing Rule' if instance else 'Add Routing Rule',
+        'form': form,
+        'instance': instance,
+    })
+
+
+# --- Integration templates (the Box Registry catalogue) ----------------------
+#
+# BoxType was previously reachable only through Django's model admin, which the
+# brand-admin scoping rule keeps owner-only — so a brand admin could use a
+# template but never see one, and "pick a template" was not a workflow anybody
+# could actually perform. These pages are that workflow.
+
+
+def _scoped_box_types(request):
+    """Templates this operator may see: the PLATFORM ones (brand is null) plus
+    their own brand's.
+
+    The null-means-shared reading is the opposite of the rule for offers and is
+    deliberate — see BoxType.brand. A template is an integration recipe, not
+    inventory: it carries no credentials and names no counterparty, so sharing
+    it discloses nothing about anyone's commercial relationships.
+    """
+    show_all_brands = sees_all_brands(request.user)
+    brand = scope_brand(request)
+    qs = BoxType.objects.all()
+    if not show_all_brands:
+        qs = qs.filter(Q(brand__isnull=True) | Q(brand=brand))
+    return qs.order_by('name'), brand, show_all_brands
+
+
+def _may_edit_box_type(request, box_type):
+    """A brand operator may edit only their OWN brand's template. Platform
+    templates are readable by everyone and writable by the owner alone —
+    otherwise one tenant could rewrite the recipe every other tenant's boxes
+    are built on."""
+    if sees_all_brands(request.user):
+        return True
+    return box_type.brand_id is not None and box_type.brand_id == getattr(
+        scope_brand(request), 'pk', None)
+
+
+@staff_member_required
+def box_types_list(request):
+    templates, brand, show_all_brands = _scoped_box_types(request)
+    rows = []
+    for box_type in templates:
+        rows.append({
+            'box_type': box_type,
+            'variables': effective_schema(box_type),
+            'buyer_count': box_type.buyers.count(),
+            'connector_label': describe(box_type.connector_class),
+            'editable': _may_edit_box_type(request, box_type),
+            'is_platform': box_type.brand_id is None,
+        })
+    return render(request, 'leadgen/console/box_types_list.html', {
+        'shell_role': 'admin',
+        'page_title': 'Integration Templates',
+        'rows': rows,
+        'brand': brand,
+        'show_all_brands': show_all_brands,
+    })
+
+
+@staff_member_required
+def box_type_detail(request, pk):
+    templates, _, _ = _scoped_box_types(request)
+    box_type = get_object_or_404(templates, pk=pk)
+    return render(request, 'leadgen/console/box_type_detail.html', {
+        'shell_role': 'admin',
+        'page_title': box_type.name,
+        'box_type': box_type,
+        'variables': effective_schema(box_type),
+        'connector_label': describe(box_type.connector_class),
+        'buyers': box_type.buyers.all()[:25] if sees_all_brands(request.user)
+                  else box_type.buyers.filter(brand=scope_brand(request))[:25],
+        'editable': _may_edit_box_type(request, box_type),
+        'is_platform': box_type.brand_id is None,
+    })
+
+
+@staff_member_required
+def box_type_form(request, pk=None):
+    show_all_brands = sees_all_brands(request.user)
+    brand = scope_brand(request)
+    restrict_to_brand = None if show_all_brands else brand
+
+    instance = None
+    if pk is not None:
+        templates, _, _ = _scoped_box_types(request)
+        instance = get_object_or_404(templates, pk=pk)
+        if not _may_edit_box_type(request, instance):
+            # Readable but not writable. 403 rather than 404: hiding it would
+            # be misleading, since the operator can plainly see it in the list.
+            return HttpResponseForbidden(
+                'This is a platform template. Only the platform owner can change it.')
+
+    if request.method == 'POST':
+        form = BoxTypeForm(request.POST, instance=instance, restrict_to_brand=restrict_to_brand)
+        if form.is_valid():
+            saved = form.save()
+            messages.success(request, f'Template "{saved.name}" saved.')
+            return redirect('leadgen_console:box_type_detail', pk=saved.pk)
+    else:
+        form = BoxTypeForm(instance=instance, restrict_to_brand=restrict_to_brand)
+
+    return render(request, 'leadgen/console/box_type_form.html', {
+        'shell_role': 'admin',
+        'page_title': 'Edit Template' if instance else 'New Template',
         'form': form,
         'instance': instance,
     })
