@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 from affiliate_ui.gates import require_approved_affiliate
 from impersonation.decorators import block_when_impersonating
-from leadgen.api_doc import build_doc_context
+from leadgen.api_doc import build_doc_context, build_public_doc_context
 from public_api.models import APIKey
 
 
@@ -29,16 +29,56 @@ def api_docs(request):
 def api_docs_pdf(request):
     doc = build_doc_context(request, request.user)
     html = render_to_string('affiliate_ui/api_docs_pdf.html', {'doc': doc})
+    return _render_pdf(html, base_url=request.build_absolute_uri('/'),
+                       filename='nexora-affiliate-api-docs.pdf')
 
+
+def _render_pdf(html, *, base_url, filename):
+    """WeasyPrint the given HTML, falling back to serving the HTML itself if the
+    system pango libraries are missing — the same fallback billing uses. Shared
+    by the affiliate and public PDF views so the fallback cannot drift between
+    them (it silently served HTML-named-.pdf for months once already)."""
     try:
         import weasyprint
-        pdf_bytes = weasyprint.HTML(string=html, base_url=request.build_absolute_uri('/')).write_pdf()
+        pdf_bytes = weasyprint.HTML(string=html, base_url=base_url).write_pdf()
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        response['Content-Disposition'] = 'attachment; filename="nexora-affiliate-api-docs.pdf"'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
     except Exception:
-        # WeasyPrint unavailable (system libs missing, same fallback billing
-        # uses) — serve the HTML directly rather than a 500.
-        response = HttpResponse(html, content_type='text/html')
+        return HttpResponse(html, content_type='text/html')
+
+
+# --- Public, UNAUTHENTICATED documentation -----------------------------------
+#
+# Same contract, same derived source, none of the tenant-specific data — see
+# leadgen.api_doc.build_public_doc_context for exactly what is withheld and why.
+# This exists so an integration doc can be linked in an email or embedded in a
+# proposal without the recipient needing an account, which is the normal way a
+# traffic source's developers get it.
+#
+# Brand comes from the HOST here, and that is correct for this view in a way it
+# was NOT correct for lead intake: there is no affiliate to key off, the page is
+# served on the brand's own domain, and the worst case of the BrandMiddleware
+# fallback is showing the default brand's PUBLIC contract — no tenant data can
+# cross, because none is in the context at all.
+
+def public_api_docs(request):
+    return render(request, 'affiliate_ui/api_docs_public.html', {
+        'doc': build_public_doc_context(request, getattr(request, 'brand', None)),
+    })
+
+
+def public_api_docs_pdf(request):
+    doc = build_public_doc_context(request, getattr(request, 'brand', None))
+    html = render_to_string('affiliate_ui/api_docs_pdf.html', {'doc': doc})
+    return _render_pdf(html, base_url=request.build_absolute_uri('/'),
+                       filename='nexora-inbound-lead-api.pdf')
+
+
+def public_api_docs_text(request):
+    doc = build_public_doc_context(request, getattr(request, 'brand', None))
+    response = HttpResponse(_doc_as_text(doc), content_type='text/plain; charset=utf-8')
+    response['Content-Disposition'] = 'inline; filename="nexora-inbound-lead-api.txt"'
     return response
 
 
@@ -59,12 +99,17 @@ def _block(code):
 
 
 def _text_header(doc):
-    lines = [
-        'NEXORA AFFILIATE INBOUND API', '=' * 29, '',
-        f'Prepared for: {doc["affiliate_name"]}',
-        f'Base URL:     {doc["base_url"]}', '',
-        'ENDPOINTS',
-    ]
+    # "Prepared for: <affiliate>" is the one line that assumes a reader we know.
+    # The public variant names the network instead, so the document still says
+    # whose API it describes without inventing an addressee.
+    if doc.get('public'):
+        addressed = f'Network:      {doc["brand_name"]}' if doc.get('brand_name') else None
+    else:
+        addressed = f'Prepared for: {doc["affiliate_name"]}'
+    lines = ['NEXORA AFFILIATE INBOUND API', '=' * 29, '']
+    if addressed:
+        lines.append(addressed)
+    lines += [f'Base URL:     {doc["base_url"]}', '', 'ENDPOINTS']
     lines += [f'  {ep["method"]:6s} {doc["base_url"]}{ep["path"]} — {ep["purpose"]}'
               for ep in doc['endpoints']]
     return lines
@@ -90,19 +135,31 @@ def _text_fields_and_offers(doc):
     lines += ['', 'ATTRIBUTION — WHERE THE LEAD CAME FROM', '']
     lines += _wrap(doc['narrative']['attribution'])
 
-    lines += ['YOUR OFFERS']
-    if doc['offers']:
-        for o in doc['offers']:
-            started = '' if o['started'] else ' (not started yet)'
-            lines.append(f'  offer_id={o["id"]}: {o["title"]} — {o["phase_label"]}{started}')
-            if o['required_fields']:
-                # On top of the fields already marked required in the table
-                # above — this offer's buyer rejects a lead without them.
-                lines.append(f'      also required: {", ".join(o["required_fields"])}')
+    if doc.get('public'):
+        lines += ['OFFERS']
+        lines.append('  Your account manager gives you the offer_id(s) you are approved to send')
+        lines.append('  to; they are also listed on your partner dashboard once your account is')
+        lines.append('  open. Submitting an offer_id you are not approved for returns 400.')
+        if doc.get('conditional_required_fields'):
+            extra = ', '.join(doc['conditional_required_fields'])
+            lines.append('')
+            lines.append(f'  NOTE: some offers additionally require: {extra} — on top of the fields')
+            lines.append('  marked required above, because the buyer they route to rejects a lead')
+            lines.append('  without them. Submitting without one returns 400 naming the field.')
     else:
-        lines.append('  No offers assigned yet — contact your manager. Until an offer is assigned')
-        lines.append('  to you, submissions will be rejected with "offer_id does not resolve to an')
-        lines.append('  offer you can send to".')
+        lines += ['YOUR OFFERS']
+        if doc['offers']:
+            for o in doc['offers']:
+                started = '' if o['started'] else ' (not started yet)'
+                lines.append(f'  offer_id={o["id"]}: {o["title"]} — {o["phase_label"]}{started}')
+                if o['required_fields']:
+                    # On top of the fields already marked required in the table
+                    # above — this offer's buyer rejects a lead without them.
+                    lines.append(f'      also required: {", ".join(o["required_fields"])}')
+        else:
+            lines.append('  No offers assigned yet — contact your manager. Until an offer is assigned')
+            lines.append('  to you, submissions will be rejected with "offer_id does not resolve to an')
+            lines.append('  offer you can send to".')
 
     lines += ['', 'TESTING -> LIVE', '']
     lines += _wrap(doc['narrative']['testing_live'])
@@ -152,14 +209,20 @@ def _text_errors(doc):
     return lines
 
 
-@require_approved_affiliate
-def api_docs_text(request):
-    doc = build_doc_context(request, request.user)
-    lines = (
+def _doc_as_text(doc):
+    """The whole doc as plain text. One composer for both the affiliate and the
+    public variant — the section builders already branch on doc['public'], so
+    duplicating this list was the obvious way for the two to drift."""
+    return '\n'.join(
         _text_header(doc) + _text_auth(doc) + _text_fields_and_offers(doc)
         + _text_delivery(doc) + _text_errors(doc)
     )
-    response = HttpResponse('\n'.join(lines), content_type='text/plain; charset=utf-8')
+
+
+@require_approved_affiliate
+def api_docs_text(request):
+    doc = build_doc_context(request, request.user)
+    response = HttpResponse(_doc_as_text(doc), content_type='text/plain; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="nexora-affiliate-api-docs.txt"'
     return response
 

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{% if doc.brand_name %}{{ doc.brand_name }} — {% endif %}Inbound Lead API</title>
+{# A standalone shell, NOT affiliate_ui/base.html: that template renders the
+   logged-in chrome (nav, account menu, logout) and assumes request.user. This
+   page is served to anonymous visitors and is meant to be forwarded, printed
+   and embedded, so it carries its own minimal styling and no navigation. #}
+{# noindex on purpose. The page is meant to be SHARED (a link in an email, an
+   embed in a proposal), not FOUND: search-indexing it would publish the
+   network's integration surface to scrapers and competitors for no benefit to
+   the people we actually send it to. It stays fully readable to anyone holding
+   the link. #}
+<meta name="robots" content="noindex, nofollow"/>
+<style>
+  :root { --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --accent:#4f46e5; --bg:#ffffff; --code:#f3f4f6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#e5e7eb; --muted:#9ca3af; --line:#374151; --accent:#a5b4fc; --bg:#111827; --code:#1f2937; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:8px; }
+  .brandline { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); font-weight:700; }
+  h2 { font-size:26px; margin:6px 0 4px; }
+  h3 { font-size:16px; color:var(--accent); margin:28px 0 8px; }
+  p { margin:8px 0; }
+  table { width:100%; border-collapse:collapse; margin:10px 0 16px; display:block; overflow-x:auto; }
+  th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+       color:var(--muted); border-bottom:1px solid var(--line); padding:6px 10px; white-space:nowrap; }
+  td { padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top; font-size:14px; }
+  code { background:var(--code); padding:1px 5px; border-radius:3px; font-size:13px; }
+  pre { background:var(--code); padding:12px 14px; border-radius:6px; overflow-x:auto; font-size:13px; }
+  .note { color:var(--muted); font-size:13.5px; }
+  .actions { margin-top:14px; }
+  .actions a { display:inline-block; margin-right:8px; padding:7px 13px; border:1px solid var(--line);
+               border-radius:6px; color:var(--ink); text-decoration:none; font-size:13.5px; }
+  .actions a:hover { border-color:var(--accent); color:var(--accent); }
+  footer { margin-top:44px; padding-top:14px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    {% if doc.brand_name %}<div class="brandline">{{ doc.brand_name }}</div>{% endif %}
+    <h2>Inbound Lead API</h2>
+    <p class="note">Integration reference for traffic sources. Everything below is generated from the
+      live API, so it always matches what the endpoint actually accepts.</p>
+    <div class="actions">
+      <a href="{% url 'affiliate_ui:public_api_docs_pdf' %}">Download PDF</a>
+      <a href="{% url 'affiliate_ui:public_api_docs_text' %}">Plain text</a>
+    </div>
+  </header>
+
+  {% include 'affiliate_ui/_api_docs_content.html' with doc=doc %}
+
+  <footer>
+    Need an <code>offer_id</code>, an API key, or postback setup? Contact your account manager.
+  </footer>
+</div>
+</body>
+</html>
