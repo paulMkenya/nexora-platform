@@ -61,8 +61,16 @@ NARRATIVE = {
         'TESTING a new one. Your current phase for each offer is listed above.',
     ],
     'postbacks': [
-        'Register a postback URL and Nexora pushes each status change to you as it happens. '
-        'Macros in your URL are resolved fresh on every delivery.',
+        'A postback URL is YOUR endpoint, on your own infrastructure — Nexora calls it. There '
+        'is no Nexora URL to point at: you tell us where to push, and we push each status '
+        'change to you as it happens. Macros in your URL are resolved fresh on every delivery.',
+        'Register one either way, whichever suits you: POST /api/postbacks with your API key '
+        '(no portal login needed — the endpoint is listed above), or on the Postbacks page of '
+        'your dashboard. The signing secret is returned exactly once, when the postback is '
+        'created; store it then, because it cannot be retrieved afterwards.',
+        'You do not have to use postbacks at all. Polling GET /api/leads?updated_since=... '
+        'returns the identical canonical status, so an integration that prefers to pull on its '
+        'own schedule can skip this section entirely.',
         'Every delivery is signed: X-Nexora-Signature: sha256=<hmac>, computed over the raw JSON '
         'body with your postback secret. Verify it before trusting the payload.',
         'Each payload carries a per-lead status_seq. Ignore any delivery whose seq is lower than '
