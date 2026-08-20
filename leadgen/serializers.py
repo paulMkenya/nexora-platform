@@ -74,21 +74,31 @@ class LeadSubmitSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=120, required=False, allow_blank=True, default='')
     email = serializers.EmailField(max_length=250)
     phone = serializers.CharField(max_length=32)
-    vertical = serializers.CharField(max_length=120, required=False, allow_blank=True, default='')
+    vertical = serializers.CharField(
+        max_length=120, required=False, allow_blank=True, default='',
+        help_text=(
+            'Your own classification of the lead (e.g. "crypto"). Some buyer integrations use it '
+            'as the funnel/campaign label in their own reporting, so send a stable value or leave '
+            'it out entirely -- never a per-lead unique string.'
+        ),
+    )
     source_id = serializers.CharField(max_length=120, required=False, allow_blank=True, default='')
     language = serializers.CharField(
         max_length=8, required=False, allow_blank=True, default='',
         help_text=(
-            'The consumer language as ISO 639-1 (EN, DE, ES). Buyers route call-centre capacity on '
-            'it, so send it when you know it. Omitted means unknown -- Nexora never guesses one.'
+            'The consumer language as ISO 639-1 (EN, DE, ES). Buyers that receive it route '
+            'call-centre capacity on it, so send it when you know it -- whether a given offer '
+            'forwards it depends on that integration. Omitted means unknown; Nexora never '
+            'guesses one.'
         ),
     )
     funnel = serializers.CharField(
         max_length=120, required=False, allow_blank=True, default='',
         help_text=(
-            'The funnel or traffic-source name this lead came through. Appears in the buyer own '
-            'reporting, which is what they optimise on -- send a real per-funnel value rather than '
-            'one constant for all your traffic.'
+            'The funnel or traffic-source name this lead came through. Where the offer integration '
+            'forwards it, it appears in the buyer own reporting, which is what they optimise on -- '
+            'so send a real per-funnel value rather than one constant for all your traffic. It is '
+            'recorded on the lead and reportable here either way.'
         ),
     )
     campaign = serializers.CharField(max_length=120, required=False, allow_blank=True, default='')
@@ -126,10 +136,11 @@ class AffiliateLeadSubmitSerializer(LeadSubmitSerializer):
     country = serializers.CharField(
         max_length=2, required=False, allow_blank=True, default='',
         help_text=(
-            'ISO 3166-1 alpha-2 (e.g. US). If you know the consumer country, send it -- it wins '
-            'outright. If omitted, Nexora makes a best-effort geolocation guess from ip instead, '
-            'which is a weaker signal for an affiliate-submitted lead than what your own system '
-            'usually already knows.'
+            'ISO 3166-1 alpha-2 (e.g. US). Send it whenever you know the consumer country. SOME '
+            'OFFERS REQUIRE IT -- the buyer they route to rejects a lead with no country -- and '
+            'those offers are flagged under "Offers you can send to"; submitting to one without '
+            'it returns 400 naming this field. Do not rely on Nexora deriving it from ip: that '
+            'fallback is best-effort and often unavailable.'
         ),
     )
     ip = serializers.IPAddressField(

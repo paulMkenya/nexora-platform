@@ -45,6 +45,19 @@ DEFAULT_FIELD_MAPPING = {
     'phone': 'profile.phone',
     'vertical': 'funnel',
     'source_id': 'subId',
+    # OPT-IN source (connectors.OPT_IN_LEAD_FIELDS): Lead.language -> their
+    # `lang`. Hypernet documents `lang` as "language code of lead", and their
+    # call centres route capacity on it, but until this mapping existed the
+    # only `lang` we ever sent was the static 'en' in extra_payload_fields —
+    # so an affiliate who correctly sent language="PL" had it silently
+    # dropped, and our own API doc promised otherwise.
+    #
+    # Statics still supply the default: build_extra_payload OMITS a mapped-
+    # but-empty source, so a lead with no language leaves the box's 'en'
+    # untouched. HypernetConnector.LOWERCASE_KEYS folds the case, because we
+    # document language as ISO 639-1 with upper-case examples and they ask
+    # for lower-case.
+    'language': 'lang',
 }
 
 
