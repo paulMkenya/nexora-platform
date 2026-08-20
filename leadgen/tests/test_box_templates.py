@@ -99,7 +99,7 @@ def test_normalize_fills_every_optional_key_and_keeps_order():
     got = normalize([{'name': 'b'}, {'name': 'a', 'label': 'A', 'secret': True}])
     assert [v['name'] for v in got] == ['b', 'a'], 'order is the form order, chosen deliberately'
     assert got[0] == {'name': 'b', 'label': 'b', 'help': '', 'required': False,
-                      'secret': False, 'default': ''}
+                      'secret': False, 'default': '', 'choices': None}
     assert got[1]['secret'] is True
 
 
@@ -211,3 +211,63 @@ def test_backfilled_schemas_are_themselves_valid():
             validate_variable_schema(schema)
         except SchemaError as exc:
             pytest.fail(f'{slug}: {exc}')
+
+
+# --- selectable variables (vertical taxonomy) --------------------------------
+
+@pytest.mark.django_db
+def test_a_variable_may_declare_a_named_choice_source():
+    box = _box(variable_schema=[{'name': 'funnel', 'choices': 'verticals'}])
+    box.full_clean()
+    assert normalize(box.variable_schema)[0]['choices'] == 'verticals'
+
+
+@pytest.mark.django_db
+def test_an_unknown_choice_source_is_refused():
+    """A typo would render an empty dropdown an operator cannot get past."""
+    with pytest.raises(ValidationError):
+        _box(variable_schema=[{'name': 'x', 'choices': 'vertikals'}]).full_clean()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('bad', [5, {'a': 1}, ['ok', ''], [1, 2]])
+def test_a_malformed_choices_value_is_refused(bad):
+    with pytest.raises(ValidationError):
+        _box(variable_schema=[{'name': 'x', 'choices': bad}]).full_clean()
+
+
+@pytest.mark.django_db
+def test_named_source_resolves_live_from_the_taxonomy():
+    """Resolved at render time, not copied into the schema — a vertical added to
+    the taxonomy must appear in every template referencing it with no edit."""
+    from offer.models import Category
+
+    from leadgen.box_variables import resolve_choices
+
+    Category.objects.create(name='Brand New Vertical', slug='brand-new')
+    values = [value for value, _ in resolve_choices('verticals')]
+    assert 'brand-new' in values
+    assert 'crypto' in values, 'the seeded taxonomy should be present too'
+
+
+def test_an_inline_choice_list_is_supported():
+    from leadgen.box_variables import resolve_choices
+
+    assert resolve_choices(['a', 'b']) == [('a', 'a'), ('b', 'b')]
+    assert resolve_choices(None) is None
+
+
+@pytest.mark.django_db
+def test_vertical_choices_survive_a_missing_table():
+    """The callable is attached to a MODEL FIELD, so Django evaluates it during
+    makemigrations and system checks — against a database whose Category.slug
+    column may not exist yet. It must degrade to the static list, not explode."""
+    from unittest.mock import patch
+
+    from offer.verticals import vertical_choices
+
+    with patch('offer.models.Category.objects') as objects:
+        objects.exclude.side_effect = RuntimeError('no such column')
+        rows = vertical_choices()
+    assert rows, 'must fall back to the static reference list'
+    assert 'crypto' in [value for value, _ in rows]

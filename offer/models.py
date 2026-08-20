@@ -139,6 +139,21 @@ class Category(models.Model):
         verbose_name_plural = 'Categories'
 
     name = models.CharField(max_length=256)
+    # The MACHINE value, distinct from `name` on purpose. `name` is what an
+    # operator reads ("Crypto / Trading"); `slug` is what gets stored on
+    # leadgen.Lead.vertical and forwarded to a buyer — the Hypernet box type
+    # maps vertical onto its `funnel`, so this string lands in the buyer's own
+    # reporting and they optimise on it.
+    #
+    # ⚠️ APPEND-ONLY IN PRACTICE. Live traffic already carries 'crypto';
+    # changing an existing slug silently re-labels a buyer's reporting
+    # mid-campaign. Blank is allowed so an operator-created category is never
+    # blocked from saving, and such a row simply does not appear in the
+    # vertical dropdowns.
+    slug = models.SlugField(
+        max_length=60, blank=True, default='',
+        help_text='Machine value sent to buyers, e.g. "crypto". Leave blank to keep this '
+                  'category out of the vertical dropdowns.')
     # Adult / restricted vertical (e.g. Adult, some Dating). Lets the platform
     # owner flag verticals that need extra handling.
     is_adult = models.BooleanField(

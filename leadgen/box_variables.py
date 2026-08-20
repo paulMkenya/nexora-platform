@@ -21,7 +21,13 @@ import re
 
 NAME_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_.-]{0,39}$')
 
-ALLOWED_KEYS = {'name', 'label', 'help', 'required', 'secret', 'default'}
+ALLOWED_KEYS = {'name', 'label', 'help', 'required', 'secret', 'default', 'choices'}
+
+# Named vocabularies a variable may draw its dropdown from. A NAME rather than
+# an inline list so the options stay live: 'verticals' resolves through
+# offer.verticals.vertical_choices() at render time, so a vertical added to the
+# taxonomy appears in every template that references it, with no template edit.
+CHOICE_SOURCES = ('verticals',)
 MAX_VARIABLES = 40
 
 
@@ -72,7 +78,29 @@ def _validate_entry(entry, *, where):
     for text in ('label', 'help'):
         if text in entry and not isinstance(entry[text], str):
             raise SchemaError(f'{where}: "{text}" must be text.')
+
+    _validate_choices(entry.get('choices'), where=where)
     return name
+
+
+def _validate_choices(choices, *, where):
+    """A variable's optional dropdown spec: either a named source resolved live
+    from a vocabulary, or an inline list of literal values."""
+    if choices is None:
+        return
+    if isinstance(choices, str):
+        if choices not in CHOICE_SOURCES:
+            raise SchemaError(
+                f'{where}: unknown choice source "{choices}". '
+                f'Known: {", ".join(CHOICE_SOURCES)}.')
+        return
+    if isinstance(choices, list):
+        if not all(isinstance(c, str) and c for c in choices):
+            raise SchemaError(f'{where}: "choices" list must contain non-empty strings.')
+        return
+    raise SchemaError(
+        f'{where}: "choices" must be a named source ({", ".join(CHOICE_SOURCES)}) '
+        f'or a list of strings.')
 
 
 def normalize(schema):
@@ -89,8 +117,27 @@ def normalize(schema):
             'required': bool(entry.get('required', False)),
             'secret': bool(entry.get('secret', False)),
             'default': entry.get('default', ''),
+            'choices': entry.get('choices'),
         })
     return out
+
+
+def resolve_choices(spec):
+    """A variable's `choices` spec as [(value, label), ...], or None for a free
+    text field.
+
+    A named source is resolved LIVE rather than copied into the schema, so a
+    vertical added to the taxonomy shows up in every template referencing it
+    without anyone editing a template.
+    """
+    if spec is None:
+        return None
+    if isinstance(spec, str):
+        if spec == 'verticals':
+            from offer.verticals import vertical_choices
+            return vertical_choices()
+        return None
+    return [(value, value) for value in spec]
 
 
 def effective_schema(box_type):
