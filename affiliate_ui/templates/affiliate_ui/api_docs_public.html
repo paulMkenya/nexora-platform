@@ -4,15 +4,15 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>{% if doc.brand_name %}{{ doc.brand_name }} — {% endif %}Inbound Lead API</title>
-{# A standalone shell, NOT affiliate_ui/base.html: that template renders the
+{% comment %} A standalone shell, NOT affiliate_ui/base.html: that template renders the
    logged-in chrome (nav, account menu, logout) and assumes request.user. This
    page is served to anonymous visitors and is meant to be forwarded, printed
-   and embedded, so it carries its own minimal styling and no navigation. #}
-{# noindex on purpose. The page is meant to be SHARED (a link in an email, an
+   and embedded, so it carries its own minimal styling and no navigation. {% endcomment %}
+{% comment %} noindex on purpose. The page is meant to be SHARED (a link in an email, an
    embed in a proposal), not FOUND: search-indexing it would publish the
    network's integration surface to scrapers and competitors for no benefit to
    the people we actually send it to. It stays fully readable to anyone holding
-   the link. #}
+   the link. {% endcomment %}
 <meta name="robots" content="noindex, nofollow"/>
 <style>
   :root { --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --accent:#4f46e5; --bg:#ffffff; --code:#f3f4f6; }

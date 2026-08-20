@@ -170,6 +170,18 @@ copy buttons at runtime to [data-copy] blocks; the PDF simply never runs it.
   </tbody>
 </table>
 
+{% if not doc.public %}
+{% comment %}
+Withheld from the PUBLIC doc on purpose. /api/schema/ is the schema for the
+WHOLE platform - 58 paths including /api/v1/admin/*, /network/*, the advertiser
+wallet and webhook management - not just the five inbound endpoints this
+document covers. Every one of them enforces auth (probed anonymously
+2026-08-20: all 401), so publishing the link discloses no data, but it hands an
+unauthenticated reader a complete map of the platform's admin surface and tells
+a traffic source about capabilities that are none of their business. The five
+endpoints they actually need are already documented above, in full.
+{% endcomment %}
 <h3>Full API reference (OpenAPI)</h3>
 <p>Interactive: <a href="{{ doc.openapi_swagger_url }}">{{ doc.openapi_swagger_url }}</a></p>
 <p>Raw schema (for codegen): <a href="{{ doc.openapi_schema_url }}">{{ doc.openapi_schema_url }}</a></p>
+{% endif %}

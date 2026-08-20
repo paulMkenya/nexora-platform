@@ -199,3 +199,29 @@ def test_brand_comes_from_the_host(client, pub_brand):
     assert other.name in body
     assert f'https://{other.primary_domain}' in body
     assert pub_brand.name not in body, 'the host, not the default brand, decides'
+
+
+# --- the OpenAPI schema link is withheld from the public variant --------------
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('url', [PUBLIC_URL, PUBLIC_TEXT])
+def test_public_doc_does_not_advertise_the_platform_schema(client, pub_brand, url):
+    """/api/schema/ documents the WHOLE platform — 58 paths including
+    /api/v1/admin/*, /network/*, the advertiser wallet and webhook management.
+    Every one enforces auth (probed anonymously 2026-08-20: all 401), so linking
+    it discloses no data — but it hands an unauthenticated reader a complete map
+    of the admin surface, and tells a traffic source about capabilities that are
+    none of their business. The five endpoints they need are already documented
+    in full."""
+    body = client.get(url, HTTP_HOST=HOST).content.decode()
+    assert '/api/schema/' not in body
+    assert 'OpenAPI' not in body
+
+
+@pytest.mark.django_db
+def test_the_private_doc_keeps_the_schema_link(client, pub_affiliate, pub_brand):
+    """Withholding it publicly must not have removed it for a logged-in
+    affiliate, who is a known party and may well want to generate a client."""
+    client.force_login(pub_affiliate)
+    body = client.get('/partner/api-docs/text/', HTTP_HOST=HOST).content.decode()
+    assert '/api/schema/' in body

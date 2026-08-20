@@ -38,9 +38,9 @@
     </div>
   </div>
 
-  {# The brand chooser exists only for the platform owner. A brand admin's
+  {% comment %} The brand chooser exists only for the platform owner. A brand admin's
      appointments are bound to its own brand by appoint_brand_admin, which
-     takes the brand from the actor and ignores any posted value. #}
+     takes the brand from the actor and ignores any posted value. {% endcomment %}
   <div class="card mb-4">
     <div class="card-header fw-semibold">
       {% if is_platform_owner %}Appoint a brand admin{% else %}Appoint an admin for {{ brand.name }}{% endif %}
