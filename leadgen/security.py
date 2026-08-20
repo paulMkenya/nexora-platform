@@ -7,12 +7,15 @@ their postback at an internal service (Redis, the Django admin's internal
 network, a cloud metadata endpoint) and use the response status/error the
 delivery log surfaces back to them as an SSRF oracle.
 
-validate_postback_url() is called from three places, deliberately:
+validate_postback_url() is called from four places, deliberately:
   1. AffiliatePostbackConfig.clean() — covers the Django admin path (its
      ModelForm calls full_clean() automatically).
   2. affiliate_ui.views.postbacks_views — covers the self-service path,
      which uses raw request.POST, not a ModelForm, so needs an explicit call.
-  3. leadgen.postback_delivery.deliver_affiliate_postback, immediately
+  3. leadgen.serializers.PostbackConfigSerializer.validate_url — covers the
+     API path (POST/PATCH /api/postbacks), which an affiliate's own developer
+     can reach with just an API key and no portal session.
+  4. leadgen.postback_delivery.deliver_affiliate_postback, immediately
      before the actual request — DNS can be repointed between when a URL is
      saved and when a lead status later fires the postback (DNS rebinding),
      so save-time validation alone isn't enough."""

@@ -126,6 +126,10 @@ copy buttons at runtime to [data-copy] blocks; the PDF simply never runs it.
 </table>
 
 <h3>Postbacks (push)</h3>
+{% if not doc.public %}
+<p><a href="{% url 'affiliate_ui:postbacks' %}">Manage your postbacks</a> — register a URL, choose
+  which statuses fire it, and see every delivery attempt with its response code.</p>
+{% endif %}
 <p>Macros, resolved fresh on every delivery:
   {% for m in doc.postback_macros %}<code>{{ '{' }}{{ m }}{{ '}' }}</code>{% if not forloop.last %} {% endif %}{% endfor %}</p>
 {% for para in doc.narrative.postbacks %}<p>{{ para }}</p>{% endfor %}

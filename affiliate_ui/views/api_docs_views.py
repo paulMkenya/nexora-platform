@@ -174,6 +174,9 @@ def _text_delivery(doc):
     lines = ['', 'POSTBACKS (push)', '',
              '  Macros: ' + ' '.join('{' + m + '}' for m in doc['postback_macros']), '']
     lines += _wrap(doc['narrative']['postbacks'])
+    if not doc.get('public'):
+        # The HTML/PDF render this as a link; a text export has to spell it out.
+        lines += [f'  Manage them at {doc["base_url"]}/partner/postbacks/', '']
     if doc['postback_configs']:
         lines += [f'  Configured: {c["url"]} (statuses: {", ".join(c["subscribed_statuses"])})'
                   for c in doc['postback_configs']]

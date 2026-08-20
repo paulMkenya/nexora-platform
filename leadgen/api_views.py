@@ -26,10 +26,11 @@ from public_api.authentication import APIKeyAuthentication
 from public_api.throttling import APIKeyThrottle
 
 from . import canonical_status
-from .models import Lead
+from .models import AffiliatePostbackConfig, Lead
 from .requirements import missing_buyer_requirements
 from .serializers import (
     AffiliateLeadSubmitSerializer,
+    PostbackConfigSerializer,
     LeadDetailOutSerializer,
     LeadOutSerializer,
     build_attribution,
@@ -417,3 +418,93 @@ class LeadStatusListView(APIView):
 
     def get(self, request):
         return Response([{'value': value, 'label': label} for value, label in canonical_status.CHOICES])
+
+
+# --- Postback self-service over the API (spec §5.1) ---------------------------
+#
+# WHY THIS EXISTS. Registering a postback used to require a browser session on
+# /partner/postbacks/. But the person wiring up a postback is a DEVELOPER at the
+# traffic source, and they are typically not the person holding the portal
+# password — so the integration stalled on a human handoff, and until it was
+# done every status change was invisible to the affiliate (they had to poll).
+# Their API key already proves who they are; that is enough to manage their own
+# postbacks.
+#
+# "WITHOUT LOGGING IN" MEANS WITHOUT A PORTAL SESSION — NOT UNAUTHENTICATED.
+# These endpoints carry exactly the same authentication as lead submission
+# (APIKeyAuthentication + IsAffiliate). An anonymous registration endpoint would
+# let anybody point a postback carrying another affiliate's lead data — email,
+# phone, status — at a server they control. Every view here scopes its queryset
+# to affiliate=request.user, the same ownership rule the lead endpoints use.
+
+
+class _PostbackScopedMixin:
+    """Auth + ownership, identical to the lead endpoints. The queryset is
+    filtered by the AUTHENTICATED USER, never by an id from the request, so
+    there is no object here that one affiliate can reach by guessing another's
+    primary key — a 404 is what a wrong id gets, not someone else's config."""
+
+    authentication_classes = [APIKeyAuthentication]
+    permission_classes = [IsAuthenticated, IsAffiliate]
+    throttle_classes = [APIKeyThrottle]
+
+    def get_queryset(self):
+        return AffiliatePostbackConfig.objects.filter(affiliate=self.request.user)
+
+
+class PostbackListCreateView(_PostbackScopedMixin, APIView):
+    """GET/POST /api/postbacks — list your postbacks, or register one."""
+
+    doc_purpose = 'List your postback URLs, or register a new one.'
+
+    def get(self, request):
+        configs = self.get_queryset().order_by('-created_at')
+        return Response({'results': PostbackConfigSerializer(configs, many=True).data})
+
+    def post(self, request):
+        serializer = PostbackConfigSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        config = serializer.save(affiliate=request.user)
+
+        # The ONLY moment the signing secret is ever readable — same show-once
+        # contract as an API key. It is deliberately absent from the serializer,
+        # so it has to be added here explicitly rather than leaking by default.
+        body = dict(serializer.data)
+        body['secret'] = config.secret
+        body['secret_note'] = (
+            'Shown once. Store it now — it signs every delivery as '
+            'X-Nexora-Signature: sha256=<hmac> and cannot be retrieved again.'
+        )
+        return Response(body, status=status.HTTP_201_CREATED)
+
+
+class PostbackDetailView(_PostbackScopedMixin, APIView):
+    """GET/PATCH/DELETE /api/postbacks/<id> — inspect, update or remove one."""
+
+    doc_purpose = 'Inspect, update or delete one of your postback URLs.'
+
+    def _get_object(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        return get_object_or_404(self.get_queryset(), pk=pk)
+
+    def get(self, request, pk):
+        return Response(PostbackConfigSerializer(self._get_object(request, pk)).data)
+
+    def patch(self, request, pk):
+        config = self._get_object(request, pk)
+        serializer = PostbackConfigSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, pk):
+        """Deactivates rather than destroys. PostbackDelivery rows FK to this
+        config and are the audit trail of what we sent and what came back —
+        "every postback attempt logged" (spec §5.1). A hard delete would
+        cascade that history away on a whim, and the affiliate's own delivery
+        log is exactly the evidence a billing dispute turns on.
+        """
+        config = self._get_object(request, pk)
+        config.is_active = False
+        config.save(update_fields=['is_active', 'updated_at'])
+        return Response(status=status.HTTP_204_NO_CONTENT)

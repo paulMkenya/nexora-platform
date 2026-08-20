@@ -16,7 +16,7 @@ import re
 
 from rest_framework import serializers
 
-from .models import Lead
+from .models import AffiliatePostbackConfig, Lead
 
 _PHONE_RE = re.compile(r'^\+?[0-9]{7,15}$')
 _LANGUAGE_RE = re.compile(r'^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})?$')
@@ -263,3 +263,64 @@ class LeadDetailOutSerializer(LeadOutSerializer):
         # something the affiliate should see as if it were real.
         events = obj.status_events.filter(applied=True).order_by('created_at')
         return LeadStatusEventOutSerializer(events, many=True).data
+
+
+# --- postback self-service (spec §5.1, over the API rather than the portal) ---
+
+class PostbackConfigSerializer(serializers.ModelSerializer):
+    """An affiliate's own postback registration.
+
+    NOTE WHAT IS ABSENT: `secret`. It is an HMAC signing credential and is
+    readable exactly once, in the create response — the same show-once contract
+    public_api.APIKey and the portal already use. Putting it on the list/detail
+    representation would mean every GET, every log line and every proxy cache
+    that ever touched one carries a live credential. `secret_set` reports that
+    one exists without disclosing it.
+
+    `affiliate` is absent for a different reason: it is never client-supplied.
+    The view takes it from the authenticated key, so accepting it here would
+    invite a request that looks like it can register a postback for someone
+    else.
+    """
+    secret_set = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AffiliatePostbackConfig
+        fields = ('id', 'url', 'subscribed_statuses', 'is_active',
+                  'secret_set', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'secret_set', 'created_at', 'updated_at')
+
+    def get_secret_set(self, obj):
+        return bool(obj.secret)
+
+    def validate_url(self, value):
+        """SSRF guard — leadgen/security.py's fourth call site, and the reason
+        this cannot just be a plain ModelSerializer. An approved affiliate is
+        still an external party: without this they could point our own worker
+        at an internal service and read the outcome back out of the delivery
+        log. Raised as a DRF field error so the caller gets 400 + a message
+        naming the field, not a 500 from an uncaught ValueError."""
+        from .security import UnsafePostbackURLError, validate_postback_url
+
+        value = (value or '').strip()
+        try:
+            validate_postback_url(value)
+        except UnsafePostbackURLError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
+
+    def validate_subscribed_statuses(self, value):
+        """Empty means EVERY status fires — deliberately the opposite of
+        public_api.WebhookEndpoint's convention, and the model documents why.
+        An unknown status here is almost always a typo that would silently
+        never fire, so it is rejected rather than stored."""
+        from . import canonical_status
+
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Must be a list of canonical status values.')
+        unknown = [v for v in value if v not in canonical_status.VALUES]
+        if unknown:
+            raise serializers.ValidationError(
+                f'Unknown status(es): {", ".join(map(str, unknown))}. '
+                f'Pull the full vocabulary from GET /api/leads/statuses.')
+        return value
