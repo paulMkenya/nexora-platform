@@ -108,6 +108,7 @@ def maybe_auto_inject(lead):
     Only leads created AFTER this ships are affected: this runs at intake, and
     nothing re-evaluates an existing lead.
     """
+    from . import delivery_status
     from .services import start_injection
 
     buyer = resolve_buyer_for_lead(lead)
@@ -116,6 +117,7 @@ def maybe_auto_inject(lead):
         Lead.objects.filter(pk=lead.pk).exclude(
             status__in=(Lead.STATUS_INJECTED, Lead.STATUS_DEPOSIT),
         ).touch(status=Lead.STATUS_UNROUTED)
+        delivery_status.report(lead.pk)
         return None
     if not buyer.auto_inject:
         # A destination exists, it is just gated off — that is "waiting", not
@@ -169,6 +171,7 @@ def inject_lead_task(self, injection_id: int):  # noqa: C901 — see below
         LeadBuyerAmbiguousError, LeadBuyerCapacityError, LeadBuyerError,
         LeadBuyerRejectedError, get_connector,
     )
+    from . import delivery_status
     from .models import Lead, LeadInjection
 
     try:
@@ -211,13 +214,16 @@ def inject_lead_task(self, injection_id: int):  # noqa: C901 — see below
             injection.status = LeadInjection.STATUS_DELIVERED
             injection.delivered_at = timezone.now()
             Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_INJECTED)
+            delivery_status.report(lead.pk)
         elif status == 'duplicate':
             injection.status = LeadInjection.STATUS_DUPLICATE
             Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_DUPLICATE)
+            delivery_status.report(lead.pk)
             reached_terminal_outcome = True
         else:
             injection.status = LeadInjection.STATUS_FAILED
             Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_REJECTED)
+            delivery_status.report(lead.pk)
             # A buyer-side validation rejection (bad phone, etc.) is terminal —
             # retrying the exact same payload would fail identically, unlike a
             # transport/5xx error below.
@@ -245,6 +251,7 @@ def inject_lead_task(self, injection_id: int):  # noqa: C901 — see below
         injection.status = LeadInjection.STATUS_FAILED
         injection.failure_reason = str(exc)[:255]
         Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_QUARANTINED)
+        delivery_status.report(lead.pk)
         injection.save(update_fields=[
             'attempts', 'status', 'external_id', 'failure_reason',
             'request_payload', 'response_payload', 'delivered_at',
@@ -309,6 +316,7 @@ def inject_lead_task(self, injection_id: int):  # noqa: C901 — see below
         # in every report built on rejection counts.
         injection.status = LeadInjection.STATUS_FAILED
         Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_FAILED)
+        delivery_status.report(lead.pk)
         logger.error(
             'Lead injection #%s to %s gave up after %s capacity retries over ~%sh: %s',
             injection.pk, buyer.name, attempt, round(sum(backoffs) / 3600, 1), exc)
@@ -322,6 +330,7 @@ def inject_lead_task(self, injection_id: int):  # noqa: C901 — see below
         injection.status = LeadInjection.STATUS_FAILED
         injection.failure_reason = str(exc)[:255]
         Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_REJECTED)
+        delivery_status.report(lead.pk)
         injection.save(update_fields=[
             'attempts', 'status', 'external_id', 'failure_reason',
             'request_payload', 'response_payload', 'delivered_at',
@@ -344,6 +353,7 @@ def inject_lead_task(self, injection_id: int):  # noqa: C901 — see below
             raise self.retry(exc=exc, countdown=backoffs[attempt - 1])
         injection.status = LeadInjection.STATUS_FAILED
         Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_FAILED)
+        delivery_status.report(lead.pk)
         logger.error('Lead injection #%s to %s failed after %s attempts: %s',
                      injection.pk, buyer.name, attempt, exc)
         reached_terminal_outcome = True

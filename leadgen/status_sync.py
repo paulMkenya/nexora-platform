@@ -118,7 +118,8 @@ def _is_redundant_buyer_report(lead, to_status, *, current, applies):
     return last_buyer_status == to_status
 
 
-def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None, override_reason=''):
+def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None, override_reason='',
+                        notify=True):
     """Record a LeadStatusEvent and, if the TESTING/LIVE authority rule
     allows it, update Lead.canonical_status to match. Returns the
     LeadStatusEvent it wrote (check event.applied to see whether it took
@@ -126,6 +127,12 @@ def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None
     previous report (see _is_repeat_buyer_report). Raises
     StatusAuthorityError instead of writing anything when a LIVE-phase
     operator flip has no override_reason.
+
+    `notify` gates the affiliate postback only; the event is written either
+    way. Default True, so every caller that predates this parameter behaves
+    exactly as before. It exists for leadgen.delivery_status, which reports
+    ordinary progress ('new', 'routed') that an affiliate does not need woken
+    up for, alongside terminal failures that they very much do.
 
     `lead` may be passed with a possibly-stale canonical_status in memory —
     this function re-reads it from the DB immediately before writing, so two
@@ -173,7 +180,7 @@ def apply_status_change(lead, to_status, *, source, actor=None, raw_payload=None
         # from what the affiliate was already told. Gating on `applies` alone
         # let a re-affirmation of the current status fire a postback that
         # carried no new information.
-        if current != to_status:
+        if current != to_status and notify:
             from .postback_delivery import dispatch_postbacks_for_event
             dispatch_postbacks_for_event(event)
 

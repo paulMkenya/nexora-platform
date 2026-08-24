@@ -88,6 +88,7 @@ def advance_chain(lead_id):
     Always re-derives "what's next" from the actual LeadInjection rows
     rather than tracking a separate progress cursor on Lead, so calling
     this twice in a row can never skip ahead or double-send."""
+    from . import delivery_status
     from .routing import resolve_buyer_chain
     from .services import start_injection
 
@@ -106,6 +107,7 @@ def advance_chain(lead_id):
         Lead.objects.filter(pk=lead.pk).exclude(
             status__in=(Lead.STATUS_INJECTED, Lead.STATUS_DEPOSIT),
         ).touch(status=Lead.STATUS_UNROUTED)
+        delivery_status.report(lead.pk)
         return
 
     start_injection(lead, next_buyer, synchronous=False, chain_managed=True)

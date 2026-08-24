@@ -127,7 +127,16 @@ class TestFullAcceptanceFlow:
         timeline_to_statuses = [e['to_status'] for e in detail.data['status_timeline']]
         assert timeline_to_statuses.count(canonical_status.PENDING) == 1
         assert timeline_to_statuses.count(canonical_status.FTD) == 1
-        assert len(detail.data['status_timeline']) == 2  # the never-applied TESTING-phase buyer event is excluded
+        # The story now opens at intake: leadgen.delivery_status reports the
+        # DELIVERY state into canonical_status too, so `new` is the first
+        # applied event rather than the affiliate seeing nothing until the
+        # buyer first speaks. The TESTING-phase buyer FTD is still absent —
+        # that is what this assertion is really guarding.
+        assert timeline_to_statuses == [
+            canonical_status.NEW, canonical_status.PENDING, canonical_status.FTD,
+        ]
+        assert all(e['source'] != 'buyer' or e['to_status'] != canonical_status.FTD
+                   or e['lead_seq'] > 1 for e in detail.data['status_timeline'])
 
         # The list/pull endpoint (with a status filter) surfaces the same
         # canonical_status for reconciliation-style polling.

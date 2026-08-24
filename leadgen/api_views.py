@@ -27,6 +27,7 @@ from public_api.throttling import APIKeyThrottle
 
 from . import canonical_status
 from .models import AffiliatePostbackConfig, Lead
+from . import delivery_status
 from .requirements import missing_buyer_requirements
 from .security import public_consumer_ip
 from .serializers import (
@@ -157,6 +158,11 @@ def _create_lead(request, data, *, offer):
     # statuses' countryIso2 backfill (sourced from the buyer) is the more
     # reliable signal for affiliate-submitted leads when `country` isn't
     # supplied directly.
+    # Report the delivery state into canonical_status BEFORE routing, so a
+    # lead is never visible to its own submitter as an empty string. The
+    # affiliate doc points sources at canonical_status; blank used to mean
+    # both "just arrived" and "died at the buyer six hours ago".
+    delivery_status.report(lead.pk)
     geolocate_lead.delay(lead.pk)
     maybe_auto_inject(lead)
     return lead
