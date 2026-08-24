@@ -28,6 +28,7 @@ from public_api.throttling import APIKeyThrottle
 from . import canonical_status
 from .models import AffiliatePostbackConfig, Lead
 from .requirements import missing_buyer_requirements
+from .security import public_consumer_ip
 from .serializers import (
     AffiliateLeadSubmitSerializer,
     PostbackConfigSerializer,
@@ -144,7 +145,11 @@ def _create_lead(request, data, *, offer):
         # consumer IP — spec §4.3) wins over the connecting request's own
         # remote address, which for this channel is just the affiliate's
         # server, not the consumer's.
-        ip=data.get('ip') or request.META.get('REMOTE_ADDR', '') or None,
+        # NO REMOTE_ADDR FALLBACK — see security.public_consumer_ip. On this
+        # channel the connecting peer is the affiliate's server (and behind
+        # our proxy, the proxy itself), never the consumer. An absent
+        # consumer IP is absent; inventing one lies to the buyer.
+        ip=public_consumer_ip(data.get('ip')),
         raw_payload=data,
     )
     # NOTE: geolocation is a best-effort fallback for this channel — see
