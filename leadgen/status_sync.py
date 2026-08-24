@@ -41,16 +41,42 @@ def resolve_affiliate_offer_link(lead):
     return link
 
 
+def _mapping_key(value):
+    """Case- and spacing-insensitive form of a buyer status string.
+
+    Broker free text is not typed consistently — one live box has produced
+    both 'No answer' and 'NoAnswer' for a single disposition, in a five-row
+    sample. Keying on a folded form means an operator writes the entry once
+    instead of chasing every spelling a call centre agent might use, and a
+    lead does not silently go to needs_review over a capital letter.
+    """
+    return ''.join((value or '').split()).casefold()
+
+
 def map_buyer_status(buyer, raw_status):
     """(canonical_status_or_None, needs_review) for one buyer status string.
     None + needs_review=True when the buyer's status_mapping (see
     LeadBuyer.get_effective_status_mapping) has no entry for raw_status —
     spec §3.2: "do NOT silently drop or guess." A blank raw_status maps to
     nothing and is not itself a review-worthy case (the buyer just hasn't
-    reported a status yet)."""
+    reported a status yet).
+
+    EXACT MATCH IS TRIED FIRST and is unchanged, so every mapping that
+    resolves today resolves identically and to the same value. Only a string
+    that would otherwise have become needs_review gets the second, folded
+    lookup — this can turn an unmapped status into a mapped one, never one
+    mapped value into a different one.
+    """
     if not raw_status:
         return None, False
-    mapped = buyer.get_effective_status_mapping().get(raw_status)
+    mapping = buyer.get_effective_status_mapping()
+    mapped = mapping.get(raw_status)
+    if mapped is None:
+        # Folded fallback. Built per call rather than cached on the buyer:
+        # this runs once per changed lead per 30-minute tick, and a cache
+        # keyed on a mutable JSONField is a staleness bug waiting to happen.
+        folded = {_mapping_key(k): v for k, v in mapping.items()}
+        mapped = folded.get(_mapping_key(raw_status))
     if mapped is None:
         return None, True
     return mapped, False
