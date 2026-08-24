@@ -1096,6 +1096,19 @@ class HypernetConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
     # the field, rather than 201-ing a lead that cannot be delivered.
     REQUIRED_LEAD_FIELDS = ('country_iso2',)
 
+    # Normalized statuses that assert nothing about how the lead is going.
+    # 'sent' means "we received it" — true from the moment of injection and
+    # still true while a call centre works the lead for a week. When the row
+    # sits on one of these, the disposition (if any) is in rawStatus; see
+    # parse_status_sync_results. Lower-case; compared case-folded.
+    #
+    # Kept deliberately TIGHT. Every status not listed here is treated as a
+    # real verdict and wins over rawStatus, which is the safe default: the
+    # cost of wrongly ignoring rawStatus is a missing detail, while the cost
+    # of wrongly overriding a real status is misreporting one the buyer never
+    # gave — and 'deposited' is in that set.
+    NON_COMMITTAL_STATUSES = frozenset({'sent'})
+
     # Their doc: `lang` and `landingLang` are "language code ... (lower-case)".
     # Our own inbound contract documents `language` as ISO 639-1 and its
     # examples are upper-case ("EN"), so the mapped value has to be folded
@@ -1410,11 +1423,38 @@ class HypernetConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
         ``leadId`` off a row silently yields nothing and every lead looks
         absent.
 
-        ``registration.status`` is their normalized vocabulary ('deposited');
-        ``rawStatus`` beside it is the broker's own free text ('Test Lead' on
-        the QA box) and varies per broker configuration. The normalized one is
-        what default_status_mapping should be keyed on, so that is what this
-        returns.
+        ``registration.status`` is their normalized vocabulary; ``rawStatus``
+        beside it is the broker's own free text and varies per broker
+        configuration. This USED to return the normalized one and nothing
+        else, on the reasoning that free text cannot be mapped safely.
+
+        THAT WAS WRONG IN PRACTICE, and it cost the affiliate their whole
+        contact cycle. On a live box the normalized field is effectively
+        binary — it sits on 'sent' from injection until a deposit flips it to
+        'deposited' — while every real disposition the call centre records
+        lands ONLY in rawStatus. Observed on Badboys 2026-08-24: three worked
+        leads reading ``status='sent'`` with ``rawStatus`` of 'voice mail',
+        'voice mail' and 'not register'. The affiliate saw 'pending' on all
+        three and concluded, reasonably, that the buyer was not working their
+        traffic.
+
+        So when the normalized status carries NO disposition (see
+        NON_COMMITTAL_STATUSES) and a rawStatus exists, the rawStatus is what
+        this returns as ``buyer_status``. Two consequences, both wanted:
+
+        * It reaches the affiliate verbatim. ``Lead.buyer_status`` is on the
+          pull API's serializer, so the source sees 'voice mail' whether or
+          not anyone has mapped it yet. Visibility does not wait on us.
+        * It is what ``status_mapping`` is keyed on for those rows. Free text
+          IS mappable — just never by a SHARED default, because it differs per
+          broker. That is exactly what per-buyer ``LeadBuyer.status_mapping``
+          is for, and an unmapped value still goes to needs_review rather than
+          being guessed at, so the safety property is untouched.
+
+        A committal normalized status always wins. 'deposited' is the billing
+        event, corroborated by ``isDeposited``, and must never be second-
+        guessed by whatever free text sits beside it (on the QA box that text
+        reads 'Test Lead' next to a real deposit).
 
         THE updated_at COMPROMISE: their rows carry no general updated-at.
         Only ``createdAt`` and ``depositedAt`` exist, and depositedAt only once
@@ -1436,12 +1476,24 @@ class HypernetConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
             registration = row.get('registration') or {}
             results.append({
                 'external_id': external_id,
-                'buyer_status': registration.get('status') or '',
+                'buyer_status': self._informative_status(registration),
                 'deposit': bool(row.get('isDeposited')),
                 'updated_at': row.get('depositedAt') or '',
                 'country_iso2': (row.get('geo') or '')[:2],
             })
         return results
+
+    def _informative_status(self, registration):
+        """The most informative status string this row carries.
+
+        Split out so the choice is testable on its own and so the reason for
+        it sits next to the rule rather than inside a loop.
+        """
+        status = (registration.get('status') or '').strip()
+        raw = (registration.get('rawStatus') or '').strip()
+        if raw and status.lower() in self.NON_COMMITTAL_STATUSES:
+            return raw
+        return status
 
 
 # --- TrackBox (Tigloo) ---------------------------------------------------------
