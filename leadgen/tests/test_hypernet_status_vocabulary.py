@@ -22,12 +22,14 @@ up first, deliberately, instead of in an affiliate's missing revenue.
 import pytest
 
 from leadgen import canonical_status
+from leadgen.management.commands.seed_hypernet_box import DEFAULT_STATUS_MAPPING
 from leadgen.models import BoxType, LeadBuyer
 from leadgen.status_sync import map_buyer_status
 
-# Probed 2026-08-17 against the live box. registration.status is their
-# NORMALIZED field — the one leadgen.connectors.HypernetConnector.
-# parse_status_sync_results reads — not the free-text rawStatus beside it.
+# Probed 2026-08-17 against the live box, re-verified 2026-08-24 against
+# Badboys. registration.status is their NORMALIZED field — the one
+# leadgen.connectors.HypernetConnector.parse_status_sync_results reads — not
+# the free-text rawStatus beside it.
 OBSERVED_LIVE_VOCABULARY = {
     'sent': canonical_status.PENDING,
     'deposited': canonical_status.FTD,
@@ -36,16 +38,27 @@ OBSERVED_LIVE_VOCABULARY = {
 
 @pytest.fixture
 def hypernet_box(db):
-    """Mirrors the live BoxType 'hypernet' (id 2) — same default_status_mapping
-    as production carries, so this tests the real contract rather than a
-    convenient one."""
+    """The BoxType exactly as seed_hypernet_box builds it in production.
+
+    THE MAPPING IS IMPORTED, NOT RETYPED, and that is the whole point. This
+    fixture used to hardcode {'sent': 'pending', 'deposited': 'ftd'} while its
+    docstring claimed to mirror production — but production's
+    default_status_mapping was {} the entire time, because the seed command
+    hardcoded {} too. Every assertion below passed against a mapping that
+    existed only inside this file, so the tests stayed green while live
+    Hypernet deposits landed as needs_review and no affiliate could see a
+    single conversion through GET /api/leads?status=ftd.
+
+    Importing the seed's own constant is what makes the green meaningful: a
+    mapping that is missing from the seeded box now fails here.
+    """
     return BoxType.objects.create(
         name='Hypernet', slug='hypernet-vocab',
         connector_class='leadgen.connectors.HypernetConnector',
         auth_type=BoxType.AUTH_API_KEY_HEADER, auth_param_name='x-api-key',
         single_endpoint_path='/api/external/integration/lead',
         fetch_endpoint_path='/api/external/integration/lead',
-        default_status_mapping={'sent': 'pending', 'deposited': 'ftd'},
+        default_status_mapping=DEFAULT_STATUS_MAPPING,
     )
 
 
@@ -103,3 +116,42 @@ class TestUnknownStatusStaysSilentRatherThanGuessing:
         canonical, needs_review = map_buyer_status(hypernet_buyer, '')
         assert canonical is None
         assert needs_review is False
+
+
+@pytest.mark.django_db
+class TestTheSeededBoxCanMapItsOwnVocabulary:
+    """End-to-end over the seed command itself.
+
+    The class above tests a BoxType built in-process from DEFAULT_STATUS_MAPPING,
+    which proves the constant is right but not that the command WRITES it.
+    Those are different failures and the second one is what actually happened:
+    the constant did not exist and `default_status_mapping={}` was passed as a
+    literal, so the seeded box could not map a single status.
+    """
+
+    def test_seeding_produces_a_box_that_maps_deposited_to_ftd(self, brand):
+        from django.core.management import call_command
+
+        call_command('seed_hypernet_box', verbosity=0)
+        box = BoxType.objects.get(slug='hypernet')
+        buyer = LeadBuyer.objects.create(
+            brand=brand, box_type=box, name='Seeded', slug='hypernet-seeded',
+            is_active=True, auto_inject=False, base_url='https://seeded.hn-crm.test',
+        )
+        canonical, needs_review = map_buyer_status(buyer, 'deposited')
+        assert needs_review is False, (
+            'the seeded Hypernet box cannot map its own deposit status — every '
+            'conversion will land as needs_review and stay invisible to the affiliate')
+        assert canonical == canonical_status.FTD
+
+    def test_seeding_is_idempotent_and_does_not_blank_the_mapping(self, brand):
+        """update_or_create rewrites `defaults` wholesale, so a re-seed is
+        exactly how a mapping gets silently reset to {}. Re-running must leave
+        it intact."""
+        from django.core.management import call_command
+
+        call_command('seed_hypernet_box', verbosity=0)
+        call_command('seed_hypernet_box', verbosity=0)
+        box = BoxType.objects.get(slug='hypernet')
+        assert box.default_status_mapping == DEFAULT_STATUS_MAPPING
+        assert box.default_status_mapping, 'a re-seed blanked the status mapping'

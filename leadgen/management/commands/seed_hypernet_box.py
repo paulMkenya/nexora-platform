@@ -60,6 +60,36 @@ DEFAULT_FIELD_MAPPING = {
     'language': 'lang',
 }
 
+# Hypernet's `registration.status` -> Nexora canonical_status.
+#
+# EVERY ENTRY HERE WAS OBSERVED ON A LIVE BOX, none is copied from their docs
+# (which do not publish the vocabulary at all). As of 2026-08-24 the only two
+# values Hypernet has ever returned across 43 recorded status reports are
+# 'sent' and 'deposited'; both were re-verified against the Badboys box the
+# day this mapping was written.
+#
+# READ `registration.status`, NOT `rawStatus`. The sibling `rawStatus` is the
+# broker's own free text ('Test Lead' on the QA box) and varies per broker
+# configuration, so it is unmappable by construction — see
+# HypernetConnector.parse_status_sync_results.
+#
+# DELIBERATELY INCOMPLETE. A status that is missing here does not get guessed
+# at: map_buyer_status returns needs_review=True, the lead is flagged for a
+# human and canonical_status is left alone (spec §3.2, "do NOT silently drop
+# or guess"). That is the correct way to learn the rest of the vocabulary —
+# add an entry when the flag tells you a real value showed up, never before.
+#
+# WHY THIS WAS EMPTY UNTIL NOW: the box was seeded when status sync did not
+# exist for it (supports_status_sync was False), so there was nothing to map.
+# Sync was implemented later and this was never revisited, which meant every
+# Hypernet deposit landed as needs_review and canonical_status stayed blank —
+# the affiliate pull API (GET /api/leads?status=ftd) could not see a single
+# conversion. The mapping is what closes that loop.
+DEFAULT_STATUS_MAPPING = {
+    'sent': 'pending',
+    'deposited': 'ftd',
+}
+
 
 class Command(BaseCommand):
     help = 'Create or update the Hypernet BoxType, and optionally one Hypernet LeadBuyer.'
@@ -106,10 +136,7 @@ class Command(BaseCommand):
                 rate_limit_refill_tokens=options['rate_refill_tokens'],
                 rate_limit_refill_seconds=options['rate_refill_seconds'],
                 default_field_mapping=DEFAULT_FIELD_MAPPING,
-                # Left empty on purpose: Hypernet's own status vocabulary is
-                # not yet known, and status sync is not implemented for this
-                # box (HypernetConnector.supports_status_sync is False).
-                default_status_mapping={},
+                default_status_mapping=DEFAULT_STATUS_MAPPING,
             ),
         )
         self.stdout.write(self.style.SUCCESS(
