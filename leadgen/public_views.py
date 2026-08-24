@@ -16,6 +16,7 @@ from offer.models import Offer
 
 from .models import Lead
 from .serializers import LeadSubmitSerializer, build_attribution
+from . import delivery_status
 from .security import public_consumer_ip
 from .tasks import geolocate_lead, maybe_auto_inject
 
@@ -136,6 +137,7 @@ def capture_lead(request, offer_id):
         raw_payload=data,
     )
     geolocate_lead.delay(lead.pk)
+    delivery_status.report(lead.pk)
     maybe_auto_inject(lead)
 
     ctx['submitted'] = True

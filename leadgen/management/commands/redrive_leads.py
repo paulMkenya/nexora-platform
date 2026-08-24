@@ -28,6 +28,7 @@ reading.
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 
+from leadgen import delivery_status
 from leadgen.models import Lead, LeadBuyer, LeadInjection
 from leadgen.services import start_injection
 from leadgen.tasks import resolve_buyer_for_lead
@@ -100,6 +101,7 @@ class Command(BaseCommand):
                 # by inject_pending_leads either — that excludes leads with a
                 # PENDING injection, and start_injection has just made one.
                 Lead.objects.filter(pk=lead.pk).touch(status=Lead.STATUS_NEW)
+                delivery_status.report(lead.pk)
                 start_injection(lead, buyer, synchronous=False)
                 self.stdout.write(f'  lead {lead.pk}: queued for {buyer.name}.')
             enqueued += 1
