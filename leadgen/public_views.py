@@ -16,6 +16,7 @@ from offer.models import Offer
 
 from .models import Lead
 from .serializers import LeadSubmitSerializer, build_attribution
+from .security import public_consumer_ip
 from .tasks import geolocate_lead, maybe_auto_inject
 
 logger = logging.getLogger(__name__)
@@ -124,7 +125,14 @@ def capture_lead(request, offer_id):
         source_id=data['source_id'],
         language=data['language'],
         attribution=build_attribution(data),
-        ip=_client_ip(request),
+        # Filtered, not raw: on this channel the connecting peer really is
+        # the consumer's browser, but only when the proxy chain is intact. A
+        # misconfigured one hands us our own reverse proxy's address, which
+        # would then travel to the buyer as the consumer IP. See
+        # security.public_consumer_ip. Rate limiting below still keys off the
+        # RAW value — a private address is a poor consumer IP but a perfectly
+        # good bucket key, and failing open there would disable the limiter.
+        ip=public_consumer_ip(_client_ip(request)),
         raw_payload=data,
     )
     geolocate_lead.delay(lead.pk)

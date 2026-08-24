@@ -113,7 +113,13 @@ def lead(db):
         country_iso2='CA',
         vertical='crypto',
         source_id='click-abc-123',
-        ip='203.0.113.45',
+        # A REAL, ROUTABLE address, not the 203.0.113.x documentation range
+        # this used to use. Consumer IPs are filtered through
+        # security.public_consumer_ip on the way in and again on the way out
+        # (LeadBuyerConnector.consumer_ip), and TEST-NET-3 does not survive
+        # either — so a documentation address here would assert a payload
+        # shape that can no longer occur in production.
+        ip='82.77.237.108',
     )
 
 
@@ -156,7 +162,7 @@ class TestBuildPayload:
         assert payload['profile']['lastName'] == 'Doe'
         assert payload['profile']['email'] == 'john.doe@example.com'
         assert payload['profile']['password']
-        assert payload['ip'] == '203.0.113.45'
+        assert payload['ip'] == '82.77.237.108'
         assert payload['funnel'] == 'crypto'
         assert payload['landingURL'] == 'https://desperados.hn-crm.com/lp/crypto'
         assert payload['geo'] == 'CA'

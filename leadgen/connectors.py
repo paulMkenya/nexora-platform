@@ -313,6 +313,28 @@ class LeadBuyerConnector:
     # been probed opts in.
     REQUIRED_LEAD_FIELDS = ()
 
+    def consumer_ip(self, lead):
+        """The lead's IP if it is safe to present to a buyer as the
+        consumer's, else None — the LAST line of defence before it leaves us.
+
+        Intake already filters this (security.public_consumer_ip), so in the
+        normal case this changes nothing. It exists because the filter is only
+        as good as the newest intake path, and rows written before it existed
+        are still in the table: 12 leads carry our own reverse proxy's Docker
+        address and were shipped to a live buyer as consumer IPs. A guard at
+        the point of egress covers every box, every channel and every row,
+        including ones written by code that has not been authored yet.
+
+        Boxes call this instead of reading lead.ip directly. A None means the
+        key is omitted entirely — no box makes the consumer IP mandatory
+        (probed against Hypernet 2026-08-24: a payload with no `ip` gets past
+        their presence checks to value validation), and omitting a field we
+        cannot honestly fill beats asserting a wrong one.
+        """
+        from .security import public_consumer_ip
+
+        return public_consumer_ip(getattr(lead, 'ip', None))
+
     # Default-deny allowlist for what may be recorded on
     # LeadInjection.response_payload — see sanitize_response_for_audit().
     # These are op-brandy's own envelope + result keys. Everything else a
@@ -1229,8 +1251,9 @@ class HypernetConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
             _set_path(payload, key, value)
 
         # Outside MAPPABLE_LEAD_FIELDS — see the class docstring, point 4.
-        if getattr(lead, 'ip', None):
-            payload['ip'] = str(lead.ip)
+        ip = self.consumer_ip(lead)
+        if ip:
+            payload['ip'] = ip
         if getattr(lead, 'country_iso2', ''):
             payload['geo'] = lead.country_iso2
         _set_path(payload, 'profile.password', self.REDACTED_PASSWORD)
@@ -1847,8 +1870,9 @@ class TrackBoxConnector(BrokerPasswordMixin, DateWindowStatusSyncMixin, LeadBuye
         # Their documented `userip`. Outside MAPPABLE_LEAD_FIELDS, like
         # Hypernet's `ip` — adding it there would change what we send to the
         # live op-brandy box.
-        if getattr(lead, 'ip', None):
-            payload['userip'] = str(lead.ip)
+        ip = self.consumer_ip(lead)
+        if ip:
+            payload['userip'] = ip
 
         payload['password'] = self.REDACTED_PASSWORD
         return payload

@@ -146,8 +146,13 @@ class AffiliateLeadSubmitSerializer(LeadSubmitSerializer):
     ip = serializers.IPAddressField(
         required=False, allow_blank=True, default='',
         help_text=(
-            'The consumer real IP, if you have it -- used for the geolocation fallback above '
-            'when country is not sent. Not the IP of your own server.'
+            'The consumer real IP -- the address their browser or app connected from. '
+            'NOT your own server IP, and not a proxy in front of it. '
+            'Send it: the buyer receives this value and checks it against the country you '
+            'declare, so a missing or mismatched IP lowers the quality score on your traffic. '
+            'If you genuinely do not have it, leave it out entirely -- we send nothing rather '
+            'than substituting an address, because a wrong IP reads as fraud where an absent '
+            'one only reads as unknown.'
         ),
     )
     user_agent = serializers.CharField(max_length=500, required=False, allow_blank=True, default='')

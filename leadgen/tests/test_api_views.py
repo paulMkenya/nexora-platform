@@ -161,13 +161,13 @@ class TestSubmitValidation:
         with patch('leadgen.api_views.maybe_auto_inject'):
             resp = client.post(SUBMIT_URL, {
                 'email': 'sub@test.com', 'phone': '+15551234567', 'offer_id': eligible_offer.pk,
-                'country': 'us', 'ip': '203.0.113.5', 'user_agent': 'Mozilla/5.0 TestAgent',
+                'country': 'us', 'ip': '82.77.237.108', 'user_agent': 'Mozilla/5.0 TestAgent',
                 'sub1': 'campaign-a', 'sub2': 'creative-b',
             }, format='json')
         assert resp.status_code == 201
         lead = Lead.objects.get(email='sub@test.com')
         assert lead.country_iso2 == 'US'  # uppercased
-        assert lead.ip == '203.0.113.5'
+        assert lead.ip == '82.77.237.108'
         assert lead.user_agent == 'Mozilla/5.0 TestAgent'
         assert resp.data['sub1'] == 'campaign-a'
         assert resp.data['sub2'] == 'creative-b'

@@ -104,7 +104,13 @@ def lead(db):
         country_iso2='CA',
         vertical='crypto',
         source_id='click-abc-123',
-        ip='203.0.113.45',
+        # A REAL, ROUTABLE address, not the 203.0.113.x documentation range
+        # this used to use. Consumer IPs are filtered through
+        # security.public_consumer_ip on the way in and again on the way out
+        # (LeadBuyerConnector.consumer_ip), and TEST-NET-3 does not survive
+        # either — so a documentation address here would assert a payload
+        # shape that can no longer occur in production.
+        ip='82.77.237.108',
     )
 
 
@@ -290,7 +296,7 @@ class TestBuildPayload:
         assert TrackBoxConnector(trackbox_buyer).build_payload(lead)['phone'] == '14155552671'
 
     def test_userip_is_sent(self, trackbox_buyer, lead):
-        assert TrackBoxConnector(trackbox_buyer).build_payload(lead)['userip'] == '203.0.113.45'
+        assert TrackBoxConnector(trackbox_buyer).build_payload(lead)['userip'] == '82.77.237.108'
 
     def test_password_is_redacted_in_the_audit_copy(self, trackbox_buyer, lead):
         from leadgen.connectors import REDACTED
