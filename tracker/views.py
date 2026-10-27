@@ -109,7 +109,12 @@ def click(request):
     pid = request.GET.get('pid')
     if not offer_id or not pid:
         return HttpResponse('Missing parameters', status=400)
+    subs = {f'sub{i}': request.GET.get(f'sub{i}', '') for i in range(1, 6)}
+    return track_click(request, offer_id, pid, subs, fb_id=request.GET.get('fb_id', ''))
 
+
+def track_click(request, offer_id, pid, subs, fb_id=''):
+    """Record a click and redirect to the offer. Shared by /click and short links."""
     offer_data = TrackerCache.get_offer(offer_id)
     if not offer_data:
         return HttpResponse(status=404)
@@ -128,19 +133,15 @@ def click(request):
         'request_brand_id': getattr(request_brand, 'id', None),
         'ip': get_client_ip(request),
         'ua': request.META.get('HTTP_USER_AGENT', ''),
-        'sub1': request.GET.get('sub1', ''),
-        'sub2': request.GET.get('sub2', ''),
-        'sub3': request.GET.get('sub3', ''),
-        'sub4': request.GET.get('sub4', ''),
-        'sub5': request.GET.get('sub5', ''),
+        **subs,
     }
 
     click_task.delay(data)
 
     context = {
         'click_id': click_id,
-        'pid': pid,
-        'fb_id': request.GET.get('fb_id', ''),
+        'pid': str(pid),
+        'fb_id': fb_id,
     }
 
     # If offer is wired to an MMP, send the click to the MMP tracking URL

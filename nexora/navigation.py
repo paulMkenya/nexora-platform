@@ -134,6 +134,7 @@ _AFFILIATE_GROUPS = (
                 match_extra=('affiliate_ui:api_docs_pdf', 'affiliate_ui:api_docs_text', 'affiliate_ui:api_keys')),
         NavItem('Offers', 'affiliate_ui:offer_list', icon='offers',
                 match_extra=('affiliate_ui:offer_detail',)),
+        NavItem('Short Links', 'affiliate_ui:short_links', icon='affiliate_link'),
         NavItem('My Leads', 'affiliate_ui:my_leads', icon='leads'),
         NavItem('Payouts', 'affiliate_ui:payouts', icon='payouts'),
         NavItem('Postbacks', 'affiliate_ui:postbacks', icon='postbacks'),

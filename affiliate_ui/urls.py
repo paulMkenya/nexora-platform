@@ -10,6 +10,9 @@ from .views.api_docs_views import (
     public_api_docs, public_api_docs_pdf, public_api_docs_text,
 )
 from .views.postbacks_views import postbacks, postback_create, postback_update, postback_toggle_active
+from .views.shortlinks_views import (
+    short_links, short_link_create, short_link_update, short_link_toggle_active, short_link_delete,
+)
 from .views.settings_views import company_settings, company_settings_update
 from .views.auth_views import (
     BrandPasswordResetView,
@@ -66,6 +69,12 @@ urlpatterns = [
     path('postbacks/create/', postback_create, name='postback_create'),
     path('postbacks/<int:pk>/update/', postback_update, name='postback_update'),
     path('postbacks/<int:pk>/toggle-active/', postback_toggle_active, name='postback_toggle_active'),
+    # Short links
+    path('links/', short_links, name='short_links'),
+    path('links/create/', short_link_create, name='short_link_create'),
+    path('links/<int:pk>/update/', short_link_update, name='short_link_update'),
+    path('links/<int:pk>/toggle-active/', short_link_toggle_active, name='short_link_toggle_active'),
+    path('links/<int:pk>/delete/', short_link_delete, name='short_link_delete'),
     # Payouts
     path('payouts/', payouts_home, name='payouts'),
     path('payouts/methods/add/', add_payout_method, name='add_payout_method'),

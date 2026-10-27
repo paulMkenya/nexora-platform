@@ -65,6 +65,7 @@ urlpatterns = [
     path('advertiser/', include('advertiser_ui.urls', namespace='advertiser_ui')),
     path('partner/', include('affiliate_ui.urls', namespace='affiliate_ui')),
     path('', include('smartlinks.urls')),
+    path('', include('shortlinks.urls')),
     path('affiliate/', include('affiliate.urls')),
     path('network/', include('network.urls')),
     path('', include('tracker.urls')),
