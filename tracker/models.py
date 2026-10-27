@@ -24,6 +24,10 @@ class Click(models.Model):
     sub5 = models.CharField(max_length=500, default="")
     ip = models.GenericIPAddressField()
     country = models.CharField(max_length=2, default="")
+    # Network the click came from (ip-api lookup); asn None = lookup failed.
+    asn = models.PositiveIntegerField(null=True, default=None, blank=True)
+    isp = models.CharField(max_length=128, default="", blank=True)
+    is_mobile = models.BooleanField(null=True, default=None)
     ua = models.CharField(max_length=200, default="")
     revenue = models.DecimalField(max_digits=7, decimal_places=2)
     payout = models.DecimalField(max_digits=7, decimal_places=2)
@@ -104,6 +108,8 @@ class Conversion(models.Model):
         max_length=10, choices=conversion_statuses, default=REJECTED_STATUS)
     sum = models.FloatField(default=0.0)
     comment = models.CharField(max_length=128, default='', blank=True)
+    # Advertiser's own transaction id from the postback (optional, deduped per offer).
+    txid = models.CharField(max_length=64, default='', blank=True, db_index=True)
 
     # ── Fraud fields ───────────────────────────────────────────────────────
     fraud_score = models.IntegerField(default=0)

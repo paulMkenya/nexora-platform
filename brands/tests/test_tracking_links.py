@@ -5,6 +5,8 @@ must only ever see that brand's own tracking domain, and a click must be
 attributed to the offer's brand.
 """
 import uuid
+
+from ext.ipapi import Response as IpLookup
 from unittest import mock
 
 from django.contrib.auth.models import User
@@ -106,7 +108,7 @@ class ClickAttributionTest(TestCase):
         self.assertEqual(resolve_click_brand(offer.id, self.nexora.id), self.nexora.id)
 
     @mock.patch('fraud.tasks.score_click_fraud')
-    @mock.patch('tracker.tasks.click.detect_country_service', return_value='US')
+    @mock.patch('tracker.tasks.click.lookup_ip', return_value=IpLookup(country_code='US'))
     def test_click_endpoint_attributes_to_offer_brand_end_to_end(self, _country, _fraud):
         affiliate = User.objects.create_user(username='aff-e2e', password='x')
         offer = Offer.objects.create(title='CCS', brand=self.ccs, status=ACTIVE_STATUS)

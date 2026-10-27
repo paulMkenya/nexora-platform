@@ -135,6 +135,19 @@
           </select>
           <div class="form-text">Which traffic sources this offer accepts. Leave empty to accept any.</div>
         </div>
+
+        <div class="row g-3 mt-1">
+          <div class="col-md-6">
+            <label class="form-label small text-muted" for="id_daily_cap">Daily conversion cap</label>
+            <input id="id_daily_cap" name="daily_cap" type="number" min="0" class="form-control" value="{{ data.daily_cap }}" placeholder="No cap">
+            <div class="form-text">Payable conversions per day. Extra ones are recorded as rejected "Daily cap reached". Blank or 0 = no cap.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small text-muted" for="id_allowed_asns">Carrier allow list (ASNs)</label>
+            <input id="id_allowed_asns" name="allowed_asns" type="text" class="form-control" value="{{ data.allowed_asns }}" placeholder="Any network">
+            <div class="form-text">Comma-separated, e.g. <code>33771</code> for Safaricom. Conversions from other networks are rejected; unknown network = hold.</div>
+          </div>
+        </div>
       </div>
     </div>
 

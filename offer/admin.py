@@ -75,7 +75,8 @@ class OfferAdmin(admin.ModelAdmin):
         Landing_inline,
     )
     list_display = (
-        'title', 'id', 'status', 'revenue_model', 'country_mode', 'advertiser',
+        'title', 'id', 'status', 'revenue_model', 'country_mode', 'daily_cap',
+        'allowed_asns', 'advertiser',
     )
     list_filter = ('status', 'revenue_model', 'country_mode', 'categories')
     search_fields = ('title',)
