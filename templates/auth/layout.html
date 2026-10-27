@@ -1,0 +1,219 @@
+{% load static brand_colors %}{% comment %}
+  Shared sign-in page for every portal. Context:
+    portal       - 'partner' | 'advertiser' | 'team' | 'platform'
+    form         - Django AuthenticationForm (username/password)
+    page_title, heading, subheading, notice, register_prompt, register_label
+                 - optional copy overrides
+    form_action  - optional POST target (defaults to the current URL)
+    register_url - optional self-signup link
+    show_tabs    - render the Partner / Advertiser / Team switcher
+  Brand colours/logo come from the `brand` context processor, so each white-label
+  domain gets its own look with no per-brand template.
+{% endcomment %}<!doctype html>
+<html lang="en" style="--brand: {{ brand.primary_color|safe_hex }}; --brand-2: {{ brand.secondary_color|safe_hex:'#4f46e5' }}; --on-brand: {{ brand.primary_color|safe_hex|on_color }};">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{{ page_title|default:'Sign in' }} · {{ brand.name|default:"Nexora" }}</title>
+  {% if brand.favicon %}<link rel="icon" href="{{ brand.favicon }}">{% else %}<link rel="icon" type="image/svg+xml" href="{% static 'img/nexora-mark.svg' %}">{% endif %}
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('nx-theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') {
+        t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="{% static 'css/auth.css' %}">
+</head>
+<body>
+<div class="auth">
+
+  <aside class="auth-hero" aria-hidden="false">
+    {% include 'auth/_brand.html' %}
+
+    <div class="auth-hero__body">
+      {% if portal == 'advertiser' %}
+        <span class="auth-eyebrow">Advertiser console</span>
+        <h2>Pay only for the results that count.</h2>
+        <p class="auth-hero__lead">Launch offers, control where your budget goes and see every conversion as it happens.</p>
+        <ul class="auth-points">
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></span>
+            <div><strong>Click-to-conversion tracking</strong><span>Server-to-server postbacks with a full inbound log.</span></div></li>
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>
+            <div><strong>Geo, carrier and cap controls</strong><span>Accept only the traffic your offer can convert.</span></div></li>
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg></span>
+            <div><strong>Fraud scoring built in</strong><span>Every click and conversion is scored before you pay.</span></div></li>
+        </ul>
+      {% elif portal == 'team' or portal == 'platform' %}
+        <span class="auth-eyebrow">{% if portal == 'platform' %}Platform administration{% else %}Network operations{% endif %}</span>
+        <h2>Run your entire partner network from one console.</h2>
+        <p class="auth-hero__lead">Partners, offers, traffic quality and payouts in a single workspace for your team.</p>
+        <ul class="auth-points">
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></svg></span>
+            <div><strong>Partner and offer management</strong><span>Approve partners, launch offers, set payouts.</span></div></li>
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="M12 8v4M12 16h.01"/></svg></span>
+            <div><strong>Traffic quality and fraud review</strong><span>Flagged clicks and conversions in one queue.</span></div></li>
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg></span>
+            <div><strong>Payouts and billing</strong><span>Reconcile advertiser billing and partner payouts.</span></div></li>
+        </ul>
+      {% else %}
+        <span class="auth-eyebrow">Partner portal</span>
+        <h2>Grow your revenue with performance partnerships.</h2>
+        <p class="auth-hero__lead">Find offers, send traffic and track every click and conversion in real time.</p>
+        <ul class="auth-points">
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></span>
+            <div><strong>Real-time reporting</strong><span>Clicks, conversions and earnings by offer and sub ID.</span></div></li>
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg></span>
+            <div><strong>Tracking links, postbacks and API</strong><span>Plug your own tracker in with server-to-server postbacks.</span></div></li>
+          <li><span class="auth-points__icon"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg></span>
+            <div><strong>Transparent payouts</strong><span>See what's approved and request your payout.</span></div></li>
+        </ul>
+      {% endif %}
+    </div>
+
+    <div class="auth-hero__foot">
+      <span><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Encrypted connection</span>
+      {% if brand.support_email %}<span>Help: <a href="mailto:{{ brand.support_email }}" style="color:inherit">{{ brand.support_email }}</a></span>{% endif %}
+    </div>
+  </aside>
+
+  <main class="auth-main">
+    <div class="auth-main__top">
+      {% include 'auth/_brand.html' %}
+      <button type="button" class="auth-theme" data-theme-toggle aria-label="Switch light or dark mode">
+        <svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+
+    <div class="auth-card">
+      {% if show_tabs %}
+      <nav class="auth-tabs" aria-label="Choose your portal">
+        <a href="{% url 'affiliate_ui:login' %}"{% if portal == 'partner' %} aria-current="page"{% endif %}>Partner</a>
+        <a href="{% url 'advertiser_ui:login' %}"{% if portal == 'advertiser' %} aria-current="page"{% endif %}>Advertiser</a>
+        <a href="{% url 'affiliate_ui:login' %}?portal=team"{% if portal == 'team' %} aria-current="page"{% endif %}>Team</a>
+      </nav>
+      {% endif %}
+
+      <h1>{{ heading|default:'Welcome back' }}</h1>
+      <p class="auth-card__sub">{% if subheading %}{{ subheading }}{% else %}Sign in to your {{ brand.name|default:"Nexora" }} account.{% endif %}</p>
+
+      {% if notice %}
+      <div class="auth-alert auth-alert--info" role="status">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div>{{ notice }}</div>
+      </div>
+      {% endif %}
+
+      {% if form.non_field_errors %}
+      <div class="auth-alert" role="alert">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        <div>{% if form.errors and not form.non_field_errors.as_data.0.code == 'inactive' %}That email or username and password don't match. Check them and try again.{% else %}{% for error in form.non_field_errors %}{{ error }}{% endfor %}{% endif %}</div>
+      </div>
+      {% endif %}
+
+      <form method="post"{% if form_action %} action="{{ form_action }}"{% endif %} novalidate data-auth-form>
+        {% csrf_token %}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
+        <div class="auth-field">
+          <div class="auth-field__row"><label for="id_username">Email or username</label></div>
+          <div class="auth-input">
+            <input type="text" name="username" id="id_username" value="{{ form.username.value|default:'' }}"
+                   autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus
+                   {% if form.username.errors or form.non_field_errors %}aria-invalid="true"{% endif %}>
+          </div>
+          {% for error in form.username.errors %}<div class="auth-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <div class="auth-field">
+          <div class="auth-field__row">
+            <label for="id_password">Password</label>
+            <a href="{% url 'affiliate_ui:password_reset' %}">Forgot password?</a>
+          </div>
+          <div class="auth-input auth-input--pw">
+            <input type="password" name="password" id="id_password" autocomplete="current-password" required
+                   {% if form.password.errors or form.non_field_errors %}aria-invalid="true"{% endif %}>
+            <button type="button" class="auth-reveal" data-reveal aria-label="Show password" aria-pressed="false">
+              <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="auth-hint" data-caps hidden>Caps Lock is on.</div>
+          {% for error in form.password.errors %}<div class="auth-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <button type="submit" class="auth-submit">Sign in</button>
+      </form>
+
+      {% if register_url %}
+      <p class="auth-alt">{{ register_prompt|default:'New here?' }} <a href="{{ register_url }}">{{ register_label|default:'Create an account' }}</a></p>
+      {% endif %}
+
+      <div class="auth-secure">
+        <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        Protected sign-in{% if brand.name %} for {{ brand.name }}{% endif %}
+      </div>
+    </div>
+
+    <footer class="auth-foot">
+      <span>&copy; {% now "Y" %} {{ brand.name|default:"Nexora" }}</span>
+      {% if brand.terms_url %}<a href="{{ brand.terms_url }}">Terms</a>{% endif %}
+      {% if brand.privacy_url %}<a href="{{ brand.privacy_url }}">Privacy</a>{% endif %}
+      {% if brand.support_email %}<a href="mailto:{{ brand.support_email }}">Support</a>{% endif %}
+    </footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+
+  var toggle = document.querySelector('[data-theme-toggle]');
+  if (toggle) toggle.addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('nx-theme', next); } catch (e) {}
+  });
+
+  var pw = document.getElementById('id_password');
+  var reveal = document.querySelector('[data-reveal]');
+  if (pw && reveal) reveal.addEventListener('click', function () {
+    var show = pw.type === 'password';
+    pw.type = show ? 'text' : 'password';
+    reveal.setAttribute('aria-pressed', String(show));
+    reveal.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    pw.focus();
+  });
+
+  var caps = document.querySelector('[data-caps]');
+  if (pw && caps) ['keydown', 'keyup'].forEach(function (ev) {
+    pw.addEventListener(ev, function (e) {
+      if (e.getModifierState) caps.hidden = !e.getModifierState('CapsLock');
+    });
+  });
+
+  var form = document.querySelector('[data-auth-form]');
+  if (form) form.addEventListener('submit', function (e) {
+    var user = document.getElementById('id_username');
+    if (!user.value.trim()) { e.preventDefault(); user.focus(); return; }
+    if (!pw.value) { e.preventDefault(); pw.focus(); return; }
+    form.querySelector('.auth-submit').setAttribute('aria-busy', 'true');
+  });
+
+  // Coming back via the browser's back button must not leave the button spinning.
+  window.addEventListener('pageshow', function () {
+    var btn = document.querySelector('.auth-submit');
+    if (btn) btn.removeAttribute('aria-busy');
+  });
+
+  if (document.getElementById('id_username').value) pw.focus();
+})();
+</script>
+</body>
+</html>

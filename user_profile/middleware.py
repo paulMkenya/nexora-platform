@@ -78,8 +78,8 @@ class RolePortalMiddleware:
         if host not in settings.PLATFORM_ADMIN_HOSTS:
             # Brand/tenant domain: the Django admin (and its login) must never be
             # shown — not even to superusers or anonymous visitors. Send them to
-            # this brand's operator login instead.
-            return redirect(settings.LOGIN_URL)
+            # this brand's operator (team) sign-in instead.
+            return redirect(f'{settings.LOGIN_URL}?portal=team')
 
         # Platform host: the model admin is for the platform owner only. Bounce
         # an authenticated non-superuser to their console (leave logout alone).

@@ -39,13 +39,13 @@ class AdminDomainLockdownTest(TestCase):
     def test_admin_login_on_brand_domain_redirects_to_operator_login(self):
         r = self.client.get('/admin/login/', HTTP_HOST=BRAND)
         self.assertEqual(r.status_code, 302)
-        self.assertEqual(r.url, '/partner/login/')
+        self.assertEqual(r.url, '/partner/login/?portal=team')
 
     def test_admin_index_on_brand_domain_redirects_even_for_superuser(self):
         self.client.force_login(self.superuser)
         r = self.client.get('/admin/', HTTP_HOST=BRAND)
         self.assertEqual(r.status_code, 302)
-        self.assertEqual(r.url, '/partner/login/')
+        self.assertEqual(r.url, '/partner/login/?portal=team')
 
     def test_no_django_branding_served_on_brand_domain(self):
         r = self.client.get('/admin/login/', HTTP_HOST=BRAND, follow=True)
