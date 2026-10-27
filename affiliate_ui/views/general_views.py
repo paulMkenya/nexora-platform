@@ -302,9 +302,14 @@ def affiliate_logout(request):
 def offer_detail(request, offer_id):
     offer = get_object_or_404(offers_for_affiliate(request.user), pk=offer_id)
     tracking_link = generate_tracking_link(offer, request.user.id, request=request)
+    from shortlinks.services import short_url
+    short_links = list(offer.short_links.filter(affiliate=request.user, is_active=True))
+    for link in short_links:
+        link.url = short_url(link, request=request)
     context = {
         'offer': offer,
         'tracking_link': tracking_link,
+        'short_links': short_links,
     }
     return render(request, 'affiliate_ui/offer_details.html', context)
 

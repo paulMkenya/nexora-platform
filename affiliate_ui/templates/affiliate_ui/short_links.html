@@ -1,0 +1,131 @@
+{% extends 'affiliate_ui/base.html' %}
+
+{% block title %}Short Links - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1 class="my-4">Short Links</h1>
+  <p class="text-muted small">
+    Clean, readable links for your offers, e.g. <code>/go/your-name-offer</code>. Every click is tracked exactly
+    like your full tracking link. Add <code>?sub1=…</code> to a short link to tag a placement without making a new link.
+  </p>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="alert alert-{{ msg.tags|default:'info' }} alert-dismissible fade show" role="alert">
+        {{ msg|safe }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">Create a short link</h2>
+      <form method="get" class="mb-3">
+        <label class="form-label" for="id_offer_pick">Offer</label>
+        <select id="id_offer_pick" name="offer" class="form-select" onchange="this.form.submit()">
+          <option value="">Choose an offer…</option>
+          {% for o in offers %}
+          <option value="{{ o.id }}" {% if o.id|stringformat:'s' == selected_offer %}selected{% endif %}>{{ o.title }}</option>
+          {% endfor %}
+        </select>
+      </form>
+
+      {% if suggestion %}
+      <form method="post" action="{% url 'affiliate_ui:short_link_create' %}">
+        {% csrf_token %}
+        <input type="hidden" name="offer" value="{{ selected_offer }}">
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label small" for="id_slug">Link name</label>
+            <div class="input-group">
+              <span class="input-group-text small">/go/</span>
+              <input id="id_slug" name="slug" class="form-control" value="{{ suggestion }}" maxlength="64"
+                     pattern="[a-z0-9][a-z0-9-]{1,62}[a-z0-9]" title="3-64 lowercase letters, numbers and dashes">
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small" for="id_label">Note (only you see this)</label>
+            <input id="id_label" name="label" class="form-control" maxlength="128" placeholder="e.g. Facebook campaign A">
+          </div>
+          {% for f in sub_fields|slice:":3" %}
+          <div class="col-md-4">
+            <label class="form-label small" for="id_{{ f }}">{{ f }} (optional)</label>
+            <input id="id_{{ f }}" name="{{ f }}" class="form-control form-control-sm" maxlength="500">
+          </div>
+          {% endfor %}
+        </div>
+        <button type="submit" class="btn btn-primary mt-3">Create short link</button>
+      </form>
+      {% elif offers %}
+      <p class="text-muted small mb-0">Pick an offer and we'll suggest a name you can edit.</p>
+      {% else %}
+      <p class="text-muted small mb-0">You have no available offers yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2 class="h5">Your links</h2>
+  {% for link in links %}
+  <div class="card mb-2">
+    <div class="card-body py-2">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="flex-grow-1" style="min-width:0">
+          <div class="input-group input-group-sm">
+            <input type="text" class="form-control js-short-url" value="{{ link.url }}" readonly>
+            <button class="btn btn-outline-secondary js-copy" type="button">Copy</button>
+          </div>
+          <div class="small text-muted mt-1">
+            {{ link.offer.title }}{% if link.label %} · {{ link.label }}{% endif %}
+            · {{ link.clicks }} click{{ link.clicks|pluralize }}
+            {% if not link.is_active %}<span class="badge bg-secondary ms-1">Disabled</span>{% endif %}
+          </div>
+        </div>
+        <div class="d-flex gap-1">
+          <form method="post" action="{% url 'affiliate_ui:short_link_toggle_active' link.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-secondary">{% if link.is_active %}Disable{% else %}Enable{% endif %}</button>
+          </form>
+          <form method="post" action="{% url 'affiliate_ui:short_link_delete' link.pk %}" onsubmit="return confirm('Delete this short link? It will stop working.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+          </form>
+        </div>
+      </div>
+      <details class="mt-2">
+        <summary class="small">Edit</summary>
+        <form method="post" action="{% url 'affiliate_ui:short_link_update' link.pk %}" class="row g-2 mt-1">
+          {% csrf_token %}
+          <div class="col-md-6">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">/go/</span>
+              <input name="slug" class="form-control" value="{{ link.slug }}" maxlength="64" required
+                     pattern="[a-z0-9][a-z0-9-]{1,62}[a-z0-9]">
+            </div>
+          </div>
+          <div class="col-md-6"><input name="label" class="form-control form-control-sm" value="{{ link.label }}" placeholder="Note"></div>
+          <div class="col-md-4"><input name="sub1" class="form-control form-control-sm" value="{{ link.sub1 }}" placeholder="sub1"></div>
+          <div class="col-md-4"><input name="sub2" class="form-control form-control-sm" value="{{ link.sub2 }}" placeholder="sub2"></div>
+          <div class="col-md-4"><input name="sub3" class="form-control form-control-sm" value="{{ link.sub3 }}" placeholder="sub3"></div>
+          <div class="col-12"><button type="submit" class="btn btn-sm btn-primary">Save</button></div>
+        </form>
+      </details>
+    </div>
+  </div>
+  {% empty %}
+  <p class="text-muted">No short links yet.</p>
+  {% endfor %}
+</div>
+
+<script>
+document.querySelectorAll('.js-copy').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var input = btn.parentElement.querySelector('.js-short-url');
+    var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); };
+    if (navigator.clipboard) { navigator.clipboard.writeText(input.value).then(done); }
+    else { input.select(); document.execCommand('copy'); done(); }
+  });
+});
+</script>
+{% endblock %}
