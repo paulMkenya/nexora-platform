@@ -1,0 +1,5 @@
+{% load static %}{% comment %}
+  Brand mark for the sign-in pages. A brand logo URL that fails to load (e.g. a
+  CDN that does not resolve) falls back to a monogram tile + brand name instead
+  of a broken-image icon.
+{% endcomment %}<span class="auth-brand">{% if brand.logo %}<img src="{{ brand.logo }}" alt="{{ brand.name }}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="auth-brand__fallback" hidden><span class="auth-brand__tile">{{ brand.name|first|upper }}</span><span class="auth-brand__name">{{ brand.name }}</span></span>{% elif brand.name and brand.slug != 'nexora' %}<span class="auth-brand__tile">{{ brand.name|first|upper }}</span><span class="auth-brand__name">{{ brand.name }}</span>{% else %}<img src="{% static 'img/nexora-mark.svg' %}" alt="" style="height:36px"><span class="auth-brand__name">{{ brand.name|default:"Nexora" }}</span>{% endif %}</span>

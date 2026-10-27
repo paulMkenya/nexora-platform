@@ -27,12 +27,15 @@ class PartnerAdvertiserShellTest(TestCase):
         )
 
     def test_affiliate_anonymous_pages_have_no_sidebar(self):
-        for url in [reverse('affiliate_ui:login'), reverse('affiliate_ui:register')]:
+        # Login uses the standalone sign-in layout (auth/layout.html); register
+        # keeps the anonymous frame with its top-bar "Log in" link.
+        for url, marker in [(reverse('affiliate_ui:login'), 'Sign in'),
+                            (reverse('affiliate_ui:register'), 'Log in')]:
             r = self.client.get(url)
             self.assertEqual(r.status_code, 200)
             html = r.content.decode()
             self.assertNotIn('id="nx-sidebar"', html)
-            self.assertIn('Log in', html)
+            self.assertIn(marker, html)
 
     def test_affiliate_authenticated_gets_shell(self):
         user = User.objects.create_user(username='aff-shell', password='pass')

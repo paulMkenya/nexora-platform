@@ -9,6 +9,7 @@ import logging
 
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.views import LoginView
+from django.urls import reverse
 from django.core import signing
 from django.shortcuts import redirect, render
 
@@ -135,3 +136,9 @@ class AdvertiserLoginView(LoginView):
 
     def get_default_redirect_url(self):
         return '/advertiser/'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(portal='advertiser', show_tabs=True,
+                   register_url=reverse('advertiser_ui:register'))
+        return ctx

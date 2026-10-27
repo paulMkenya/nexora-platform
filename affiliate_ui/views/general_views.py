@@ -315,5 +315,18 @@ def offer_detail(request, offer_id):
 
 
 class AffiliateLoginView(LoginView):
+    """The shared sign-in: every role can log in here and RolePortalMiddleware
+    routes them to their own portal. ``?portal=team`` shows the operator copy
+    (brand hosts send /admin/login/ there)."""
     template_name = 'affiliate_ui/login.html'
     redirect_authenticated_user = True
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        team = self.request.GET.get('portal') == 'team'
+        ctx.update(
+            portal='team' if team else 'partner',
+            show_tabs=True,
+            register_url='' if team else reverse('affiliate_ui:register'),
+        )
+        return ctx
