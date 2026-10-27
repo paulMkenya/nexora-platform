@@ -95,8 +95,30 @@ class Offer(models.Model):
     mmp_app_id = models.CharField(max_length=128, default='', blank=True)
     mmp_extra = models.JSONField(default=dict, blank=True)
 
+    # Delivery controls, enforced when a conversion is recorded
+    # (tracker.tasks.conversion). Both default to "off".
+    daily_cap = models.PositiveIntegerField(
+        default=0,
+        help_text='Max payable conversions per day (site time zone). 0 = no cap.')
+    allowed_asns = models.CharField(
+        max_length=255, default='', blank=True,
+        help_text='Carrier allow list as comma-separated ASNs, e.g. "33771" for '
+                  'Safaricom. Blank = any network.')
+
     def __str__(self):
         return f"({self.id}) {self.title}"
+
+    def asn_allow_list(self):
+        """Return the carrier allow list as a set of ints (empty = any network).
+
+        Accepts "33771", "AS33771" and stray whitespace; anything else is ignored.
+        """
+        asns = set()
+        for part in (self.allowed_asns or '').split(','):
+            part = part.strip().upper().removeprefix('AS')
+            if part.isdigit():
+                asns.add(int(part))
+        return asns
 
     def accepts_country(self, code):
         """Return True if a click from ISO alpha-2 ``code`` is accepted.

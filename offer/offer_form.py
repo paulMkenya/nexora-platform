@@ -42,6 +42,8 @@ def offer_form_ctx(request, offer=None):
             'status': request.POST.get('status', ACTIVE_STATUS),
             'revenue_model': request.POST.get('revenue_model', CPA),
             'country_mode': request.POST.get('country_mode', ALLOW_ALL),
+            'daily_cap': request.POST.get('daily_cap', ''),
+            'allowed_asns': request.POST.get('allowed_asns', ''),
         }
         selected_countries = set(request.POST.getlist('countries'))
         selected_categories = set(request.POST.getlist('categories'))
@@ -56,6 +58,8 @@ def offer_form_ctx(request, offer=None):
             'status': offer.status,
             'revenue_model': offer.revenue_model,
             'country_mode': offer.country_mode,
+            'daily_cap': offer.daily_cap or '',
+            'allowed_asns': offer.allowed_asns,
         }
         selected_countries = set(offer.countries.values_list('iso', flat=True))
         selected_categories = {str(cid) for cid in offer.categories.values_list('id', flat=True)}
@@ -150,6 +154,19 @@ def validate_offer_post(request):
     return title, tracking_link, status, errors
 
 
+def apply_delivery_controls(offer, request):
+    """Set daily cap and carrier allow list — only when the form carries them.
+
+    The operator console shows these fields; the advertiser self-service form
+    does not, so an advertiser saving their offer never clears an operator's cap.
+    """
+    if 'daily_cap' in request.POST:
+        raw = (request.POST.get('daily_cap') or '').strip()
+        offer.daily_cap = int(raw) if raw.isdigit() else 0
+    if 'allowed_asns' in request.POST:
+        offer.allowed_asns = (request.POST.get('allowed_asns') or '').strip()[:255]
+
+
 def parse_choice(request, field, choices, default):
     """Return a POSTed value if it is a valid choice, else the default."""
     value = request.POST.get(field, default)
@@ -175,6 +192,9 @@ def create_offer_from_post(request, *, advertiser, brand):
         advertiser=advertiser,
         brand=brand,
     )
+    apply_delivery_controls(offer, request)
+    if offer.daily_cap or offer.allowed_asns:
+        offer.save(update_fields=['daily_cap', 'allowed_asns'])
     apply_offer_targeting(offer, request)
     maybe_create_initial_payout(offer, request)
     return offer
@@ -198,6 +218,7 @@ def update_offer_from_post(request, offer):
     offer.status = status
     offer.revenue_model = parse_choice(request, 'revenue_model', revenue_models, offer.revenue_model)
     offer.country_mode = parse_choice(request, 'country_mode', country_modes, offer.country_mode)
+    apply_delivery_controls(offer, request)
     offer.save()
     apply_offer_targeting(offer, request)
     return offer

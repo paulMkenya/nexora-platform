@@ -173,6 +173,17 @@ def postback(request):
         _log_postback(None, request, HMAC_SKIP, 400, 'Missing click_id')
         return HttpResponse('Missing click_id', status=400)
 
+    # Our click ids are UUIDs. Anything else is most often a macro the
+    # advertiser's tracker did not fill in (e.g. a panel "test" fire sending a
+    # literal "{rcid}"), so say that in the log rather than queue a task that
+    # can only fail.
+    try:
+        uuid.UUID(click_id)
+    except ValueError:
+        note = 'Unsubstituted macro' if '{' in click_id else 'Not a valid click_id'
+        _log_postback(None, request, HMAC_SKIP, 400, note)
+        return HttpResponse(f'Invalid click_id ({note.lower()})', status=400)
+
     # ── HMAC verification ──────────────────────────────────────────────────
     advertiser, hmac_status = _check_postback_hmac(request, click_id)
     enforce = getattr(settings, 'ENFORCE_POSTBACK_HMAC', False)
@@ -182,7 +193,8 @@ def postback(request):
         return HttpResponse('Invalid or missing HMAC signature', status=401)
 
     # ── queue conversion task (existing behaviour unchanged) ───────────────
-    data = {'click_id': click_id, 'goal': goal, 'sum': sum_}
+    data = {'click_id': click_id, 'goal': goal, 'sum': sum_,
+            'txid': request.GET.get('txid', '')}
     valid_statuses = {s for s, _ in conversion_statuses}
     if status in valid_statuses:
         data['status'] = status
