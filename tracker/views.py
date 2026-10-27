@@ -193,8 +193,12 @@ def postback(request):
         return HttpResponse('Invalid or missing HMAC signature', status=401)
 
     # ── queue conversion task (existing behaviour unchanged) ───────────────
-    data = {'click_id': click_id, 'goal': goal, 'sum': sum_,
-            'txid': request.GET.get('txid', '')}
+    # A txid the advertiser's tracker did not fill in (literal "{txid}") would be
+    # identical on every postback and reject them all as "Duplicate txid".
+    txid = request.GET.get('txid', '')
+    if '{' in txid:
+        txid = ''
+    data = {'click_id': click_id, 'goal': goal, 'sum': sum_, 'txid': txid}
     valid_statuses = {s for s, _ in conversion_statuses}
     if status in valid_statuses:
         data['status'] = status

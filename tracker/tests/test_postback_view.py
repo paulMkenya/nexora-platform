@@ -34,3 +34,9 @@ class TestPostbackHanlder(TestCase):
         click_id = uuid.uuid4().hex
         self.client.get(url, {'click_id': click_id, 'txid': 'TX-1'})
         self.assertEqual(mock_conversion.delay.call_args[0][0]['txid'], 'TX-1')
+
+    @mock.patch('tracker.views.conversion')
+    def test_unsubstituted_txid_is_dropped(self, mock_conversion):
+        url = reverse('tracker-postback')
+        self.client.get(url, {'click_id': uuid.uuid4().hex, 'txid': '{txid}'})
+        self.assertEqual(mock_conversion.delay.call_args[0][0]['txid'], '')
